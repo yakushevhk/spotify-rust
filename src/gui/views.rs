@@ -1,4 +1,5 @@
 use eframe::egui;
+use rspotify::prelude::Id;
 
 use crate::client::ClientRequest;
 use crate::gui::image_cache::{self, ImageCache};
@@ -1208,5 +1209,235 @@ pub fn render_settings(ui: &mut egui::Ui) {
                 ui.add_space(4.0);
             }
         });
+    });
+}
+
+pub fn render_lyrics(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    _client_pub: &flume::Sender<ClientRequest>,
+    _image_cache: &mut ImageCache,
+) -> Action {
+    // Background fill
+    let full_rect = ui.max_rect();
+    ui.painter().rect_filled(full_rect, 0.0, theme::LYRICS_BG);
+
+    let player = state.player.read();
+    let playback = player.current_playback();
+
+    let (track_name, artists_str, progress_ms, _duration_ms) = if let Some(ref pb) = playback {
+        if let Some(ref item) = pb.item {
+            let (name, artists) = match item {
+                rspotify::model::PlayableItem::Track(t) => {
+                    let a: Vec<_> = t.artists.iter().map(|a| a.name.as_str()).collect();
+                    (t.name.clone(), a.join(", "))
+                }
+                rspotify::model::PlayableItem::Episode(e) => {
+                    (e.name.clone(), e.show.name.clone())
+                }
+                _ => (String::new(), String::new()),
+            };
+            let dur = match item {
+                rspotify::model::PlayableItem::Track(t) => t.duration,
+                rspotify::model::PlayableItem::Episode(e) => e.duration,
+                _ => chrono::Duration::zero(),
+            };
+            let prog = pb.progress.unwrap_or(chrono::Duration::zero());
+            (name, artists, prog.num_milliseconds().max(0) as u64, dur.num_milliseconds().max(0) as u64)
+        } else {
+            (String::new(), String::new(), 0, 0)
+        }
+    } else {
+        (String::new(), String::new(), 0, 0)
+    };
+
+    let track_uri: Option<String> = playback.as_ref().and_then(|pb| {
+        pb.item.as_ref().and_then(|item| match item {
+            rspotify::model::PlayableItem::Track(t) => t.id.as_ref().map(|id| id.uri()),
+            _ => None,
+        })
+    });
+
+    drop(player);
+
+    // Header
+    ui.add_space(24.0);
+    ui.horizontal(|ui| {
+        ui.add_space(32.0);
+        ui.label(
+            egui::RichText::new("Lyrics")
+                .size(28.0)
+                .strong()
+                .color(theme::TEXT_PRIMARY),
+        );
+    });
+    ui.add_space(16.0);
+
+    // Track info
+    if !track_name.is_empty() {
+        ui.horizontal(|ui| {
+            ui.add_space(32.0);
+            ui.label(
+                egui::RichText::new(&track_name)
+                    .size(18.0)
+                    .strong()
+                    .color(theme::TEXT_PRIMARY),
+            );
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_space(32.0);
+            ui.label(
+                egui::RichText::new(&artists_str)
+                    .size(14.0)
+                    .color(theme::TEXT_DIM),
+            );
+        });
+    }
+    ui.add_space(20.0);
+
+    // Divider
+    let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
+    ui.painter().rect_filled(div_rect, 0.0, theme::DIVIDER);
+    ui.add_space(16.0);
+
+    // Lyrics content
+    let data = state.data.read();
+    let lyrics = track_uri.as_ref().and_then(|uri| data.caches.lyrics.get(uri));
+
+    match lyrics {
+        Some(Some(lyrics)) if !lyrics.lines.is_empty() => {
+            let lines = &lyrics.lines;
+
+            // Find current line index
+            let current_idx = {
+                let mut idx = 0;
+                for (i, (ts, _)) in lines.iter().enumerate() {
+                    if ts.num_milliseconds() as u64 <= progress_ms {
+                        idx = i;
+                    } else {
+                        break;
+                    }
+                }
+                idx
+            };
+
+            egui::ScrollArea::vertical()
+                .id_salt("lyrics_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // Top padding to allow scrolling first line to center
+                    let viewport_height = ui.available_height().max(200.0);
+                    ui.add_space(viewport_height / 2.0 - 40.0);
+
+                    for (i, (_ts, text)) in lines.iter().enumerate() {
+                        let (color, size, is_bold) = if i < current_idx {
+                            (theme::LYRICS_PLAYED, 16.0, false)
+                        } else if i == current_idx {
+                            (theme::LYRICS_CURRENT, 20.0, true)
+                        } else {
+                            (theme::LYRICS_UPCOMING, 16.0, false)
+                        };
+
+                        let font_id = if is_bold {
+                            egui::FontId::proportional(size)
+                        } else {
+                            egui::FontId::proportional(size)
+                        };
+
+                        let line_height = size * 1.6;
+
+                        let (line_rect, _response) = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), line_height),
+                            egui::Sense::hover(),
+                        );
+
+                        let rich_text = egui::RichText::new(text)
+                            .size(size)
+                            .color(color);
+
+                        if is_bold {
+                            let rich_text = rich_text.strong();
+                            ui.painter().text(
+                                line_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                rich_text.text(),
+                                font_id,
+                                color,
+                            );
+                        } else {
+                            ui.painter().text(
+                                line_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                text,
+                                font_id,
+                                color,
+                            );
+                        }
+                    }
+
+                    // Bottom padding
+                    ui.add_space(viewport_height / 2.0 - 40.0);
+                });
+        }
+        Some(Some(_)) => {
+            // Empty lyrics
+            render_no_lyrics(ui);
+        }
+        Some(None) => {
+            render_no_lyrics(ui);
+        }
+        None => {
+            // Still loading or not requested
+            if track_name.is_empty() {
+                ui.add_space(80.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(ui.available_width() / 2.0 - 100.0);
+                    ui.label(
+                        egui::RichText::new("No track playing")
+                            .size(16.0)
+                            .color(theme::TEXT_DIM),
+                    );
+                });
+            } else {
+                ui.add_space(80.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(ui.available_width() / 2.0 - 30.0);
+                    ui.spinner();
+                });
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(ui.available_width() / 2.0 - 60.0);
+                    ui.label(
+                        egui::RichText::new("Loading lyrics...")
+                            .size(14.0)
+                            .color(theme::TEXT_DIM),
+                    );
+                });
+            }
+        }
+    }
+
+    Action::None
+}
+
+fn render_no_lyrics(ui: &mut egui::Ui) {
+    ui.add_space(80.0);
+    ui.horizontal(|ui| {
+        ui.add_space(ui.available_width() / 2.0 - 16.0);
+        ui.label(
+            egui::RichText::new("🎤")
+                .size(48.0)
+                .color(theme::TEXT_MUTED),
+        );
+    });
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.add_space(ui.available_width() / 2.0 - 90.0);
+        ui.label(
+            egui::RichText::new("No lyrics available")
+                .size(16.0)
+                .color(theme::TEXT_DIM),
+        );
     });
 }

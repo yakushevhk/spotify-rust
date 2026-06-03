@@ -2,8 +2,9 @@ use eframe::egui;
 use rspotify::prelude::Id;
 
 use crate::client::{ClientRequest, PlayerRequest};
-use crate::gui::image_cache::{self, ImageCache};
+use crate::gui::image_cache::ImageCache;
 use crate::gui::theme;
+use crate::gui::View;
 use crate::state::SharedState;
 
 pub fn render(
@@ -11,7 +12,8 @@ pub fn render(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
-) {
+) -> Option<View> {
+    let mut navigate_to = None;
     let player = state.player.read();
     let playback = player.current_playback();
 
@@ -369,9 +371,17 @@ pub fn render(
                         .color(theme::TEXT_DIM)
                         .monospace(),
                 );
+
+                ui.add_space(16.0);
+
+                // Lyrics button
+                if theme::icon_button(ui, "🎤", 28.0, false).clicked() {
+                    navigate_to = Some(View::Lyrics);
+                }
             }
         });
     });
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
+    navigate_to
 }

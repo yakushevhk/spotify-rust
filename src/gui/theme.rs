@@ -267,6 +267,11 @@ pub fn page_title(ui: &mut egui::Ui, title: &str) {
     ui.add_space(20.0);
 }
 
+pub const LYRICS_CURRENT: egui::Color32 = egui::Color32::from_rgb(29, 185, 84);
+pub const LYRICS_PLAYED: egui::Color32 = egui::Color32::from_rgb(85, 85, 85);
+pub const LYRICS_UPCOMING: egui::Color32 = egui::Color32::from_rgb(204, 204, 204);
+pub const LYRICS_BG: egui::Color32 = egui::Color32::from_rgb(10, 10, 10);
+
 pub fn format_duration_secs(secs: u64) -> String {
     let mins = secs / 60;
     let s = secs % 60;

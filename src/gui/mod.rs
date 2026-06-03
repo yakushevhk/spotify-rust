@@ -5,6 +5,7 @@ mod theme;
 mod views;
 
 use eframe::egui;
+use rspotify::prelude::Id;
 
 use crate::client::ClientRequest;
 use crate::state::{self, SharedState};
@@ -16,6 +17,7 @@ pub enum View {
     Search,
     Queue,
     Settings,
+    Lyrics,
 }
 
 enum Action {
@@ -205,7 +207,9 @@ impl eframe::App for SpotifyApp {
             .resizable(false)
             .exact_height(theme::PLAYBACK_BAR_HEIGHT)
             .show(ctx, |ui| {
-                playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache);
+                if let Some(view) = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache) {
+                    self.current_view = view;
+                }
             });
 
         // Left panel — sidebar
@@ -220,6 +224,29 @@ impl eframe::App for SpotifyApp {
         self.handle_action(action);
 
         // Central panel — main content
+        // Request lyrics when on Lyrics view
+        if self.current_view == View::Lyrics {
+            let player = self.state.player.read();
+            if let Some(ref playback) = player.playback {
+                if let Some(ref item) = playback.item {
+                    let track_uri = match item {
+                        rspotify::model::PlayableItem::Track(t) => t.id.as_ref().map(|id| id.uri()),
+                        _ => None,
+                    };
+                    if let Some(uri) = track_uri {
+                        let has_lyrics = self.state.data.read().caches.lyrics.contains_key(&uri);
+                        if !has_lyrics {
+                            if let Ok(track_id) = rspotify::model::TrackId::from_uri(&uri) {
+                                let _ = self.client_pub.send(ClientRequest::GetLyrics {
+                                    track_id: track_id.into_static(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let mut action = Action::None;
         egui::CentralPanel::default()
             .frame(
@@ -257,6 +284,9 @@ impl eframe::App for SpotifyApp {
                 }
                 View::Settings => {
                     views::render_settings(ui);
+                }
+                View::Lyrics => {
+                    action = views::render_lyrics(ui, &self.state, &self.client_pub, &mut self.image_cache);
                 }
             });
         self.handle_action(action);

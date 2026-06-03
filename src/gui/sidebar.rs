@@ -34,6 +34,7 @@ pub fn render(
         (View::Library, "🏠", "Library"),
         (View::Search, "🔍", "Search"),
         (View::Queue, "📋", "Queue"),
+        (View::Lyrics, "🎤", "Lyrics"),
         (View::Settings, "⚙", "Settings"),
     ];
 
