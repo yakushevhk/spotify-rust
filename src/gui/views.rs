@@ -4,7 +4,7 @@ use rspotify::prelude::Id;
 use crate::client::ClientRequest;
 use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::{theme, Action};
-use crate::state::{self, SharedState};
+use crate::state::{self, PlayableId, SharedState};
 
 pub fn render_library(
     ui: &mut egui::Ui,
@@ -1440,4 +1440,570 @@ fn render_no_lyrics(ui: &mut egui::Ui) {
                 .color(theme::TEXT_DIM),
         );
     });
+}
+
+pub fn render_artist(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    client_pub: &flume::Sender<ClientRequest>,
+    artist_context: &Option<crate::state::Context>,
+    image_cache: &mut ImageCache,
+) -> Action {
+    let mut action = Action::None;
+
+    let ctx = match artist_context {
+        Some(crate::state::Context::Artist { artist, top_tracks, albums, related_artists }) => {
+            (artist, top_tracks, albums, related_artists)
+        }
+        _ => {
+            ui.add_space(80.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 30.0);
+                ui.spinner();
+            });
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 80.0);
+                ui.label(
+                    egui::RichText::new("Loading artist...")
+                        .size(14.0)
+                        .color(theme::TEXT_DIM),
+                );
+            });
+            return Action::None;
+        }
+    };
+
+    let (artist, top_tracks, albums, related_artists) = ctx;
+
+    // === Header Section ===
+    ui.add_space(24.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let header_height = 160.0;
+        let header_width = ui.available_width() - 48.0;
+        let (header_rect, _) = ui.allocate_exact_size(
+            egui::vec2(header_width, header_height),
+            egui::Sense::hover(),
+        );
+
+        // Artist image (circular)
+        let img_size = 120.0;
+        let img_rect = egui::Rect::from_min_size(
+            header_rect.min + egui::vec2(0.0, (header_height - img_size) / 2.0),
+            egui::vec2(img_size, img_size),
+        );
+
+        let mut img_drawn = false;
+        let cover_path = image_cache::artist_cover_path(artist);
+        if let (Some(path), Some(url)) = (&cover_path, &artist.image_url) {
+            if !path.exists() {
+                image_cache.request_download(url, path);
+            }
+            if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+                ui.painter().rect_filled(img_rect, img_size / 2.0, theme::BG_ACTIVE);
+                egui::Image::new(texture)
+                    .corner_radius(img_size / 2.0)
+                    .paint_at(ui, img_rect);
+                img_drawn = true;
+            }
+        }
+        if !img_drawn {
+            ui.painter().rect_filled(img_rect, img_size / 2.0, theme::BG_ACTIVE);
+            ui.painter().text(
+                img_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "🎤",
+                egui::FontId::proportional(40.0),
+                theme::TEXT_MUTED,
+            );
+        }
+
+        // Artist info
+        let text_x = img_rect.right() + 24.0;
+        ui.painter().text(
+            egui::pos2(text_x, header_rect.top() + 20.0),
+            egui::Align2::LEFT_TOP,
+            &artist.name,
+            egui::FontId::proportional(32.0),
+            theme::TEXT_PRIMARY,
+        );
+
+        let followers_str = format_followers(artist.followers);
+        ui.painter().text(
+            egui::pos2(text_x, header_rect.top() + 62.0),
+            egui::Align2::LEFT_TOP,
+            &followers_str,
+            egui::FontId::proportional(13.0),
+            theme::TEXT_DIM,
+        );
+
+        if !artist.genres.is_empty() {
+            let genres_str = artist.genres.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+            ui.painter().text(
+                egui::pos2(text_x, header_rect.top() + 82.0),
+                egui::Align2::LEFT_TOP,
+                &genres_str,
+                egui::FontId::proportional(12.0),
+                theme::TEXT_SECONDARY,
+            );
+        }
+
+        // Play button
+        let play_btn_rect = egui::Rect::from_min_size(
+            egui::pos2(text_x, header_rect.top() + 110.0),
+            egui::vec2(120.0, 36.0),
+        );
+        let play_response = ui.allocate_rect(play_btn_rect, egui::Sense::click());
+        let play_bg = if play_response.hovered() { theme::GREEN_HOVER } else { theme::GREEN };
+        ui.painter().rect_filled(play_btn_rect, 18.0, play_bg);
+        ui.painter().text(
+            play_btn_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Play",
+            egui::FontId::proportional(14.0),
+            theme::BG_BLACK,
+        );
+        if play_response.clicked() {
+            let track_uris: Vec<PlayableId<'static>> = top_tracks
+                .iter()
+                .map(|t| PlayableId::Track(t.id.clone()))
+                .collect();
+            if !track_uris.is_empty() {
+                let _ = client_pub.send(ClientRequest::Player(
+                    crate::client::PlayerRequest::StartPlayback(
+                        crate::state::Playback::URIs(track_uris, None),
+                        None,
+                    ),
+                ));
+            }
+        }
+    });
+
+    ui.add_space(32.0);
+
+    // === Popular Tracks Section ===
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        ui.label(
+            egui::RichText::new("Popular")
+                .size(18.0)
+                .strong()
+                .color(theme::TEXT_PRIMARY),
+        );
+    });
+    ui.add_space(12.0);
+
+    let player = state.player.read();
+    let current_track_uri: Option<String> = player.playback.as_ref().and_then(|p| {
+        p.item.as_ref().map(|item| match item {
+            rspotify::model::PlayableItem::Track(t) => {
+                t.id.as_ref().map(|id| id.uri()).unwrap_or_default()
+            }
+            _ => String::new(),
+        })
+    });
+    drop(player);
+
+    egui::ScrollArea::vertical()
+        .id_salt("artist_top_tracks")
+        .max_height(400.0)
+        .show(ui, |ui| {
+            for (i, track) in top_tracks.iter().enumerate() {
+                let is_playing = current_track_uri
+                    .as_ref()
+                    .map_or(false, |uri| uri == &track.id.uri());
+
+                let row_height = 48.0;
+                let (row_rect, response) = ui
+                    .allocate_exact_size(
+                        egui::vec2(ui.available_width(), row_height),
+                        egui::Sense::click(),
+                    );
+
+                let bg = if response.hovered() {
+                    egui::Color32::from_rgb(10, 10, 10)
+                } else if i % 2 == 0 {
+                    egui::Color32::from_rgb(10, 10, 10)
+                } else {
+                    theme::BG_BLACK
+                };
+                ui.painter().rect_filled(row_rect, 4.0, bg);
+
+                // Number / play indicator
+                let num_color = if is_playing { theme::GREEN } else { theme::TEXT_MUTED };
+                let num_str = if is_playing { "\u{25B6}".to_string() } else { format!("{}", i + 1) };
+                ui.painter().text(
+                    row_rect.left_center() + egui::vec2(28.0, 0.0),
+                    egui::Align2::CENTER_CENTER,
+                    &num_str,
+                    egui::FontId::monospace(12.0),
+                    num_color,
+                );
+
+                // Track thumbnail
+                let thumb_rect = egui::Rect::from_min_size(
+                    row_rect.left_center() + egui::vec2(48.0, -theme::TRACK_THUMB_SIZE / 2.0),
+                    egui::vec2(theme::TRACK_THUMB_SIZE, theme::TRACK_THUMB_SIZE),
+                );
+                let mut thumb_drawn = false;
+                if let Some(ref album) = track.album {
+                    if let Some(path) = image_cache::album_cover_path(album) {
+                        if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
+                            ui.painter().rect_filled(
+                                thumb_rect,
+                                theme::ART_CORNER_RADIUS,
+                                theme::BG_ACTIVE,
+                            );
+                            egui::Image::new(texture)
+                                .corner_radius(theme::ART_CORNER_RADIUS)
+                                .paint_at(ui, thumb_rect);
+                            thumb_drawn = true;
+                        }
+                    }
+                }
+                if !thumb_drawn {
+                    ui.painter().rect_filled(thumb_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+                    ui.painter().text(
+                        thumb_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{266B}",
+                        egui::FontId::proportional(14.0),
+                        theme::TEXT_MUTED,
+                    );
+                }
+
+                // Track name
+                let title_color = if is_playing { theme::GREEN } else { theme::TEXT_PRIMARY };
+                ui.painter().text(
+                    row_rect.left_center() + egui::vec2(92.0, -7.0),
+                    egui::Align2::LEFT_CENTER,
+                    &track.name,
+                    egui::FontId::proportional(14.0),
+                    title_color,
+                );
+
+                // Album name
+                let album_name = track.album_info();
+                if !album_name.is_empty() {
+                    ui.painter().text(
+                        row_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        &album_name,
+                        egui::FontId::proportional(12.0),
+                        theme::TEXT_DIM,
+                    );
+                }
+
+                // Duration
+                let dur_str = theme::format_duration_secs(track.duration.as_secs());
+                ui.painter().text(
+                    row_rect.right_center() + egui::vec2(-24.0, 0.0),
+                    egui::Align2::RIGHT_CENTER,
+                    &dur_str,
+                    egui::FontId::monospace(12.0),
+                    theme::TEXT_DIM,
+                );
+
+                // Play button on hover
+                if response.hovered() && !is_playing {
+                    let play_btn_rect = egui::Rect::from_center_size(
+                        row_rect.left_center() + egui::vec2(28.0, 0.0),
+                        egui::vec2(24.0, 24.0),
+                    );
+                    ui.painter().rect_filled(play_btn_rect, 12.0, theme::GREEN);
+                    ui.painter().text(
+                        play_btn_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{25B6}",
+                        egui::FontId::proportional(10.0),
+                        theme::BG_BLACK,
+                    );
+                }
+
+                // Click to play track
+                if response.clicked() {
+                    let track_uris: Vec<PlayableId<'static>> = top_tracks
+                        .iter()
+                        .map(|t| PlayableId::Track(t.id.clone()))
+                        .collect();
+                    let _ = client_pub.send(ClientRequest::Player(
+                        crate::client::PlayerRequest::StartPlayback(
+                            crate::state::Playback::URIs(
+                                track_uris,
+                                Some(rspotify::model::Offset::Uri(track.id.uri())),
+                            ),
+                            None,
+                        ),
+                    ));
+                }
+
+                // Row divider
+                let div = egui::Rect::from_min_size(
+                    row_rect.left_bottom() + egui::vec2(24.0, 0.0),
+                    egui::vec2(row_rect.width() - 48.0, 1.0),
+                );
+                ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+            }
+        });
+
+    ui.add_space(32.0);
+
+    // === Albums Section ===
+    if !albums.is_empty() {
+        ui.horizontal(|ui| {
+            ui.add_space(24.0);
+            ui.label(
+                egui::RichText::new("Discography")
+                    .size(18.0)
+                    .strong()
+                    .color(theme::TEXT_PRIMARY),
+            );
+        });
+        ui.add_space(12.0);
+
+        egui::ScrollArea::horizontal()
+            .id_salt("artist_albums_h")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    for album in albums.iter() {
+                        let sub = format!(
+                            "{} · {}",
+                            album.album_type(),
+                            album.year()
+                        );
+                        let cover_path = image_cache::album_cover_path(album);
+                        if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
+                            if !path.exists() {
+                                image_cache.request_download(url, path);
+                            }
+                        }
+                        let album_clone = album.clone();
+                        artist_album_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
+                            action = Action::OpenSearchResultAlbum(album_clone);
+                        });
+                        ui.add_space(12.0);
+                    }
+                });
+            });
+
+        ui.add_space(32.0);
+    }
+
+    // === Related Artists Section ===
+    if !related_artists.is_empty() {
+        // Divider
+        let div_rect = ui.allocate_space(egui::vec2(ui.available_width() - 48.0, 1.0)).1;
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(div_rect.min + egui::vec2(24.0, 0.0), div_rect.size()),
+            0.0,
+            theme::DIVIDER,
+        );
+        ui.add_space(24.0);
+
+        ui.horizontal(|ui| {
+            ui.add_space(24.0);
+            ui.label(
+                egui::RichText::new("Fans also like")
+                    .size(18.0)
+                    .strong()
+                    .color(theme::TEXT_PRIMARY),
+            );
+        });
+        ui.add_space(12.0);
+
+        egui::ScrollArea::horizontal()
+            .id_salt("artist_related_h")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    for related in related_artists.iter() {
+                        let related_clone = related.clone();
+                        let cover_path = image_cache::artist_cover_path(related);
+                        if let (Some(path), Some(url)) = (&cover_path, &related.image_url) {
+                            if !path.exists() {
+                                image_cache.request_download(url, path);
+                            }
+                        }
+                        artist_card(ui, &related.name, cover_path.as_deref(), image_cache, || {
+                            action = Action::OpenArtist(related_clone);
+                        });
+                        ui.add_space(12.0);
+                    }
+                });
+            });
+
+        ui.add_space(24.0);
+    }
+
+    action
+}
+
+fn format_followers(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M listeners", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K listeners", count as f64 / 1_000.0)
+    } else {
+        format!("{} listeners", count)
+    }
+}
+
+fn artist_album_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    subtitle: &str,
+    cover_path: Option<&std::path::Path>,
+    image_cache: &mut ImageCache,
+    on_click: impl FnOnce(),
+) {
+    let width = 160.0;
+    let height = 210.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+
+    let bg = if response.hovered() {
+        theme::BG_HOVER
+    } else {
+        egui::Color32::from_rgb(17, 17, 17)
+    };
+    ui.painter().rect_filled(rect, 4.0, bg);
+
+    let art_size = width - 24.0;
+    let art_rect = egui::Rect::from_min_size(
+        rect.min + egui::vec2(12.0, 12.0),
+        egui::vec2(art_size, art_size),
+    );
+
+    let mut art_drawn = false;
+    if let Some(path) = cover_path {
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS)
+                .paint_at(ui, art_rect);
+            art_drawn = true;
+        }
+    }
+
+    if !art_drawn {
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        ui.painter().text(
+            art_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{266B}",
+            egui::FontId::proportional(28.0),
+            theme::TEXT_MUTED,
+        );
+    }
+
+    // Hover overlay with play button
+    if art_drawn && response.hovered() {
+        ui.painter().rect_filled(
+            art_rect,
+            theme::ART_CORNER_RADIUS,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+        );
+        let play_rect = egui::Rect::from_center_size(
+            art_rect.center(),
+            egui::vec2(40.0, 40.0),
+        );
+        ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+        ui.painter().text(
+            play_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{25B6}",
+            egui::FontId::proportional(16.0),
+            theme::BG_BLACK,
+        );
+    }
+
+    // Title
+    ui.painter().text(
+        rect.left_top() + egui::vec2(12.0, art_size + 26.0),
+        egui::Align2::LEFT_TOP,
+        title,
+        egui::FontId::proportional(13.0),
+        theme::TEXT_PRIMARY,
+    );
+
+    // Subtitle
+    ui.painter().text(
+        rect.left_top() + egui::vec2(12.0, art_size + 46.0),
+        egui::Align2::LEFT_TOP,
+        subtitle,
+        egui::FontId::proportional(11.0),
+        theme::TEXT_DIM,
+    );
+
+    if response.clicked() {
+        on_click();
+    }
+}
+
+fn artist_card(
+    ui: &mut egui::Ui,
+    name: &str,
+    cover_path: Option<&std::path::Path>,
+    image_cache: &mut ImageCache,
+    on_click: impl FnOnce(),
+) {
+    let width = 160.0;
+    let height = 200.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+
+    let bg = if response.hovered() {
+        theme::BG_HOVER
+    } else {
+        theme::BG_CARD
+    };
+    ui.painter().rect_filled(rect, 8.0, bg);
+
+    // Artist circle
+    let circle_size = 100.0;
+    let circle_rect = egui::Rect::from_center_size(
+        rect.center() + egui::vec2(0.0, -30.0),
+        egui::vec2(circle_size, circle_size),
+    );
+
+    let mut img_drawn = false;
+    if let Some(path) = cover_path {
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+            ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::BG_ACTIVE);
+            egui::Image::new(texture)
+                .corner_radius(circle_size / 2.0)
+                .paint_at(ui, circle_rect);
+            img_drawn = true;
+        }
+    }
+    if !img_drawn {
+        ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::BG_ACTIVE);
+        ui.painter().text(
+            circle_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "🎤",
+            egui::FontId::proportional(28.0),
+            theme::TEXT_MUTED,
+        );
+    }
+
+    // Name
+    ui.painter().text(
+        rect.center() + egui::vec2(0.0, 40.0),
+        egui::Align2::CENTER_CENTER,
+        name,
+        egui::FontId::proportional(13.0),
+        theme::TEXT_PRIMARY,
+    );
+    ui.painter().text(
+        rect.center() + egui::vec2(0.0, 58.0),
+        egui::Align2::CENTER_CENTER,
+        "Artist",
+        egui::FontId::proportional(11.0),
+        theme::TEXT_DIM,
+    );
+
+    if response.clicked() {
+        on_click();
+    }
 }

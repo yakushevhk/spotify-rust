@@ -162,6 +162,12 @@ pub struct Album {
 pub struct Artist {
     pub id: ArtistId<'static>,
     pub name: String,
+    #[serde(default)]
+    pub followers: u64,
+    #[serde(default)]
+    pub genres: Vec<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -513,6 +519,9 @@ impl Artist {
         Some(Self {
             id: artist.id?,
             name: artist.name,
+            followers: 0,
+            genres: Vec::new(),
+            image_url: None,
         })
     }
 }
@@ -522,6 +531,9 @@ impl From<rspotify::model::FullArtist> for Artist {
         Self {
             name: artist.name,
             id: artist.id,
+            followers: artist.followers.total as u64,
+            genres: artist.genres,
+            image_url: artist.images.first().map(|img| img.url.clone()),
         }
     }
 }

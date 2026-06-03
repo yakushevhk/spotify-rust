@@ -115,7 +115,9 @@ pub fn render(
         .show(ui, |ui| {
             let data = state.data.read();
             for artist in data.user_data.followed_artists.iter() {
-                theme::list_item(ui, &artist.name, "", false);
+                if theme::list_item(ui, &artist.name, "", false).clicked() {
+                    action = Action::OpenArtist(artist.clone());
+                }
             }
         });
 

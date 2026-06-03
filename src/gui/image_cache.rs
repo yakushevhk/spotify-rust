@@ -135,3 +135,15 @@ pub fn playlist_cover_path(playlist: &state::Playlist) -> Option<PathBuf> {
             .join(filename),
     )
 }
+
+pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
+    let id_str = artist.id.id();
+    let id_prefix = &id_str[..id_str.len().min(6)];
+    let filename = format!("artist-{}-cover.jpg", id_prefix).replace('/', "");
+    Some(
+        crate::config::get_config()
+            .cache_folder
+            .join("image")
+            .join(filename),
+    )
+}

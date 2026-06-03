@@ -18,6 +18,7 @@ pub enum View {
     Queue,
     Settings,
     Lyrics,
+    Artist,
 }
 
 enum Action {
@@ -29,6 +30,7 @@ enum Action {
     OpenTopTracks,
     OpenSearchResultPlaylist(state::Playlist),
     OpenSearchResultAlbum(state::Album),
+    OpenArtist(state::Artist),
     None,
 }
 
@@ -41,6 +43,8 @@ pub struct SpotifyApp {
     context_tracks: Vec<crate::state::Track>,
     context_title: String,
     image_cache: image_cache::ImageCache,
+    artist_context: Option<crate::state::Context>,
+    artist_id: Option<String>,
 }
 
 impl SpotifyApp {
@@ -60,6 +64,8 @@ impl SpotifyApp {
             context_tracks: Vec::new(),
             context_title: String::new(),
             image_cache: image_cache::ImageCache::new(),
+            artist_context: None,
+            artist_id: None,
         }
     }
 
@@ -154,6 +160,14 @@ impl SpotifyApp {
                     .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
                 self.current_view = View::Tracks;
             }
+            Action::OpenArtist(artist) => {
+                self.artist_id = Some(artist.id.uri());
+                self.artist_context = None;
+                let _ = self
+                    .client_pub
+                    .send(ClientRequest::GetContext(state::ContextId::Artist(artist.id)));
+                self.current_view = View::Artist;
+            }
             Action::None => {}
         }
     }
@@ -200,6 +214,16 @@ impl eframe::App for SpotifyApp {
 
         if self.current_view == View::Tracks && self.context_tracks.is_empty() {
             self.update_context_tracks();
+        }
+
+        // Update artist context when viewing artist page
+        if self.current_view == View::Artist && self.artist_context.is_none() {
+            if let Some(ref uri) = self.artist_id {
+                let data = self.state.data.read();
+                if let Some(ctx) = data.caches.context.get(uri) {
+                    self.artist_context = Some(ctx.clone());
+                }
+            }
         }
 
         // Bottom panel — playback bar
@@ -287,6 +311,15 @@ impl eframe::App for SpotifyApp {
                 }
                 View::Lyrics => {
                     action = views::render_lyrics(ui, &self.state, &self.client_pub, &mut self.image_cache);
+                }
+                View::Artist => {
+                    action = views::render_artist(
+                        ui,
+                        &self.state,
+                        &self.client_pub,
+                        &self.artist_context,
+                        &mut self.image_cache,
+                    );
                 }
             });
         self.handle_action(action);
