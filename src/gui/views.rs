@@ -1,12 +1,14 @@
 use eframe::egui;
 
 use crate::client::ClientRequest;
+use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::{theme, Action};
 use crate::state::{self, SharedState};
 
 pub fn render_library(
     ui: &mut egui::Ui,
     state: &SharedState,
+    image_cache: &mut ImageCache,
 ) -> Action {
     let mut action = Action::None;
 
@@ -75,10 +77,18 @@ pub fn render_library(
                     for (i, playlist) in playlists.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
+                            let cover_path = image_cache::playlist_cover_path(playlist);
+                            if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
+                                if !path.exists() {
+                                    image_cache.request_download(url, path);
+                                }
+                            }
                             grid_card(
                                 ui,
                                 &playlist.name,
                                 &playlist.owner.0,
+                                cover_path.as_deref(),
+                                image_cache,
                                 || {
                                     action = Action::OpenSearchResultPlaylist(playlist.clone());
                                 },
@@ -125,7 +135,13 @@ pub fn render_library(
                                     .join(", "),
                                 album.year()
                             );
-                            grid_card(ui, &album.name, &sub, || {
+                            let cover_path = image_cache::album_cover_path(album);
+                            if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
+                                if !path.exists() {
+                                    image_cache.request_download(url, path);
+                                }
+                            }
+                            grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
                                 action = Action::OpenSearchResultAlbum(album.clone());
                             });
                         });
@@ -190,7 +206,14 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
     }
 }
 
-fn grid_card(ui: &mut egui::Ui, title: &str, subtitle: &str, on_click: impl FnOnce()) {
+fn grid_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    subtitle: &str,
+    cover_path: Option<&std::path::Path>,
+    image_cache: &mut ImageCache,
+    on_click: impl FnOnce(),
+) {
     let width = 160.0;
     let height = 200.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -203,35 +226,69 @@ fn grid_card(ui: &mut egui::Ui, title: &str, subtitle: &str, on_click: impl FnOn
 
     ui.painter().rect_filled(rect, 8.0, bg);
 
-    // Album art placeholder
+    // Album art
     let art_size = width - 24.0;
     let art_rect = egui::Rect::from_min_size(
         rect.min + egui::vec2(12.0, 12.0),
         egui::vec2(art_size, art_size),
     );
-    ui.painter().rect_filled(art_rect, 6.0, theme::BG_ACTIVE);
 
-    // Play button overlay on hover
-    if response.hovered() {
+    let mut art_drawn = false;
+    if let Some(path) = cover_path {
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS)
+                .paint_at(ui, art_rect);
+            art_drawn = true;
+        }
+    }
+
+    if !art_drawn {
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        if response.hovered() {
+            let play_rect = egui::Rect::from_center_size(
+                art_rect.center() + egui::vec2(0.0, 10.0),
+                egui::vec2(40.0, 40.0),
+            );
+            ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+            ui.painter().text(
+                play_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{25B6}",
+                egui::FontId::proportional(16.0),
+                theme::BG_BLACK,
+            );
+        } else {
+            ui.painter().text(
+                art_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{266B}",
+                egui::FontId::proportional(28.0),
+                theme::TEXT_MUTED,
+            );
+        }
+    }
+
+    // Play button overlay on hover (on top of cover art)
+    if art_drawn && response.hovered() {
         let play_rect = egui::Rect::from_center_size(
-            art_rect.center() + egui::vec2(0.0, 10.0),
+            art_rect.center(),
             egui::vec2(40.0, 40.0),
+        );
+        // Semi-transparent dark overlay
+        ui.painter().rect_filled(
+            art_rect,
+            theme::ART_CORNER_RADIUS,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
         );
         ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
         ui.painter().text(
             play_rect.center(),
             egui::Align2::CENTER_CENTER,
-            "▶",
+            "\u{25B6}",
             egui::FontId::proportional(16.0),
             theme::BG_BLACK,
-        );
-    } else {
-        ui.painter().text(
-            art_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "♫",
-            egui::FontId::proportional(28.0),
-            theme::TEXT_MUTED,
         );
     }
 
@@ -265,6 +322,7 @@ pub fn render_tracks(
     title: &str,
     tracks: &[state::Track],
     selected_track: &mut Option<usize>,
+    image_cache: &mut ImageCache,
 ) {
     use rspotify::prelude::Id;
 
@@ -295,7 +353,7 @@ pub fn render_tracks(
             theme::TEXT_MUTED,
         );
         ui.painter().text(
-            header_rect.left_center() + egui::vec2(48.0, 0.0),
+            header_rect.left_center() + egui::vec2(92.0, 0.0),
             egui::Align2::LEFT_CENTER,
             "TITLE",
             egui::FontId::monospace(12.0),
@@ -324,7 +382,7 @@ pub fn render_tracks(
             theme::DIVIDER,
         );
 
-    egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
         .id_salt("tracks_scroll")
         .show(ui, |ui| {
             for (i, track) in tracks.iter().enumerate() {
@@ -356,14 +414,50 @@ pub fn render_tracks(
                 } else {
                     theme::TEXT_MUTED
                 };
-                let num_str = if is_playing { "▶".to_string() } else { format!("{}", i + 1) };
+                let num_str = if is_playing { "\u{25B6}".to_string() } else { format!("{}", i + 1) };
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(32.0, 0.0),
+                    row_rect.left_center() + egui::vec2(28.0, 0.0),
                     egui::Align2::CENTER_CENTER,
                     &num_str,
                     egui::FontId::monospace(12.0),
                     num_color,
                 );
+
+                // Thumbnail
+                let thumb_rect = egui::Rect::from_min_size(
+                    row_rect.left_center() + egui::vec2(48.0, -theme::TRACK_THUMB_SIZE / 2.0),
+                    egui::vec2(theme::TRACK_THUMB_SIZE, theme::TRACK_THUMB_SIZE),
+                );
+                let mut thumb_drawn = false;
+                if let Some(ref album) = track.album {
+                    if let Some(path) = image_cache::album_cover_path(album) {
+                        if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
+                            ui.painter().rect_filled(
+                                thumb_rect,
+                                theme::ART_CORNER_RADIUS,
+                                theme::BG_ACTIVE,
+                            );
+                            egui::Image::new(texture)
+                                .corner_radius(theme::ART_CORNER_RADIUS)
+                                .paint_at(ui, thumb_rect);
+                            thumb_drawn = true;
+                        }
+                    }
+                }
+                if !thumb_drawn {
+                    ui.painter().rect_filled(
+                        thumb_rect,
+                        theme::ART_CORNER_RADIUS,
+                        theme::BG_ACTIVE,
+                    );
+                    ui.painter().text(
+                        thumb_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{266B}",
+                        egui::FontId::proportional(14.0),
+                        theme::TEXT_MUTED,
+                    );
+                }
 
                 // Track info
                 let title_color = if is_playing {
@@ -372,14 +466,14 @@ pub fn render_tracks(
                     theme::TEXT_PRIMARY
                 };
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(72.0, -7.0),
+                    row_rect.left_center() + egui::vec2(92.0, -7.0),
                     egui::Align2::LEFT_CENTER,
                     &track.name,
                     egui::FontId::proportional(14.0),
                     title_color,
                 );
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(72.0, 10.0),
+                    row_rect.left_center() + egui::vec2(92.0, 10.0),
                     egui::Align2::LEFT_CENTER,
                     track.artists_info(),
                     egui::FontId::proportional(12.0),
@@ -412,7 +506,7 @@ pub fn render_tracks(
                 // Play button on hover
                 if response.hovered() && !is_playing {
                     let play_btn_rect = egui::Rect::from_center_size(
-                        row_rect.left_center() + egui::vec2(32.0, 0.0),
+                        row_rect.left_center() + egui::vec2(28.0, 0.0),
                         egui::vec2(24.0, 24.0),
                     );
                     ui.painter()
@@ -420,7 +514,7 @@ pub fn render_tracks(
                     ui.painter().text(
                         play_btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        "▶",
+                        "\u{25B6}",
                         egui::FontId::proportional(10.0),
                         theme::BG_BLACK,
                     );
@@ -446,6 +540,7 @@ pub fn render_search(
     client_pub: &flume::Sender<ClientRequest>,
     search_query: &mut String,
     _selected_track: &mut Option<usize>,
+    image_cache: &mut ImageCache,
 ) -> Action {
     let action = Action::None;
 
@@ -535,21 +630,58 @@ pub fn render_search(
                         ui.painter().rect_filled(row_rect, 4.0, bg);
 
                         ui.painter().text(
-                            row_rect.left_center() + egui::vec2(32.0, 0.0),
+                            row_rect.left_center() + egui::vec2(28.0, 0.0),
                             egui::Align2::CENTER_CENTER,
                             format!("{}", i + 1),
                             egui::FontId::monospace(12.0),
                             theme::TEXT_MUTED,
                         );
+
+                        // Thumbnail
+                        let thumb_rect = egui::Rect::from_min_size(
+                            row_rect.left_center() + egui::vec2(48.0, -theme::TRACK_THUMB_SIZE / 2.0),
+                            egui::vec2(theme::TRACK_THUMB_SIZE, theme::TRACK_THUMB_SIZE),
+                        );
+                        let mut thumb_drawn = false;
+                        if let Some(ref album) = track.album {
+                            if let Some(path) = image_cache::album_cover_path(album) {
+                                if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
+                                    ui.painter().rect_filled(
+                                        thumb_rect,
+                                        theme::ART_CORNER_RADIUS,
+                                        theme::BG_ACTIVE,
+                                    );
+                                    egui::Image::new(texture)
+                                        .corner_radius(theme::ART_CORNER_RADIUS)
+                                        .paint_at(ui, thumb_rect);
+                                    thumb_drawn = true;
+                                }
+                            }
+                        }
+                        if !thumb_drawn {
+                            ui.painter().rect_filled(
+                                thumb_rect,
+                                theme::ART_CORNER_RADIUS,
+                                theme::BG_ACTIVE,
+                            );
+                            ui.painter().text(
+                                thumb_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "\u{266B}",
+                                egui::FontId::proportional(14.0),
+                                theme::TEXT_MUTED,
+                            );
+                        }
+
                         ui.painter().text(
-                            row_rect.left_center() + egui::vec2(72.0, -7.0),
+                            row_rect.left_center() + egui::vec2(92.0, -7.0),
                             egui::Align2::LEFT_CENTER,
                             &track.name,
                             egui::FontId::proportional(14.0),
                             theme::TEXT_PRIMARY,
                         );
                         ui.painter().text(
-                            row_rect.left_center() + egui::vec2(72.0, 10.0),
+                            row_rect.left_center() + egui::vec2(92.0, 10.0),
                             egui::Align2::LEFT_CENTER,
                             track.artists_info(),
                             egui::FontId::proportional(12.0),
@@ -565,14 +697,14 @@ pub fn render_search(
 
                         if response.hovered() {
                             let play_btn_rect = egui::Rect::from_center_size(
-                                row_rect.left_center() + egui::vec2(32.0, 0.0),
+                                row_rect.left_center() + egui::vec2(28.0, 0.0),
                                 egui::vec2(24.0, 24.0),
                             );
                             ui.painter().rect_filled(play_btn_rect, 12.0, theme::GREEN);
                             ui.painter().text(
                                 play_btn_rect.center(),
                                 egui::Align2::CENTER_CENTER,
-                                "▶",
+                                "\u{25B6}",
                                 egui::FontId::proportional(10.0),
                                 theme::BG_BLACK,
                             );
@@ -678,7 +810,13 @@ pub fn render_search(
                                 album.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", "),
                                 album.year()
                             );
-                            search_grid_card(ui, &album.name, &sub);
+                            let cover_path = image_cache::album_cover_path(album);
+                            if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
+                                if !path.exists() {
+                                    image_cache.request_download(url, path);
+                                }
+                            }
+                            search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
                             ui.add_space(12.0);
                         }
                     });
@@ -703,7 +841,13 @@ pub fn render_search(
                     ui.horizontal(|ui| {
                         ui.add_space(24.0);
                         for playlist in results.playlists.iter() {
-                            search_grid_card(ui, &playlist.name, &playlist.owner.0);
+                            let cover_path = image_cache::playlist_cover_path(playlist);
+                            if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
+                                if !path.exists() {
+                                    image_cache.request_download(url, path);
+                                }
+                            }
+                            search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
                             ui.add_space(12.0);
                         }
                     });
@@ -738,7 +882,13 @@ pub fn render_search(
     action
 }
 
-fn search_grid_card(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+fn search_grid_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    subtitle: &str,
+    cover_path: Option<&std::path::Path>,
+    image_cache: &mut ImageCache,
+) {
     let width = 160.0;
     let height = 200.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -755,28 +905,61 @@ fn search_grid_card(ui: &mut egui::Ui, title: &str, subtitle: &str) {
         rect.min + egui::vec2(12.0, 12.0),
         egui::vec2(art_size, art_size),
     );
-    ui.painter().rect_filled(art_rect, 6.0, theme::BG_ACTIVE);
 
-    if response.hovered() {
+    let mut art_drawn = false;
+    if let Some(path) = cover_path {
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS)
+                .paint_at(ui, art_rect);
+            art_drawn = true;
+        }
+    }
+
+    if !art_drawn {
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        if response.hovered() {
+            let play_rect = egui::Rect::from_center_size(
+                art_rect.center() + egui::vec2(0.0, 10.0),
+                egui::vec2(40.0, 40.0),
+            );
+            ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+            ui.painter().text(
+                play_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{25B6}",
+                egui::FontId::proportional(16.0),
+                theme::BG_BLACK,
+            );
+        } else {
+            ui.painter().text(
+                art_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{266B}",
+                egui::FontId::proportional(28.0),
+                theme::TEXT_MUTED,
+            );
+        }
+    }
+
+    if art_drawn && response.hovered() {
+        ui.painter().rect_filled(
+            art_rect,
+            theme::ART_CORNER_RADIUS,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+        );
         let play_rect = egui::Rect::from_center_size(
-            art_rect.center() + egui::vec2(0.0, 10.0),
+            art_rect.center(),
             egui::vec2(40.0, 40.0),
         );
         ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
         ui.painter().text(
             play_rect.center(),
             egui::Align2::CENTER_CENTER,
-            "▶",
+            "\u{25B6}",
             egui::FontId::proportional(16.0),
             theme::BG_BLACK,
-        );
-    } else {
-        ui.painter().text(
-            art_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "♫",
-            egui::FontId::proportional(28.0),
-            theme::TEXT_MUTED,
         );
     }
 
@@ -800,6 +983,7 @@ pub fn render_queue(
     ui: &mut egui::Ui,
     state: &SharedState,
     _client_pub: &flume::Sender<ClientRequest>,
+    _image_cache: &mut ImageCache,
 ) {
     
 

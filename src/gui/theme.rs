@@ -21,8 +21,12 @@ pub const BORDER: egui::Color32 = egui::Color32::from_rgb(33, 33, 33);
 pub const DIVIDER: egui::Color32 = egui::Color32::from_rgb(40, 40, 40);
 
 pub const SIDEBAR_WIDTH: f32 = 280.0;
-pub const PLAYBACK_BAR_HEIGHT: f32 = 90.0;
+pub const PLAYBACK_BAR_HEIGHT: f32 = 100.0;
 pub const ICON_SIZE: f32 = 24.0;
+
+pub const PLAYBACK_ART_SIZE: f32 = 80.0;
+pub const TRACK_THUMB_SIZE: f32 = 36.0;
+pub const ART_CORNER_RADIUS: f32 = 4.0;
 
 fn wv(bg: egui::Color32, fg: egui::Color32) -> egui::style::WidgetVisuals {
     egui::style::WidgetVisuals {

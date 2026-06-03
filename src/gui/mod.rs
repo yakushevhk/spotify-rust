@@ -1,3 +1,4 @@
+mod image_cache;
 mod playback_bar;
 mod sidebar;
 mod theme;
@@ -37,6 +38,7 @@ pub struct SpotifyApp {
     selected_track: Option<usize>,
     context_tracks: Vec<crate::state::Track>,
     context_title: String,
+    image_cache: image_cache::ImageCache,
 }
 
 impl SpotifyApp {
@@ -55,6 +57,7 @@ impl SpotifyApp {
             selected_track: None,
             context_tracks: Vec::new(),
             context_title: String::new(),
+            image_cache: image_cache::ImageCache::new(),
         }
     }
 
@@ -202,7 +205,7 @@ impl eframe::App for SpotifyApp {
             .resizable(false)
             .exact_height(theme::PLAYBACK_BAR_HEIGHT)
             .show(ctx, |ui| {
-                playback_bar::render(ui, &self.state, &self.client_pub);
+                playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache);
             });
 
         // Left panel — sidebar
@@ -226,7 +229,7 @@ impl eframe::App for SpotifyApp {
             )
             .show(ctx, |ui| match self.current_view {
                 View::Library => {
-                    action = views::render_library(ui, &self.state);
+                    action = views::render_library(ui, &self.state, &mut self.image_cache);
                 }
                 View::Tracks => {
                     views::render_tracks(
@@ -236,6 +239,7 @@ impl eframe::App for SpotifyApp {
                         &self.context_title,
                         &self.context_tracks,
                         &mut self.selected_track,
+                        &mut self.image_cache,
                     );
                 }
                 View::Search => {
@@ -245,10 +249,11 @@ impl eframe::App for SpotifyApp {
                         &self.client_pub,
                         &mut self.search_query,
                         &mut self.selected_track,
+                        &mut self.image_cache,
                     );
                 }
                 View::Queue => {
-                    views::render_queue(ui, &self.state, &self.client_pub);
+                    views::render_queue(ui, &self.state, &self.client_pub, &mut self.image_cache);
                 }
                 View::Settings => {
                     views::render_settings(ui);

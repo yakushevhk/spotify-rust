@@ -153,6 +153,8 @@ pub struct Album {
     pub artists: Vec<Artist>,
     pub typ: Option<rspotify::model::AlbumType>,
     pub added_at: u64,
+    #[serde(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -174,6 +176,8 @@ pub struct Playlist {
     #[serde(default)]
     pub current_folder_id: usize,
     pub snapshot_id: String,
+    #[serde(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -445,6 +449,7 @@ impl Album {
                     _ => None,
                 }),
             added_at: 0,
+            cover_url: album.images.first().map(|img| img.url.clone()),
         })
     }
 
@@ -475,6 +480,7 @@ impl From<rspotify::model::FullAlbum> for Album {
             artists: from_simplified_artists_to_artists(album.artists),
             typ: Some(album.album_type),
             added_at: 0,
+            cover_url: album.images.first().map(|img| img.url.clone()),
         }
     }
 }
@@ -552,6 +558,7 @@ impl From<rspotify::model::SimplifiedPlaylist> for Playlist {
             desc: String::new(),
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
+            cover_url: playlist.images.first().map(|img| img.url.clone()),
         }
     }
 }
@@ -574,6 +581,7 @@ impl From<rspotify::model::FullPlaylist> for Playlist {
             desc,
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
+            cover_url: playlist.images.first().map(|img| img.url.clone()),
         }
     }
 }

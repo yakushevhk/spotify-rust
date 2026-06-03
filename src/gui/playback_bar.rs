@@ -1,6 +1,8 @@
 use eframe::egui;
+use rspotify::prelude::Id;
 
 use crate::client::{ClientRequest, PlayerRequest};
+use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::theme;
 use crate::state::SharedState;
 
@@ -8,6 +10,7 @@ pub fn render(
     ui: &mut egui::Ui,
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
+    image_cache: &mut ImageCache,
 ) {
     let player = state.player.read();
     let playback = player.current_playback();
@@ -16,28 +19,57 @@ pub fn render(
     let rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
     ui.painter().rect_filled(rect, 0.0, theme::DIVIDER);
 
-    ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
+    ui.allocate_space(egui::vec2(ui.available_width(), 9.0));
 
     ui.horizontal(|ui| {
         ui.add_space(16.0);
 
         // === LEFT: Track info ===
-        let track_info_width = 280.0;
+        let track_info_width = 320.0;
         ui.allocate_space(egui::vec2(track_info_width, 0.0));
 
         let track_rect = ui
-            .allocate_space(egui::vec2(track_info_width - 16.0, 56.0))
+            .allocate_space(egui::vec2(track_info_width - 16.0, theme::PLAYBACK_ART_SIZE))
             .1;
 
-        // Album art placeholder
+        // Album art
         let art_rect = egui::Rect::from_min_size(
             track_rect.min,
-            egui::vec2(56.0, 56.0),
+            egui::vec2(theme::PLAYBACK_ART_SIZE, theme::PLAYBACK_ART_SIZE),
         );
-        ui.painter().rect_filled(art_rect, 4.0, theme::BG_ACTIVE);
+
+        let mut art_drawn = false;
 
         if let Some(ref playback) = playback {
             if let Some(ref item) = playback.item {
+                // Try to load cover image
+                let cover_path = match item {
+                    rspotify::model::PlayableItem::Track(track) => {
+                        let album = &track.album;
+                        let artist_name = album.artists.first().map(|a| a.name.as_str()).unwrap_or("");
+                        let id_str = album.id.as_ref().map(|id| id.id().to_string()).unwrap_or_default();
+                        let id_prefix = &id_str[..id_str.len().min(6)];
+                        let filename = format!("{}-{}-cover-{}.jpg", album.name, artist_name, id_prefix)
+                            .replace('/', "");
+                        Some(crate::config::get_config().cache_folder.join("image").join(filename))
+                    }
+                    _ => None,
+                };
+
+                if let Some(path) = cover_path {
+                    if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
+                        ui.painter().rect_filled(
+                            art_rect,
+                            theme::ART_CORNER_RADIUS,
+                            theme::BG_ACTIVE,
+                        );
+                        egui::Image::new(texture)
+                            .corner_radius(theme::ART_CORNER_RADIUS)
+                            .paint_at(ui, art_rect);
+                        art_drawn = true;
+                    }
+                }
+
                 let (name, artists_str) = match item {
                     rspotify::model::PlayableItem::Track(track) => {
                         let a: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
@@ -49,18 +81,20 @@ pub fn render(
                     _ => (String::new(), String::new()),
                 };
 
-                // Music note icon in art placeholder
-                ui.painter().text(
-                    art_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "♫",
-                    egui::FontId::proportional(20.0),
-                    theme::TEXT_DIM,
-                );
+                if !art_drawn {
+                    ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+                    ui.painter().text(
+                        art_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{266B}",
+                        egui::FontId::proportional(24.0),
+                        theme::TEXT_DIM,
+                    );
+                }
 
                 // Track name
                 ui.painter().text(
-                    track_rect.min + egui::vec2(68.0, 14.0),
+                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 20.0),
                     egui::Align2::LEFT_CENTER,
                     &name,
                     egui::FontId::proportional(14.0),
@@ -69,22 +103,23 @@ pub fn render(
 
                 // Artists
                 ui.painter().text(
-                    track_rect.min + egui::vec2(68.0, 34.0),
+                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 44.0),
                     egui::Align2::LEFT_CENTER,
                     &artists_str,
                     egui::FontId::proportional(12.0),
                     theme::TEXT_DIM,
                 );
             } else {
+                ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
                 ui.painter().text(
                     art_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    "♫",
-                    egui::FontId::proportional(20.0),
+                    "\u{266B}",
+                    egui::FontId::proportional(24.0),
                     theme::TEXT_MUTED,
                 );
                 ui.painter().text(
-                    track_rect.min + egui::vec2(68.0, 24.0),
+                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 32.0),
                     egui::Align2::LEFT_CENTER,
                     "No track playing",
                     egui::FontId::proportional(13.0),
@@ -92,15 +127,16 @@ pub fn render(
                 );
             }
         } else {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
             ui.painter().text(
                 art_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "♫",
-                egui::FontId::proportional(20.0),
+                "\u{266B}",
+                egui::FontId::proportional(24.0),
                 theme::TEXT_MUTED,
             );
             ui.painter().text(
-                track_rect.min + egui::vec2(68.0, 24.0),
+                track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 32.0),
                 egui::Align2::LEFT_CENTER,
                 "Connect to Spotify",
                 egui::FontId::proportional(13.0),
