@@ -10,6 +10,7 @@ pub enum Navigation {
     GoToArtist(Artist),
     GoToAlbum(Album),
     GoToShow(Show),
+    GoToRadio(Track),
     OpenAddToPlaylist(PlayableId<'static>),
 }
 
@@ -51,6 +52,7 @@ pub enum MenuAction {
     GoToArtist(Artist),
     GoToAlbum(Album),
     GoToShow(Show),
+    GoToRadio(Track),
     FollowArtist(Artist),
     UnfollowArtist(state::ArtistId<'static>),
     AddShowToLibrary(Show),
@@ -131,6 +133,13 @@ impl ContextMenu {
                 action: MenuAction::GoToArtist(artist.clone()),
             });
         }
+
+        items.push(MenuItem {
+            icon: "\u{1F4FB}",
+            label: "Go to Radio",
+            destructive: false,
+            action: MenuAction::GoToRadio(track.clone()),
+        });
 
         let uri = format!("https://open.spotify.com/track/{}", track.id.id());
         items.push(MenuItem {
@@ -717,6 +726,9 @@ impl ContextMenu {
             }
             MenuAction::GoToShow(show) => {
                 Some(Navigation::GoToShow(show))
+            }
+            MenuAction::GoToRadio(track) => {
+                Some(Navigation::GoToRadio(track))
             }
             MenuAction::FollowArtist(artist) => {
                 let data = state.data.read();

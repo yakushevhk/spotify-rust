@@ -29,6 +29,7 @@ pub enum View {
     Shows,
     ShowDetail,
     Help,
+    Logs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +165,12 @@ pub struct SpotifyApp {
     settings_editing_keybinding: Option<usize>,
     library_sort_order: LibrarySortOrder,
     scroll_to_selected: bool,
+    show_browse_playlists_popup: bool,
+    show_browse_artists_popup: bool,
+    show_browse_albums_popup: bool,
+    browse_popup_filter: String,
+    show_in_page_search: bool,
+    in_page_search_query: String,
 }
 
 impl SpotifyApp {
@@ -212,7 +219,11 @@ impl SpotifyApp {
             toast_expires: None,
             current_context_id: None,
             key_seq_state: KeySequenceState::new(),
-            keybindings: default_keybindings(),
+            keybindings: {
+                let mut bindings = default_keybindings();
+                crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
+                bindings
+            },
             help_search: String::new(),
             view_history: Vec::new(),
             show_theme_switcher: false,
@@ -232,6 +243,12 @@ impl SpotifyApp {
             settings_editing_keybinding: None,
             library_sort_order: LibrarySortOrder::Default,
             scroll_to_selected: false,
+            show_browse_playlists_popup: false,
+            show_browse_artists_popup: false,
+            show_browse_albums_popup: false,
+            browse_popup_filter: String::new(),
+            show_in_page_search: false,
+            in_page_search_query: String::new(),
         }
     }
 
@@ -453,7 +470,7 @@ impl SpotifyApp {
         }
     }
 
-    fn execute_command(&mut self, cmd: &Command, count: usize) {
+    fn execute_command(&mut self, cmd: &Command, count: usize, ctx: &egui::Context) {
         match cmd {
             Command::Navigation(nav) => match nav {
                 NavCommand::Up => {
@@ -481,7 +498,7 @@ impl SpotifyApp {
                     }
                 }
                 NavCommand::PageUp => {
-                    let page_size = 20;
+                    let page_size = crate::config::get_config().app_config.page_size_in_rows;
                     for _ in 0..count {
                         match self.selected_track {
                             Some(ref mut sel) => {
@@ -495,7 +512,7 @@ impl SpotifyApp {
                     }
                 }
                 NavCommand::PageDown => {
-                    let page_size = 20;
+                    let page_size = crate::config::get_config().app_config.page_size_in_rows;
                     for _ in 0..count {
                         match self.selected_track {
                             Some(sel) => {
@@ -535,6 +552,13 @@ impl SpotifyApp {
                 }
                 NavCommand::Back => {
                     self.go_back();
+                }
+                NavCommand::Quit => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                NavCommand::InPageSearch => {
+                    self.show_in_page_search = true;
+                    self.in_page_search_query.clear();
                 }
                 NavCommand::Enter => {
                     if self.current_view == View::ShowDetail {
@@ -626,7 +650,8 @@ impl SpotifyApp {
                         .current_playback()
                         .and_then(|p| p.device.volume_percent)
                         .unwrap_or(50) as u8;
-                    let new_vol = vol.saturating_add(5).min(100);
+                    let step = crate::config::get_config().app_config.volume_scroll_step;
+                    let new_vol = vol.saturating_add(step).min(100);
                     let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
                 }
                 PlaybackCommand::VolumeDown => {
@@ -634,7 +659,8 @@ impl SpotifyApp {
                         .current_playback()
                         .and_then(|p| p.device.volume_percent)
                         .unwrap_or(50) as u8;
-                    let new_vol = vol.saturating_sub(5);
+                    let step = crate::config::get_config().app_config.volume_scroll_step;
+                    let new_vol = vol.saturating_sub(step);
                     let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
                 }
             },
@@ -724,7 +750,7 @@ impl SpotifyApp {
                     self.navigate_to_view(View::Queue);
                 }
                 PageCommand::Logs => {
-                    self.toast("Logs page not yet implemented".to_string());
+                    self.navigate_to_view(View::Logs);
                 }
                 PageCommand::Help => {
                     self.help_search.clear();
@@ -811,6 +837,80 @@ impl SpotifyApp {
                     if self.selected_track.is_some() {
                         self.scroll_to_selected = true;
                     }
+                }
+                ActionCommand::GoToRadio => {
+                    if let Some(idx) = self.selected_track {
+                        if idx < self.context_tracks.len() {
+                            let track = &self.context_tracks[idx];
+                            let artist_name = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
+                            let query = format!("artist:{}", artist_name);
+                            let _ = self.client_pub.send(ClientRequest::Search(query));
+                            self.navigate_to_view(View::Search);
+                            self.toast("Searching for radio...".to_string());
+                        }
+                    }
+                }
+                ActionCommand::MovePlaylistItemUp => {
+                    if let Some(idx) = self.selected_track {
+                        if idx > 0 && idx < self.context_tracks.len() {
+                            if let Some(ref ctx_id) = self.current_context_id {
+                                if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
+                                    let _ = self.client_pub.send(ClientRequest::ReorderPlaylistItems {
+                                        playlist_id: playlist_id.clone(),
+                                        insert_index: idx.saturating_sub(1),
+                                        range_start: idx,
+                                        range_length: Some(1),
+                                        snapshot_id: None,
+                                    });
+                                    self.context_tracks.swap(idx, idx - 1);
+                                    self.selected_track = Some(idx - 1);
+                                    self.toast("Moved up".to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                ActionCommand::MovePlaylistItemDown => {
+                    if let Some(idx) = self.selected_track {
+                        if idx + 1 < self.context_tracks.len() {
+                            if let Some(ref ctx_id) = self.current_context_id {
+                                if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
+                                    let _ = self.client_pub.send(ClientRequest::ReorderPlaylistItems {
+                                        playlist_id: playlist_id.clone(),
+                                        insert_index: idx + 2,
+                                        range_start: idx,
+                                        range_length: Some(1),
+                                        snapshot_id: None,
+                                    });
+                                    self.context_tracks.swap(idx, idx + 1);
+                                    self.selected_track = Some(idx + 1);
+                                    self.toast("Moved down".to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                ActionCommand::SwitchDevice => {
+                    if self.show_device_popup {
+                        self.show_device_popup = false;
+                    } else {
+                        self.show_device_popup = true;
+                        self.devices_fetched = false;
+                    }
+                }
+            },
+            Command::Popup(popup) => match popup {
+                crate::command::PopupCommand::BrowseUserPlaylists => {
+                    self.show_browse_playlists_popup = true;
+                    self.browse_popup_filter.clear();
+                }
+                crate::command::PopupCommand::BrowseUserFollowedArtists => {
+                    self.show_browse_artists_popup = true;
+                    self.browse_popup_filter.clear();
+                }
+                crate::command::PopupCommand::BrowseUserSavedAlbums => {
+                    self.show_browse_albums_popup = true;
+                    self.browse_popup_filter.clear();
                 }
             },
             Command::Theme(theme_cmd) => match theme_cmd {
@@ -1316,6 +1416,9 @@ impl eframe::App for SpotifyApp {
                     self.key_seq_state.reset();
                 } else if self.show_command_palette {
                     self.show_command_palette = false;
+                } else if self.show_in_page_search {
+                    self.show_in_page_search = false;
+                    self.in_page_search_query.clear();
                 } else if self.show_create_playlist_popup {
                     self.show_create_playlist_popup = false;
                 } else if self.show_add_to_playlist_popup {
@@ -1324,6 +1427,12 @@ impl eframe::App for SpotifyApp {
                     self.show_theme_switcher = false;
                 } else if self.show_device_popup {
                     self.show_device_popup = false;
+                } else if self.show_browse_playlists_popup {
+                    self.show_browse_playlists_popup = false;
+                } else if self.show_browse_artists_popup {
+                    self.show_browse_artists_popup = false;
+                } else if self.show_browse_albums_popup {
+                    self.show_browse_albums_popup = false;
                 } else if self.context_menu.is_open() {
                     self.context_menu.close();
                 } else {
@@ -1381,7 +1490,7 @@ impl eframe::App for SpotifyApp {
                     KeySequenceResult::Complete(cmd_id) => {
                         let count = count.unwrap_or(1);
                         if let Some((cmd, _)) = command::resolve_command(&cmd_id, count) {
-                            self.execute_command(&cmd, count);
+                            self.execute_command(&cmd, count, ctx);
                         }
                     }
                     KeySequenceResult::Pending(_) => {
@@ -1549,6 +1658,9 @@ impl eframe::App for SpotifyApp {
                 View::Help => {
                     views::render_help(ui, &self.keybindings, &mut self.help_search);
                 }
+                View::Logs => {
+                    views::render_logs(ui, &self.state);
+                }
             });
         self.handle_action(action);
 
@@ -1566,6 +1678,14 @@ impl eframe::App for SpotifyApp {
                 context_menu::Navigation::GoToShow(show) => {
                     self.context_menu.close();
                     self.handle_action(Action::ContextMenuNavigateShow(show));
+                }
+                context_menu::Navigation::GoToRadio(track) => {
+                    self.context_menu.close();
+                    let artist_name = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
+                    let query = format!("artist:{}", artist_name);
+                    let _ = self.client_pub.send(ClientRequest::Search(query));
+                    self.navigate_to_view(View::Search);
+                    self.toast("Searching for radio...".to_string());
                 }
                 context_menu::Navigation::OpenAddToPlaylist(playable_id) => {
                     self.context_menu.close();
@@ -1589,6 +1709,26 @@ impl eframe::App for SpotifyApp {
         // Render Theme Switcher popup
         if self.show_theme_switcher {
             self.render_theme_switcher(ctx);
+        }
+
+        // Render Browse User Playlists popup
+        if self.show_browse_playlists_popup {
+            self.render_browse_playlists_popup(ctx);
+        }
+
+        // Render Browse Followed Artists popup
+        if self.show_browse_artists_popup {
+            self.render_browse_artists_popup(ctx);
+        }
+
+        // Render Browse Saved Albums popup
+        if self.show_browse_albums_popup {
+            self.render_browse_albums_popup(ctx);
+        }
+
+        // Render In-page Search overlay
+        if self.show_in_page_search {
+            self.render_in_page_search(ctx);
         }
 
         // Render toast message
@@ -1631,7 +1771,7 @@ impl eframe::App for SpotifyApp {
             if let Some(cmd_id) = self.command_palette.render(ctx) {
                 if let Some((cmd, count)) = crate::command::resolve_command(&cmd_id, 1) {
                     self.command_palette.record_usage(&cmd_id);
-                    self.execute_command(&cmd, count);
+                    self.execute_command(&cmd, count, ctx);
                 }
                 self.show_command_palette = false;
             }
@@ -2432,6 +2572,314 @@ impl SpotifyApp {
             self.show_theme_switcher = false;
             self.theme_search.clear();
         }
+    }
+
+    fn render_browse_playlists_popup(&mut self, ctx: &egui::Context) {
+        let popup_width = 360.0;
+        let popup_height = 420.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut open_playlist_idx: Option<usize> = None;
+
+        egui::Area::new(egui::Id::new("browse_playlists_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+            });
+
+        egui::Area::new(egui::Id::new("browse_playlists_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame().inner_margin(egui::Margin::same(16));
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 32.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Your Playlists").size(16.0).strong().color(theme::text_primary()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(14.0).color(theme::text_dim())).fill(egui::Color32::TRANSPARENT)).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                    ui.add_space(10.0);
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Filter playlists...")
+                        .font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8))
+                        .background_color(theme::bg_input());
+                    ui.add(filter_input);
+                    ui.add_space(8.0);
+
+                    let filter = self.browse_popup_filter.to_lowercase();
+                    let data = self.state.data.read();
+                    let playlists: Vec<_> = data.user_data.playlists.iter().enumerate()
+                        .filter_map(|(i, item)| match item {
+                            state::PlaylistFolderItem::Playlist(p) => {
+                                if filter.is_empty() || p.name.to_lowercase().contains(&filter) {
+                                    Some((i, p.clone()))
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    drop(data);
+
+                    egui::ScrollArea::vertical().id_salt("browse_playlists_list").max_height(popup_height - 140.0).show(ui, |ui| {
+                        if playlists.is_empty() {
+                            ui.add_space(20.0);
+                            ui.label(egui::RichText::new("No playlists found").size(12.0).color(theme::text_dim()));
+                        }
+                        for (i, playlist) in &playlists {
+                            let (item_rect, item_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
+                            let bg = if item_resp.hovered() { theme::bg_hover() } else { egui::Color32::TRANSPARENT };
+                            ui.painter().rect_filled(item_rect, 4.0, bg);
+                            ui.painter().text(item_rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, &playlist.name, egui::FontId::proportional(13.0), if item_resp.hovered() { theme::text_primary() } else { theme::text_secondary() });
+                            if item_resp.clicked() {
+                                open_playlist_idx = Some(*i);
+                            }
+                        }
+                    });
+                });
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close = true; }
+            });
+
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                }).unwrap_or(false)
+            });
+            if click_outside { close = true; }
+        }
+
+        if let Some(idx) = open_playlist_idx {
+            self.handle_action(Action::OpenPlaylist(idx));
+            close = true;
+        }
+
+        if close {
+            self.show_browse_playlists_popup = false;
+            self.browse_popup_filter.clear();
+        }
+    }
+
+    fn render_browse_artists_popup(&mut self, ctx: &egui::Context) {
+        let popup_width = 360.0;
+        let popup_height = 420.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(screen.center().x - popup_width / 2.0, screen.center().y - popup_height / 2.0);
+
+        let mut close = false;
+        let mut open_artist: Option<state::Artist> = None;
+
+        egui::Area::new(egui::Id::new("browse_artists_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min).interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+            });
+
+        egui::Area::new(egui::Id::new("browse_artists_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame().inner_margin(egui::Margin::same(16));
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 32.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Followed Artists").size(16.0).strong().color(theme::text_primary()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(14.0).color(theme::text_dim())).fill(egui::Color32::TRANSPARENT)).clicked() { close = true; }
+                        });
+                    });
+                    ui.add_space(10.0);
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                        .desired_width(f32::INFINITY).hint_text("Filter artists...").font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8)).background_color(theme::bg_input());
+                    ui.add(filter_input);
+                    ui.add_space(8.0);
+
+                    let filter = self.browse_popup_filter.to_lowercase();
+                    let data = self.state.data.read();
+                    let artists: Vec<_> = data.user_data.followed_artists.iter()
+                        .filter(|a| filter.is_empty() || a.name.to_lowercase().contains(&filter))
+                        .cloned().collect();
+                    drop(data);
+
+                    egui::ScrollArea::vertical().id_salt("browse_artists_list").max_height(popup_height - 140.0).show(ui, |ui| {
+                        if artists.is_empty() {
+                            ui.add_space(20.0);
+                            ui.label(egui::RichText::new("No artists found").size(12.0).color(theme::text_dim()));
+                        }
+                        for artist in &artists {
+                            let (item_rect, item_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
+                            let bg = if item_resp.hovered() { theme::bg_hover() } else { egui::Color32::TRANSPARENT };
+                            ui.painter().rect_filled(item_rect, 4.0, bg);
+                            ui.painter().text(item_rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, &artist.name, egui::FontId::proportional(13.0), if item_resp.hovered() { theme::text_primary() } else { theme::text_secondary() });
+                            if item_resp.clicked() {
+                                open_artist = Some(artist.clone());
+                            }
+                        }
+                    });
+                });
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close = true; }
+            });
+
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                }).unwrap_or(false)
+            });
+            if click_outside { close = true; }
+        }
+
+        if let Some(artist) = open_artist {
+            self.handle_action(Action::OpenArtist(artist));
+            close = true;
+        }
+
+        if close {
+            self.show_browse_artists_popup = false;
+            self.browse_popup_filter.clear();
+        }
+    }
+
+    fn render_browse_albums_popup(&mut self, ctx: &egui::Context) {
+        let popup_width = 360.0;
+        let popup_height = 420.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(screen.center().x - popup_width / 2.0, screen.center().y - popup_height / 2.0);
+
+        let mut close = false;
+        let mut open_album_idx: Option<usize> = None;
+
+        egui::Area::new(egui::Id::new("browse_albums_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min).interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+            });
+
+        egui::Area::new(egui::Id::new("browse_albums_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame().inner_margin(egui::Margin::same(16));
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 32.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Saved Albums").size(16.0).strong().color(theme::text_primary()));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(14.0).color(theme::text_dim())).fill(egui::Color32::TRANSPARENT)).clicked() { close = true; }
+                        });
+                    });
+                    ui.add_space(10.0);
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                        .desired_width(f32::INFINITY).hint_text("Filter albums...").font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8)).background_color(theme::bg_input());
+                    ui.add(filter_input);
+                    ui.add_space(8.0);
+
+                    let filter = self.browse_popup_filter.to_lowercase();
+                    let data = self.state.data.read();
+                    let albums: Vec<_> = data.user_data.saved_albums.iter().enumerate()
+                        .filter(|(_, a)| filter.is_empty() || a.name.to_lowercase().contains(&filter))
+                        .map(|(i, a)| (i, a.clone()))
+                        .collect();
+                    drop(data);
+
+                    egui::ScrollArea::vertical().id_salt("browse_albums_list").max_height(popup_height - 140.0).show(ui, |ui| {
+                        if albums.is_empty() {
+                            ui.add_space(20.0);
+                            ui.label(egui::RichText::new("No albums found").size(12.0).color(theme::text_dim()));
+                        }
+                        for (i, album) in &albums {
+                            let (item_rect, item_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
+                            let bg = if item_resp.hovered() { theme::bg_hover() } else { egui::Color32::TRANSPARENT };
+                            ui.painter().rect_filled(item_rect, 4.0, bg);
+                            let label = format!("{} — {}", album.name, album.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", "));
+                            ui.painter().text(item_rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, &label, egui::FontId::proportional(13.0), if item_resp.hovered() { theme::text_primary() } else { theme::text_secondary() });
+                            if item_resp.clicked() {
+                                open_album_idx = Some(*i);
+                            }
+                        }
+                    });
+                });
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close = true; }
+            });
+
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                }).unwrap_or(false)
+            });
+            if click_outside { close = true; }
+        }
+
+        if let Some(idx) = open_album_idx {
+            self.handle_action(Action::OpenAlbum(idx));
+            close = true;
+        }
+
+        if close {
+            self.show_browse_albums_popup = false;
+            self.browse_popup_filter.clear();
+        }
+    }
+
+    fn render_in_page_search(&mut self, ctx: &egui::Context) {
+        let search_width = 300.0;
+        let screen = ctx.screen_rect();
+        let search_pos = egui::pos2(screen.center().x - search_width / 2.0, screen.top() + 8.0);
+
+        egui::Area::new(egui::Id::new("in_page_search"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(search_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame().inner_margin(egui::Margin::same(8));
+                frame.show(ui, |ui| {
+                    ui.set_min_width(search_width - 16.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("/").size(14.0).monospace().color(theme::green()));
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut self.in_page_search_query)
+                                .desired_width(search_width - 60.0)
+                                .hint_text("Search...")
+                                .font(egui::FontId::proportional(13.0))
+                                .frame(false),
+                        );
+                        response.request_focus();
+                    });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.show_in_page_search = false;
+                    self.in_page_search_query.clear();
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    self.show_in_page_search = false;
+                    if !self.in_page_search_query.is_empty() {
+                        self.toast(format!("Search: {}", self.in_page_search_query));
+                    }
+                    self.in_page_search_query.clear();
+                }
+            });
     }
 
     fn toast(&mut self, message: String) {

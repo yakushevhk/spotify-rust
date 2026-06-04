@@ -23,9 +23,84 @@ pub struct ActionMap {
 }
 
 impl KeymapConfig {
-    pub fn new(_path: &std::path::Path) -> anyhow::Result<Self> {
-        Ok(Self::default())
+    pub fn new(path: &std::path::Path) -> anyhow::Result<Self> {
+        let file_path = path.join("keymap.toml");
+        match std::fs::read_to_string(&file_path) {
+            Ok(content) => {
+                let config: KeymapConfig = toml::from_str(&content).unwrap_or_default();
+                Ok(config)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(e.into()),
+        }
     }
+
+    /// Merge user keymap overrides into the default keybindings.
+    /// For each user keymap entry whose command matches an existing binding,
+    /// replace the keybindings of that binding.
+    pub fn apply_overrides(&self, defaults: &mut Vec<CommandBinding>) {
+        for km in &self.keymaps {
+            if let Some(binding) = defaults.iter_mut().find(|b| b.command.0 == km.command) {
+                let parsed = parse_key_sequence(&km.key_sequence);
+                if !parsed.is_empty() {
+                    binding.keybindings = parsed;
+                }
+            }
+        }
+    }
+}
+
+fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
+    let s = s.trim();
+    if s.is_empty() {
+        return vec![];
+    }
+
+    // Check for modifier format: "C-x", "C-S-x", etc.
+    if s.starts_with("C-") || s.starts_with("S-") {
+        let mut ctrl = false;
+        let mut shift = false;
+        let mut rest = s;
+        if rest.starts_with("C-") {
+            ctrl = true;
+            rest = &rest[2..];
+        }
+        if rest.starts_with("S-") {
+            shift = true;
+            rest = &rest[2..];
+        }
+        if let Some(ch) = rest.chars().next() {
+            return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
+        }
+    }
+
+    // Check for special keys
+    let special_keys = [
+        "Space", "Enter", "Escape", "Tab", "BackTab", "Backspace",
+        "Home", "End", "PageUp", "PageDown",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    ];
+    for sk in &special_keys {
+        if s.eq_ignore_ascii_case(sk) {
+            return vec![KeyBinding::Special(sk.to_string())];
+        }
+    }
+
+    // Multi-key sequence like "gg", "g t", "g space"
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() > 1 {
+        return vec![KeyBinding::Sequence(
+            parts.iter().map(|p| p.to_string()).collect(),
+        )];
+    }
+
+    // Single character key
+    if s.len() == 1 {
+        return vec![KeyBinding::Key(s.chars().next().unwrap())];
+    }
+
+    vec![]
 }
 
 /// All default keybindings for the application.
@@ -129,6 +204,25 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
                 KeyBinding::Special("Enter".to_string()),
             ],
             description: "Play selected / confirm",
+            category: CommandCategory::Navigation,
+        },
+        CommandBinding {
+            command: CommandId("quit"),
+            keybindings: vec![
+                KeyBinding::Key('q'),
+                KeyBinding::Modified {
+                    key: 'c',
+                    ctrl: true,
+                    shift: false,
+                },
+            ],
+            description: "Quit the application",
+            category: CommandCategory::Navigation,
+        },
+        CommandBinding {
+            command: CommandId("in_page_search"),
+            keybindings: vec![KeyBinding::Key('/')],
+            description: "Search within current view",
             category: CommandCategory::Navigation,
         },
 
@@ -364,6 +458,67 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
                 shift: false,
             }],
             description: "Jump to highlighted track in context",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("go_to_radio"),
+            keybindings: vec![],
+            description: "Go to radio based on selected track",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("move_playlist_item_up"),
+            keybindings: vec![KeyBinding::Modified {
+                key: 'k',
+                ctrl: true,
+                shift: false,
+            }],
+            description: "Move playlist item up",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("move_playlist_item_down"),
+            keybindings: vec![KeyBinding::Modified {
+                key: 'j',
+                ctrl: true,
+                shift: false,
+            }],
+            description: "Move playlist item down",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("switch_device"),
+            keybindings: vec![KeyBinding::Key('D')],
+            description: "Switch playback device",
+            category: CommandCategory::Actions,
+        },
+
+        // === Popup / Browse ===
+        CommandBinding {
+            command: CommandId("browse_user_playlists"),
+            keybindings: vec![KeyBinding::Sequence(vec![
+                "u".to_string(),
+                "p".to_string(),
+            ])],
+            description: "Browse user playlists",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("browse_user_followed_artists"),
+            keybindings: vec![KeyBinding::Sequence(vec![
+                "u".to_string(),
+                "a".to_string(),
+            ])],
+            description: "Browse followed artists",
+            category: CommandCategory::Actions,
+        },
+        CommandBinding {
+            command: CommandId("browse_user_saved_albums"),
+            keybindings: vec![KeyBinding::Sequence(vec![
+                "u".to_string(),
+                "A".to_string(),
+            ])],
+            description: "Browse saved albums",
             category: CommandCategory::Actions,
         },
 

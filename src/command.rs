@@ -7,6 +7,7 @@ pub enum Command {
     Sorting(SortCommand),
     Page(PageCommand),
     Action(ActionCommand),
+    Popup(PopupCommand),
     Theme(ThemeCommand),
 }
 
@@ -27,6 +28,8 @@ pub enum NavCommand {
     FocusPrev,
     Back,
     Enter,
+    Quit,
+    InPageSearch,
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +87,10 @@ pub enum ActionCommand {
     CreatePlaylist,
     JumpToCurrentInContext,
     JumpToHighlightedInContext,
+    GoToRadio,
+    MovePlaylistItemUp,
+    MovePlaylistItemDown,
+    SwitchDevice,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +114,8 @@ pub fn resolve_command(id: &CommandId, count: usize) -> Option<(Command, usize)>
         "focus_prev" => Command::Navigation(NavCommand::FocusPrev),
         "back" => Command::Navigation(NavCommand::Back),
         "enter" => Command::Navigation(NavCommand::Enter),
+        "quit" => Command::Navigation(NavCommand::Quit),
+        "in_page_search" => Command::Navigation(NavCommand::InPageSearch),
 
         // Playback
         "play_pause" => Command::Playback(PlaybackCommand::PlayPause),
@@ -156,6 +165,15 @@ pub fn resolve_command(id: &CommandId, count: usize) -> Option<(Command, usize)>
         "create_playlist" => Command::Action(ActionCommand::CreatePlaylist),
         "jump_to_current" => Command::Action(ActionCommand::JumpToCurrentInContext),
         "jump_to_highlighted" => Command::Action(ActionCommand::JumpToHighlightedInContext),
+        "go_to_radio" => Command::Action(ActionCommand::GoToRadio),
+        "move_playlist_item_up" => Command::Action(ActionCommand::MovePlaylistItemUp),
+        "move_playlist_item_down" => Command::Action(ActionCommand::MovePlaylistItemDown),
+        "switch_device" => Command::Action(ActionCommand::SwitchDevice),
+
+        // Popup
+        "browse_user_playlists" => Command::Popup(PopupCommand::BrowseUserPlaylists),
+        "browse_user_followed_artists" => Command::Popup(PopupCommand::BrowseUserFollowedArtists),
+        "browse_user_saved_albums" => Command::Popup(PopupCommand::BrowseUserSavedAlbums),
 
         // Theme
         "switch_theme" => Command::Theme(ThemeCommand::SwitchTheme),

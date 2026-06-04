@@ -2804,9 +2804,11 @@ fn render_settings_general(
                 theme::card(ui, |ui| {
                     ui.set_width(card_width - 32.0);
 
+                    #[cfg(feature = "media-control")]
                     if settings_toggle(ui, "Enable media control", &mut config.enable_media_control) {
                         *dirty = true;
                     }
+                    #[cfg(feature = "media-control")]
                     ui.add_space(4.0);
 
                     if settings_toggle(ui, "Enable cover image cache", &mut config.enable_cover_image_cache) {
@@ -4415,6 +4417,45 @@ pub fn render_help(
                         .color(theme::text_hint())
                         .italics(),
                 );
+            });
+            ui.add_space(24.0);
+        });
+}
+
+pub fn render_logs(ui: &mut egui::Ui, state: &SharedState) {
+    theme::page_title(ui, "Logs");
+
+    let logs: Vec<String> = state.logs.lock().iter().cloned().collect();
+
+    egui::ScrollArea::vertical()
+        .id_salt("logs_scroll")
+        .stick_to_bottom(true)
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_min_width(card_width - 32.0);
+                    ui.set_max_width(card_width - 32.0);
+
+                    if logs.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No logs available")
+                                .size(13.0)
+                                .color(theme::text_dim()),
+                        );
+                    } else {
+                        for line in &logs {
+                            ui.label(
+                                egui::RichText::new(line)
+                                    .size(11.0)
+                                    .monospace()
+                                    .color(theme::text_secondary()),
+                            );
+                        }
+                    }
+                });
             });
             ui.add_space(24.0);
         });
