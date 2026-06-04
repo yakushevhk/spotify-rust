@@ -7,6 +7,7 @@ pub const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(28, 28, 28);
 pub const BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(38, 38, 38);
 pub const BG_ELEVATED: egui::Color32 = egui::Color32::from_rgb(24, 24, 24);
 pub const BG_INPUT: egui::Color32 = egui::Color32::from_rgb(35, 35, 35);
+pub const BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(26, 26, 26);
 
 pub const GREEN: egui::Color32 = egui::Color32::from_rgb(30, 215, 96);
 pub const GREEN_HOVER: egui::Color32 = egui::Color32::from_rgb(45, 225, 110);
@@ -16,6 +17,7 @@ pub const TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
 pub const TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(179, 179, 179);
 pub const TEXT_DIM: egui::Color32 = egui::Color32::from_rgb(115, 115, 115);
 pub const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(77, 77, 77);
+pub const TEXT_HINT: egui::Color32 = egui::Color32::from_rgb(102, 102, 102);
 
 pub const BORDER: egui::Color32 = egui::Color32::from_rgb(33, 33, 33);
 pub const DIVIDER: egui::Color32 = egui::Color32::from_rgb(40, 40, 40);

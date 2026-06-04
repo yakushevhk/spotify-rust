@@ -1,7 +1,7 @@
 use eframe::egui;
 use rspotify::prelude::Id;
 
-use crate::client::ClientRequest;
+use crate::client::{ClientRequest, PlayerRequest};
 use crate::gui::context_menu::{self, ContextTarget};
 use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::{theme, Action, SortAction, SortColumn, SortDirection, SortState};
@@ -339,7 +339,7 @@ fn grid_card(
 pub fn render_tracks(
     ui: &mut egui::Ui,
     state: &SharedState,
-    _client_pub: &flume::Sender<ClientRequest>,
+    client_pub: &flume::Sender<ClientRequest>,
     title: &str,
     tracks: &[state::Track],
     selected_track: &mut Option<usize>,
@@ -347,6 +347,7 @@ pub fn render_tracks(
     context_menu: &mut context_menu::ContextMenu,
     playlist_id: Option<&state::PlaylistId<'static>>,
     sort_state: Option<SortState>,
+    context_id: Option<&state::ContextId>,
 ) -> SortAction {
     use rspotify::prelude::Id;
 
@@ -554,7 +555,7 @@ pub fn render_tracks(
                     );
 
                 let bg = if is_selected {
-                    theme::BG_HOVER
+                    theme::BG_SELECTED
                 } else if response.hovered() {
                     theme::BG_CARD
                 } else {
@@ -562,6 +563,15 @@ pub fn render_tracks(
                 };
 
                 ui.painter().rect_filled(row_rect, 4.0, bg);
+
+                // Green left accent for playing track
+                if is_playing {
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(row_rect.min, egui::vec2(3.0, row_rect.height())),
+                        1.5,
+                        theme::GREEN,
+                    );
+                }
 
                 // Number
                 let num_color = if is_playing {
@@ -707,7 +717,33 @@ pub fn render_tracks(
                     );
                 }
 
-                if response.clicked() {
+                if response.double_clicked() {
+                    *selected_track = Some(i);
+                    if let Some(ctx) = context_id {
+                        let playback = match ctx {
+                            state::ContextId::Playlist(_)
+                            | state::ContextId::Album(_)
+                            | state::ContextId::Artist(_)
+                            | state::ContextId::Show(_) => state::Playback::Context(
+                                ctx.clone(),
+                                Some(rspotify::model::Offset::Uri(track.id.uri())),
+                            ),
+                            state::ContextId::Tracks(_) => {
+                                let uris: Vec<PlayableId<'static>> = tracks
+                                    .iter()
+                                    .map(|t| PlayableId::Track(t.id.clone()))
+                                    .collect();
+                                state::Playback::URIs(
+                                    uris,
+                                    Some(rspotify::model::Offset::Uri(track.id.uri())),
+                                )
+                            }
+                        };
+                        let _ = client_pub.send(ClientRequest::Player(
+                            PlayerRequest::StartPlayback(playback, None),
+                        ));
+                    }
+                } else if response.clicked() {
                     *selected_track = Some(i);
                 }
 
@@ -741,7 +777,7 @@ pub fn render_search(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     search_query: &mut String,
-    _selected_track: &mut Option<usize>,
+    selected_track: &mut Option<usize>,
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
@@ -825,7 +861,10 @@ pub fn render_search(
                             egui::Sense::click(),
                         );
 
-                        let bg = if response.hovered() {
+                        let is_selected = *selected_track == Some(i);
+                        let bg = if is_selected {
+                            theme::BG_SELECTED
+                        } else if response.hovered() {
                             theme::BG_CARD
                         } else {
                             egui::Color32::TRANSPARENT
@@ -956,6 +995,21 @@ pub fn render_search(
                                 egui::FontId::proportional(10.0),
                                 theme::BG_BLACK,
                             );
+                        }
+
+                        if response.double_clicked() {
+                            *selected_track = Some(i);
+                            let _ = client_pub.send(ClientRequest::Player(
+                                PlayerRequest::StartPlayback(
+                                    state::Playback::URIs(
+                                        vec![PlayableId::Track(track.id.clone())],
+                                        None,
+                                    ),
+                                    None,
+                                ),
+                            ));
+                        } else if response.clicked() {
+                            *selected_track = Some(i);
                         }
 
                         let div = egui::Rect::from_min_size(

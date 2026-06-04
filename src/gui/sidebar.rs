@@ -160,5 +160,39 @@ pub fn render(
             }
         });
 
+    ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
+    theme::divider(ui);
+
+    // Keyboard hints
+    ui.add_space(4.0);
+    let hints: &[(&str, &str)] = &[
+        ("Space", "Play/Pause"),
+        ("\u{2190}\u{2192}", "Prev/Next"),
+        ("\u{2191}\u{2193}", "Navigate"),
+        ("Enter", "Play selected"),
+        ("Esc", "Back"),
+        ("Ctrl+\u{2191}\u{2193}", "Volume"),
+        ("Ctrl+L", "Lyrics"),
+        ("Ctrl+Q", "Queue"),
+        ("Ctrl+/", "Search"),
+    ];
+    for (key, desc) in hints {
+        ui.horizontal(|ui| {
+            ui.add_space(16.0);
+            ui.label(
+                egui::RichText::new(*key)
+                    .size(10.0)
+                    .color(theme::GREEN)
+                    .monospace(),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(*desc)
+                    .size(10.0)
+                    .color(theme::TEXT_HINT),
+            );
+        });
+    }
+
     action
 }
