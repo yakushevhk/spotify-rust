@@ -1668,6 +1668,9 @@ pub fn render_search(
                                 }
                             }
                             let response = search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
+                            if response.clicked() {
+                                action = Action::OpenSearchResultAlbum(album.clone());
+                            }
                             if response.secondary_clicked() {
                                 if let Some(click_pos) = response.interact_pointer_pos() {
                                     context_menu.open(
@@ -1707,6 +1710,9 @@ pub fn render_search(
                                 }
                             }
                             let response = search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
+                            if response.clicked() {
+                                action = Action::OpenSearchResultPlaylist(playlist.clone());
+                            }
                             if response.secondary_clicked() {
                                 if let Some(click_pos) = response.interact_pointer_pos() {
                                     context_menu.open(

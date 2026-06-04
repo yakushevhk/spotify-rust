@@ -673,10 +673,12 @@ impl ContextMenu {
         match action {
             MenuAction::AddToQueue(playable_id) => {
                 let _ = client_pub.send(ClientRequest::AddPlayableToQueue(playable_id));
+                state.toast_queue.lock().push_back("Added to queue".to_string());
                 None
             }
             MenuAction::AddAlbumToQueue(album_id) => {
                 let _ = client_pub.send(ClientRequest::AddAlbumToQueue(album_id));
+                state.toast_queue.lock().push_back("Album added to queue".to_string());
                 None
             }
             MenuAction::AddToPlaylist(playable_id) => {
@@ -691,25 +693,30 @@ impl ContextMenu {
                     let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Track(
                         track.id.clone(),
                     )));
+                    state.toast_queue.lock().push_back("Removed from Liked Songs".to_string());
                 } else {
                     let _ =
                         client_pub.send(ClientRequest::AddToLibrary(Item::Track(track)));
+                    state.toast_queue.lock().push_back("Added to Liked Songs".to_string());
                 }
                 None
             }
             MenuAction::AddAlbumToLibrary(album) => {
                 let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Album(album)));
+                state.toast_queue.lock().push_back("Album saved to library".to_string());
                 None
             }
             MenuAction::RemoveAlbumFromLibrary(album_id) => {
                 let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Album(
                     album_id,
                 )));
+                state.toast_queue.lock().push_back("Album removed from library".to_string());
                 None
             }
             MenuAction::AddPlaylistToLibrary(playlist) => {
                 let _ =
                     client_pub.send(ClientRequest::AddToLibrary(Item::Playlist(playlist)));
+                state.toast_queue.lock().push_back("Playlist saved to library".to_string());
                 None
             }
             MenuAction::PlayContext(playback) => {
@@ -743,8 +750,10 @@ impl ContextMenu {
                     let _ = client_pub.send(ClientRequest::DeleteFromLibrary(
                         ItemId::Artist(artist.id),
                     ));
+                    state.toast_queue.lock().push_back("Unfollowed artist".to_string());
                 } else {
                     let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Artist(artist)));
+                    state.toast_queue.lock().push_back("Following artist".to_string());
                 }
                 None
             }
@@ -752,14 +761,17 @@ impl ContextMenu {
                 let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Artist(
                     artist_id,
                 )));
+                state.toast_queue.lock().push_back("Unfollowed artist".to_string());
                 None
             }
             MenuAction::AddShowToLibrary(show) => {
                 let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Show(show)));
+                state.toast_queue.lock().push_back("Show saved to library".to_string());
                 None
             }
             MenuAction::RemoveShowFromLibrary(show_id) => {
                 let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Show(show_id)));
+                state.toast_queue.lock().push_back("Show removed from library".to_string());
                 None
             }
             MenuAction::CopyLink(link) => {
@@ -806,12 +818,14 @@ impl ContextMenu {
                             child.wait()
                         });
                 }
+                state.toast_queue.lock().push_back("Link copied to clipboard".to_string());
                 None
             }
             MenuAction::DeleteFromPlaylist(playlist_id, track_id) => {
                 let _ = client_pub.send(ClientRequest::DeleteTrackFromPlaylist(
                     playlist_id, track_id,
                 ));
+                state.toast_queue.lock().push_back("Removed from playlist".to_string());
                 None
             }
             MenuAction::None => None,

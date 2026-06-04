@@ -261,6 +261,9 @@ impl SpotifyApp {
                 self.current_view = view;
             }
             Action::OpenPlaylist(idx) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let data = self.state.data.read();
                 if let Some(item) = data.user_data.playlists.get(idx) {
                     if let state::PlaylistFolderItem::Playlist(playlist) = item {
@@ -280,6 +283,9 @@ impl SpotifyApp {
                 }
             }
             Action::OpenAlbum(idx) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let data = self.state.data.read();
                 if let Some(album) = data.user_data.saved_albums.get(idx) {
                     let id = album.id.clone();
@@ -297,6 +303,9 @@ impl SpotifyApp {
                 }
             }
             Action::OpenLikedTracks => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = "Liked Tracks".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -310,6 +319,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::OpenRecentlyPlayed => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = "Recently Played".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -323,6 +335,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::OpenTopTracks => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = "Top Tracks".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -336,6 +351,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::OpenSearchResultPlaylist(playlist) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -347,6 +365,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::OpenSearchResultAlbum(album) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -358,6 +379,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::OpenArtist(artist) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
                 let _ = self
@@ -366,6 +390,9 @@ impl SpotifyApp {
                 self.current_view = View::Artist;
             }
             Action::OpenBrowseCategory(id, name) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let _ = self.client_pub.send(ClientRequest::GetBrowseCategoryPlaylists(
                     state::Category {
                         id: id.clone(),
@@ -376,6 +403,9 @@ impl SpotifyApp {
                 self.current_view = View::BrowseCategory { id, name };
             }
             Action::OpenBrowsePlaylist(playlist) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -390,6 +420,9 @@ impl SpotifyApp {
                 self.current_view = View::Browse;
             }
             Action::ContextMenuNavigateArtist(artist) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
                 let _ = self
@@ -398,6 +431,9 @@ impl SpotifyApp {
                 self.current_view = View::Artist;
             }
             Action::ContextMenuNavigateAlbum(album) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -409,6 +445,9 @@ impl SpotifyApp {
                 self.current_view = View::Tracks;
             }
             Action::ContextMenuNavigateShow(show) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
                 self.show_detail_show = Some(show);
@@ -436,6 +475,9 @@ impl SpotifyApp {
                 self.navigate_to_view(View::Shows);
             }
             Action::OpenShowDetail(show) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
                 self.show_detail_show = Some(show);
@@ -445,6 +487,9 @@ impl SpotifyApp {
                 self.current_view = View::ShowDetail;
             }
             Action::OpenShowFromSearch(show) => {
+                if self.current_view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
                 self.show_detail_show = Some(show);
@@ -2875,9 +2920,13 @@ impl SpotifyApp {
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     self.show_in_page_search = false;
                     if !self.in_page_search_query.is_empty() {
-                        self.toast(format!("Search: {}", self.in_page_search_query));
+                        let query = std::mem::take(&mut self.in_page_search_query);
+                        let _ = self.client_pub.send(ClientRequest::Search(query.clone()));
+                        self.search_query = query;
+                        self.navigate_to_view(View::Search);
+                    } else {
+                        self.in_page_search_query.clear();
                     }
-                    self.in_page_search_query.clear();
                 }
             });
     }
