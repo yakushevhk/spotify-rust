@@ -4,7 +4,7 @@ use rspotify::prelude::Id;
 use crate::client::ClientRequest;
 use crate::gui::context_menu::{self, ContextTarget};
 use crate::gui::image_cache::{self, ImageCache};
-use crate::gui::{theme, Action};
+use crate::gui::{theme, Action, SortAction, SortColumn, SortDirection, SortState};
 use crate::state::{self, PlayableId, SharedState};
 
 pub fn render_library(
@@ -346,8 +346,11 @@ pub fn render_tracks(
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
     playlist_id: Option<&state::PlaylistId<'static>>,
-) {
+    sort_state: Option<SortState>,
+) -> SortAction {
     use rspotify::prelude::Id;
+
+    let mut sort_action = SortAction::None;
 
     theme::page_title(ui, title);
 
@@ -363,32 +366,161 @@ pub fn render_tracks(
     });
     drop(player);
 
-    // Table header
+    // Table header — clickable columns
+    let header_color_default = egui::Color32::from_rgb(136, 136, 136); // #888888
+    let header_color_hover = egui::Color32::from_rgb(204, 204, 204); // #CCCCCC
+    let header_color_active = theme::GREEN; // #1DB954
+
     ui.horizontal(|ui| {
         ui.add_space(24.0);
         let header_rect = ui.allocate_space(egui::vec2(ui.available_width() - 24.0, 32.0)).1;
 
+        // "#" column (non-sortable)
         ui.painter().text(
-            header_rect.left_center() + egui::vec2(0.0, 0.0),
-            egui::Align2::LEFT_CENTER,
+            header_rect.left_center() + egui::vec2(28.0, 0.0),
+            egui::Align2::CENTER_CENTER,
             "#",
             egui::FontId::monospace(12.0),
-            theme::TEXT_MUTED,
+            header_color_default,
         );
+
+        // TITLE column
+        let title_x = 92.0;
+        let title_active = sort_state.map_or(false, |s| s.column == SortColumn::Title);
+        let title_label = if title_active {
+            format!("TITLE {}", sort_state.unwrap().direction.arrow())
+        } else {
+            "TITLE".to_string()
+        };
+        let title_color = if title_active { header_color_active } else { header_color_default };
+        let title_rect = egui::Rect::from_min_size(
+            header_rect.left_top() + egui::vec2(title_x - 4.0, 0.0),
+            egui::vec2(180.0, header_rect.height()),
+        );
+        let title_resp = ui.allocate_rect(title_rect, egui::Sense::click());
+        let title_color = if title_resp.hovered() && !title_active {
+            header_color_hover
+        } else {
+            title_color
+        };
         ui.painter().text(
-            header_rect.left_center() + egui::vec2(92.0, 0.0),
+            title_rect.left_center() + egui::vec2(0.0, 0.0),
             egui::Align2::LEFT_CENTER,
-            "TITLE",
+            &title_label,
             egui::FontId::monospace(12.0),
-            theme::TEXT_MUTED,
+            title_color,
         );
+        if title_resp.clicked() {
+            let dir = if title_active {
+                sort_state.unwrap().direction.toggle()
+            } else {
+                SortDirection::Ascending
+            };
+            sort_action = SortAction::Sort(SortState { column: SortColumn::Title, direction: dir });
+        }
+
+        // ARTIST column
+        let artist_x = 300.0;
+        let artist_active = sort_state.map_or(false, |s| s.column == SortColumn::Artist);
+        let artist_label = if artist_active {
+            format!("ARTIST {}", sort_state.unwrap().direction.arrow())
+        } else {
+            "ARTIST".to_string()
+        };
+        let artist_color = if artist_active { header_color_active } else { header_color_default };
+        let artist_rect = egui::Rect::from_min_size(
+            header_rect.left_top() + egui::vec2(artist_x - 4.0, 0.0),
+            egui::vec2(160.0, header_rect.height()),
+        );
+        let artist_resp = ui.allocate_rect(artist_rect, egui::Sense::click());
+        let artist_color = if artist_resp.hovered() && !artist_active {
+            header_color_hover
+        } else {
+            artist_color
+        };
         ui.painter().text(
-            header_rect.right_center() + egui::vec2(-50.0, 0.0),
+            artist_rect.left_center() + egui::vec2(0.0, 0.0),
             egui::Align2::LEFT_CENTER,
-            "TIME",
+            &artist_label,
             egui::FontId::monospace(12.0),
-            theme::TEXT_MUTED,
+            artist_color,
         );
+        if artist_resp.clicked() {
+            let dir = if artist_active {
+                sort_state.unwrap().direction.toggle()
+            } else {
+                SortDirection::Ascending
+            };
+            sort_action = SortAction::Sort(SortState { column: SortColumn::Artist, direction: dir });
+        }
+
+        // ALBUM column (centered)
+        let album_active = sort_state.map_or(false, |s| s.column == SortColumn::Album);
+        let album_label = if album_active {
+            format!("ALBUM {}", sort_state.unwrap().direction.arrow())
+        } else {
+            "ALBUM".to_string()
+        };
+        let album_color = if album_active { header_color_active } else { header_color_default };
+        let album_rect = egui::Rect::from_center_size(
+            header_rect.center(),
+            egui::vec2(200.0, header_rect.height()),
+        );
+        let album_resp = ui.allocate_rect(album_rect, egui::Sense::click());
+        let album_color = if album_resp.hovered() && !album_active {
+            header_color_hover
+        } else {
+            album_color
+        };
+        ui.painter().text(
+            album_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &album_label,
+            egui::FontId::monospace(12.0),
+            album_color,
+        );
+        if album_resp.clicked() {
+            let dir = if album_active {
+                sort_state.unwrap().direction.toggle()
+            } else {
+                SortDirection::Ascending
+            };
+            sort_action = SortAction::Sort(SortState { column: SortColumn::Album, direction: dir });
+        }
+
+        // TIME column (right-aligned)
+        let time_active = sort_state.map_or(false, |s| s.column == SortColumn::Duration);
+        let time_label = if time_active {
+            format!("TIME {}", sort_state.unwrap().direction.arrow())
+        } else {
+            "TIME".to_string()
+        };
+        let time_color = if time_active { header_color_active } else { header_color_default };
+        let time_rect = egui::Rect::from_min_size(
+            header_rect.right_top() + egui::vec2(-120.0, 0.0),
+            egui::vec2(120.0, header_rect.height()),
+        );
+        let time_resp = ui.allocate_rect(time_rect, egui::Sense::click());
+        let time_color = if time_resp.hovered() && !time_active {
+            header_color_hover
+        } else {
+            time_color
+        };
+        ui.painter().text(
+            time_rect.right_center() + egui::vec2(-2.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            &time_label,
+            egui::FontId::monospace(12.0),
+            time_color,
+        );
+        if time_resp.clicked() {
+            let dir = if time_active {
+                sort_state.unwrap().direction.toggle()
+            } else {
+                SortDirection::Ascending
+            };
+            sort_action = SortAction::Sort(SortState { column: SortColumn::Duration, direction: dir });
+        }
     });
 
     // Divider
@@ -600,6 +732,8 @@ pub fn render_tracks(
                 ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
             }
         });
+
+    sort_action
 }
 
 pub fn render_search(

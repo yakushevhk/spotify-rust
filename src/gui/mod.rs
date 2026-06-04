@@ -24,6 +24,62 @@ pub enum View {
     Artist,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortColumn {
+    Title,
+    Artist,
+    Album,
+    Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+impl SortDirection {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Ascending => Self::Descending,
+            Self::Descending => Self::Ascending,
+        }
+    }
+
+    pub fn arrow(self) -> &'static str {
+        match self {
+            Self::Ascending => "▲",
+            Self::Descending => "▼",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortState {
+    pub column: SortColumn,
+    pub direction: SortDirection,
+}
+
+impl SortState {
+    pub fn compare(&self, a: &state::Track, b: &state::Track) -> std::cmp::Ordering {
+        let ord = match self.column {
+            SortColumn::Title => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            SortColumn::Artist => a.artists_info().to_lowercase().cmp(&b.artists_info().to_lowercase()),
+            SortColumn::Album => a.album_info().to_lowercase().cmp(&b.album_info().to_lowercase()),
+            SortColumn::Duration => a.duration.cmp(&b.duration),
+        };
+        match self.direction {
+            SortDirection::Ascending => ord,
+            SortDirection::Descending => ord.reverse(),
+        }
+    }
+}
+
+pub enum SortAction {
+    Sort(SortState),
+    None,
+}
+
 enum Action {
     Navigate(View),
     OpenPlaylist(usize),
@@ -56,6 +112,7 @@ pub struct SpotifyApp {
     show_device_popup: bool,
     devices_fetched: bool,
     context_menu: context_menu::ContextMenu,
+    sort_state: Option<SortState>,
 }
 
 impl SpotifyApp {
@@ -80,6 +137,7 @@ impl SpotifyApp {
             show_device_popup: false,
             devices_fetched: false,
             context_menu: context_menu::ContextMenu::new(),
+            sort_state: None,
         }
     }
 
@@ -98,6 +156,7 @@ impl SpotifyApp {
                         self.context_title = name;
                         self.selected_track = None;
                         self.context_tracks.clear();
+                        self.sort_state = None;
                         let _ = self.client_pub.send(ClientRequest::GetContext(
                             state::ContextId::Playlist(id),
                         ));
@@ -114,6 +173,7 @@ impl SpotifyApp {
                     self.context_title = name;
                     self.selected_track = None;
                     self.context_tracks.clear();
+                    self.sort_state = None;
                     let _ = self
                         .client_pub
                         .send(ClientRequest::GetContext(state::ContextId::Album(id)));
@@ -123,6 +183,7 @@ impl SpotifyApp {
             Action::OpenLikedTracks => {
                 self.context_title = "Liked Tracks".to_string();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self.client_pub.send(ClientRequest::GetContext(
                     state::ContextId::Tracks(state::TracksId::new(
@@ -135,6 +196,7 @@ impl SpotifyApp {
             Action::OpenRecentlyPlayed => {
                 self.context_title = "Recently Played".to_string();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self.client_pub.send(ClientRequest::GetContext(
                     state::ContextId::Tracks(state::TracksId::new(
@@ -147,6 +209,7 @@ impl SpotifyApp {
             Action::OpenTopTracks => {
                 self.context_title = "Top Tracks".to_string();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self.client_pub.send(ClientRequest::GetContext(
                     state::ContextId::Tracks(state::TracksId::new(
@@ -159,6 +222,7 @@ impl SpotifyApp {
             Action::OpenSearchResultPlaylist(playlist) => {
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self.client_pub.send(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
@@ -168,6 +232,7 @@ impl SpotifyApp {
             Action::OpenSearchResultAlbum(album) => {
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self
                     .client_pub
@@ -195,6 +260,7 @@ impl SpotifyApp {
             Action::OpenBrowsePlaylist(playlist) => {
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self.client_pub.send(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
@@ -215,6 +281,7 @@ impl SpotifyApp {
             Action::ContextMenuNavigateAlbum(album) => {
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
+                self.sort_state = None;
                 self.selected_track = None;
                 let _ = self
                     .client_pub
@@ -254,6 +321,10 @@ impl SpotifyApp {
                             self.context_title = format!("{} — Top Tracks", artist.name);
                         }
                         state::Context::Show { .. } => {}
+                    }
+                    // Apply existing sort if any
+                    if let Some(sort) = self.sort_state {
+                        self.context_tracks.sort_by(|a, b| sort.compare(a, b));
                     }
                 }
             }
@@ -536,7 +607,7 @@ impl eframe::App for SpotifyApp {
                     action = views::render_library(ui, &self.state, &mut self.image_cache, &mut self.context_menu);
                 }
                 View::Tracks => {
-                    views::render_tracks(
+                    let sort_action = views::render_tracks(
                         ui,
                         &self.state,
                         &self.client_pub,
@@ -546,7 +617,20 @@ impl eframe::App for SpotifyApp {
                         &mut self.image_cache,
                         &mut self.context_menu,
                         None,
+                        self.sort_state,
                     );
+                    match sort_action {
+                        SortAction::Sort(new_state) => {
+                            if self.sort_state == Some(new_state) {
+                                // Already sorted this way, do nothing
+                            } else {
+                                self.sort_state = Some(new_state);
+                                self.context_tracks.sort_by(|a, b| new_state.compare(a, b));
+                                self.selected_track = None;
+                            }
+                        }
+                        SortAction::None => {}
+                    }
                 }
                 View::Search => {
                     action = views::render_search(
