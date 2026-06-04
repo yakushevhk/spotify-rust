@@ -409,9 +409,11 @@ impl SpotifyApp {
             }
             Action::OpenShows => {
                 let data = self.state.data.read();
-                let shows = data.user_data.saved_shows.clone();
+                let shows_empty = data.user_data.saved_shows.is_empty();
+                let shows_loading = data.shows_loading;
                 drop(data);
-                if shows.is_empty() {
+                if shows_empty && !shows_loading {
+                    self.state.data.write().shows_loading = true;
                     let _ = self.client_pub.send(ClientRequest::GetUserSavedShows);
                 }
                 self.navigate_to_view(View::Shows);
@@ -2415,21 +2417,39 @@ impl SpotifyApp {
         match crate::config::get_config_folder_path() {
             Ok(config_folder) => {
                 let file_path = config_folder.join("app.toml");
-                match toml::to_string_pretty(&self.settings_editing) {
-                    Ok(content) => match std::fs::write(&file_path, content) {
-                        Ok(()) => {
-                            self.settings_dirty = false;
-                            self.settings_original = self.settings_editing.clone();
-                            if needs_restart {
-                                self.toast("Settings saved. Some changes require restart.".to_string());
-                            } else {
-                                self.toast("Settings saved".to_string());
+                let existing: toml::Value = std::fs::read_to_string(&file_path)
+                    .ok()
+                    .and_then(|s| toml::from_str(&s).ok())
+                    .unwrap_or(toml::Value::Table(Default::default()));
+
+                match toml::Value::try_from(&self.settings_editing) {
+                    Ok(new_value) => {
+                        let mut merged = existing;
+                        if let (Some(t), Some(n)) = (merged.as_table_mut(), new_value.as_table()) {
+                            for (key, value) in n {
+                                t.insert(key.clone(), value.clone());
                             }
                         }
-                        Err(e) => {
-                            self.toast(format!("Failed to save: {}", e));
+                        match toml::to_string_pretty(&merged) {
+                            Ok(content) => match std::fs::write(&file_path, content) {
+                                Ok(()) => {
+                                    self.settings_dirty = false;
+                                    self.settings_original = self.settings_editing.clone();
+                                    if needs_restart {
+                                        self.toast("Settings saved. Some changes require restart.".to_string());
+                                    } else {
+                                        self.toast("Settings saved".to_string());
+                                    }
+                                }
+                                Err(e) => {
+                                    self.toast(format!("Failed to save: {}", e));
+                                }
+                            },
+                            Err(e) => {
+                                self.toast(format!("Failed to serialize config: {}", e));
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
                         self.toast(format!("Failed to serialize config: {}", e));
                     }

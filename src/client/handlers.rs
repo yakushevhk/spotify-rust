@@ -38,6 +38,9 @@ pub async fn start_client_handler(
             async move {
                 if let Err(err) = client.handle_request(&state, request).await {
                     tracing::error!("Failed to handle client request: {err:#}");
+                    let mut data = state.data.write();
+                    data.shows_loading = false;
+                    data.browse.categories_loading = false;
                 }
             }
             .instrument(span),

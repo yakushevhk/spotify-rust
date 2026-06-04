@@ -31,6 +31,7 @@ pub struct AppData {
     pub user_data: UserData,
     pub caches: MemoryCaches,
     pub browse: BrowseData,
+    pub shows_loading: bool,
 }
 
 #[derive(Debug)]
@@ -60,6 +61,7 @@ pub struct MemoryCaches {
 pub struct BrowseData {
     pub categories: Vec<Category>,
     pub category_playlists: HashMap<String, Vec<Playlist>>,
+    pub categories_loading: bool,
 }
 
 impl MemoryCaches {
@@ -81,6 +83,7 @@ impl AppData {
             user_data: UserData::new_from_file_caches(cache_folder),
             caches: MemoryCaches::new(),
             browse: BrowseData::default(),
+            shows_loading: false,
         }
     }
 

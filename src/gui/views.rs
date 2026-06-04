@@ -201,11 +201,15 @@ pub fn render_shows(
 
     let data = state.data.read();
     let shows: Vec<_> = data.user_data.saved_shows.clone();
+    let shows_loading = data.shows_loading;
     drop(data);
 
-    if shows.is_empty() {
-        // Request shows from API
+    if shows.is_empty() && !shows_loading {
+        state.data.write().shows_loading = true;
         let _ = client_pub.send(ClientRequest::GetUserSavedShows);
+    }
+
+    if shows.is_empty() {
         ui.add_space(60.0);
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 30.0);
@@ -1831,10 +1835,15 @@ pub fn render_browse(
 
     let data = state.data.read();
     let categories = data.browse.categories.clone();
+    let categories_loading = data.browse.categories_loading;
     drop(data);
 
-    if categories.is_empty() {
+    if categories.is_empty() && !categories_loading {
+        state.data.write().browse.categories_loading = true;
         let _ = client_pub.send(ClientRequest::GetBrowseCategories);
+    }
+
+    if categories.is_empty() {
         ui.add_space(80.0);
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 30.0);

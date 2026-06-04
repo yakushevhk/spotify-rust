@@ -368,7 +368,9 @@ impl AppClient {
         match request {
             ClientRequest::GetBrowseCategories => {
                 let categories = self.browse_categories().await?;
-                state.data.write().browse.categories = categories;
+                let mut data = state.data.write();
+                data.browse.categories = categories;
+                data.browse.categories_loading = false;
             }
             ClientRequest::GetBrowseCategoryPlaylists(category) => {
                 let playlists = self.browse_category_playlists(&category.id).await?;
@@ -485,7 +487,9 @@ impl AppClient {
                     &shows,
                 )
                 .context("store user's saved shows into the cache folder")?;
-                state.data.write().user_data.saved_shows = shows;
+                let mut data = state.data.write();
+                data.user_data.saved_shows = shows;
+                data.shows_loading = false;
             }
             ClientRequest::GetContext(context) => {
                 let uri = context.uri();
@@ -1025,17 +1029,15 @@ impl AppClient {
             album_result,
             playlist_result,
             show_result,
-            episode_result,
         ) = tokio::try_join!(
             self.search_specific_type(query, rspotify::model::SearchType::Track),
             self.search_specific_type(query, rspotify::model::SearchType::Artist),
             self.search_specific_type(query, rspotify::model::SearchType::Album),
             self.search_specific_type(query, rspotify::model::SearchType::Playlist),
-            self.search_specific_type(query, rspotify::model::SearchType::Show),
-            self.search_specific_type(query, rspotify::model::SearchType::Episode)
+            self.search_specific_type(query, rspotify::model::SearchType::Show)
         )?;
 
-        let (tracks, artists, albums, playlists, shows, episodes) = (
+        let (tracks, artists, albums, playlists, shows) = (
             match track_result {
                 rspotify::model::SearchResult::Tracks(p) => p
                     .items
@@ -1070,12 +1072,6 @@ impl AppClient {
                 }
                 _ => anyhow::bail!("expect a show search result"),
             },
-            match episode_result {
-                rspotify::model::SearchResult::Episodes(p) => {
-                    p.items.into_iter().map(std::convert::Into::into).collect()
-                }
-                _ => anyhow::bail!("expect a episode search result"),
-            },
         );
 
         Ok(SearchResults {
@@ -1084,7 +1080,7 @@ impl AppClient {
             albums,
             playlists,
             shows,
-            episodes,
+            episodes: Vec::new(),
         })
     }
 
