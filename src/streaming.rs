@@ -75,15 +75,43 @@ pub async fn new_connection(
                         if let Some(playback) = player.buffered_playback.as_mut() {
                             playback.is_playing = true;
                         }
+                        #[cfg(feature = "streaming")]
+                        if let Some(ref bands) = state.vis_bands {
+                            bands.lock().is_active = true;
+                        }
                     }
                     player::PlayerEvent::Paused { .. } => {
                         let mut player = state.player.write();
                         if let Some(playback) = player.buffered_playback.as_mut() {
                             playback.is_playing = false;
                         }
+                        #[cfg(feature = "streaming")]
+                        if let Some(ref bands) = state.vis_bands {
+                            bands.lock().is_active = false;
+                        }
                     }
                     player::PlayerEvent::EndOfTrack { .. } => {
-                        client.update_playback(&state);
+                        let advanced = {
+                            let mut player = state.player.write();
+                            player.custom_queue.as_mut().map(|q| q.advance())
+                        };
+                        match advanced {
+                            Some(crate::state::AdvanceResult::SameBatch) => {
+                                client.update_playback(&state);
+                            }
+                            Some(crate::state::AdvanceResult::NewBatch(_tracks)) => {
+                                client.update_playback(&state);
+                            }
+                            Some(crate::state::AdvanceResult::NeedsRadioTracks) => {
+                                client.update_playback(&state);
+                            }
+                            Some(crate::state::AdvanceResult::EndOfQueue) => {
+                                client.update_playback(&state);
+                            }
+                            None => {
+                                client.update_playback(&state);
+                            }
+                        }
                     }
                     _ => {}
                 }
