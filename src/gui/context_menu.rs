@@ -295,11 +295,8 @@ impl ContextMenu {
             .interactable(true)
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        egui::Color32::from_rgb(26, 26, 26),
-                    ))
+                    .fill(theme::bg_dark())
+                    .stroke(egui::Stroke::new(1.0, theme::border()))
                     .corner_radius(egui::CornerRadius::same(6))
                     .inner_margin(egui::Margin::same(6));
 
@@ -317,7 +314,7 @@ impl ContextMenu {
                         let response = ui.allocate_rect(item_rect, egui::Sense::click());
 
                         let bg = if response.hovered() {
-                            egui::Color32::from_rgb(26, 26, 26)
+                            theme::bg_hover()
                         } else {
                             egui::Color32::TRANSPARENT
                         };
@@ -325,11 +322,11 @@ impl ContextMenu {
                             .rect_filled(item_rect, egui::CornerRadius::same(4), bg);
 
                         let text_color = if item.destructive {
-                            egui::Color32::from_rgb(255, 68, 68)
+                            theme::error_color()
                         } else if response.hovered() {
-                            theme::TEXT_PRIMARY
+                            theme::text_primary()
                         } else {
-                            egui::Color32::from_rgb(204, 204, 204)
+                            theme::text_secondary()
                         };
 
                         ui.painter().text(
@@ -439,11 +436,8 @@ impl ContextMenu {
             .fixed_pos(dialog_pos)
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        egui::Color32::from_rgb(26, 26, 26),
-                    ))
+                    .fill(theme::bg_dark())
+                    .stroke(egui::Stroke::new(1.0, theme::border()))
                     .corner_radius(egui::CornerRadius::same(6))
                     .inner_margin(egui::Margin::same(16));
 
@@ -454,13 +448,13 @@ impl ContextMenu {
                         egui::RichText::new(title)
                             .size(15.0)
                             .strong()
-                            .color(theme::TEXT_PRIMARY),
+                            .color(theme::text_primary()),
                     );
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new(detail)
                             .size(12.0)
-                            .color(egui::Color32::from_rgb(204, 204, 204)),
+                            .color(theme::text_secondary()),
                     );
                     ui.add_space(16.0);
 
@@ -470,9 +464,9 @@ impl ContextMenu {
                             .0;
                         let cancel_resp = ui.allocate_rect(cancel_rect, egui::Sense::click());
                         let cancel_bg = if cancel_resp.hovered() {
-                            egui::Color32::from_rgb(26, 26, 26)
+                            theme::bg_hover()
                         } else {
-                            egui::Color32::from_rgb(17, 17, 17)
+                            theme::bg_dark()
                         };
                         ui.painter().rect_filled(
                             cancel_rect,
@@ -482,7 +476,7 @@ impl ContextMenu {
                         ui.painter().rect_stroke(
                             cancel_rect,
                             egui::CornerRadius::same(4),
-                            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50)),
+                            egui::Stroke::new(1.0, theme::text_muted()),
                             egui::StrokeKind::Outside,
                         );
                         ui.painter().text(
@@ -490,7 +484,7 @@ impl ContextMenu {
                             egui::Align2::CENTER_CENTER,
                             "Cancel",
                             egui::FontId::proportional(13.0),
-                            theme::TEXT_PRIMARY,
+                            theme::text_primary(),
                         );
                         if cancel_resp.clicked() {
                             close = true;
@@ -505,7 +499,7 @@ impl ContextMenu {
                         let confirm_bg = if confirm_resp.hovered() {
                             egui::Color32::from_rgb(200, 40, 40)
                         } else {
-                            egui::Color32::from_rgb(255, 68, 68)
+                            theme::error_color()
                         };
                         ui.painter().rect_filled(
                             confirm_rect,

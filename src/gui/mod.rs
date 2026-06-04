@@ -9,7 +9,7 @@ use eframe::egui;
 use rspotify::prelude::Id;
 
 use crate::client::{ClientRequest, PlayerRequest};
-use crate::command::{self, ActionCommand, Command, NavCommand, PageCommand, PlaybackCommand, SortCommand};
+use crate::command::{self, ActionCommand, Command, NavCommand, PageCommand, PlaybackCommand, SortCommand, ThemeCommand};
 use crate::config::keymap::default_keybindings;
 use crate::key::{CommandBinding, KeySequenceResult, KeySequenceState};
 use crate::state::{self, PlayableId, SharedState};
@@ -133,6 +133,9 @@ pub struct SpotifyApp {
     keybindings: Vec<CommandBinding>,
     help_search: String,
     view_history: Vec<View>,
+    show_theme_switcher: bool,
+    theme_search: String,
+    current_theme_name: String,
 }
 
 impl SpotifyApp {
@@ -141,6 +144,17 @@ impl SpotifyApp {
         state: SharedState,
         client_pub: flume::Sender<ClientRequest>,
     ) -> Self {
+        // Initialize theme from config
+        let config = crate::config::get_config();
+        let theme_name = &config.app_config.theme;
+        let mut current_theme_name = String::new();
+        if let Some(t) = config.theme_config.find_theme(theme_name) {
+            theme::set_palette_from_config(&t.palette);
+            current_theme_name = t.name.clone();
+        } else {
+            theme::set_palette(theme_name);
+            current_theme_name = theme_name.clone();
+        }
         theme::setup_theme(&cc.egui_ctx);
 
         Self {
@@ -173,6 +187,9 @@ impl SpotifyApp {
             keybindings: default_keybindings(),
             help_search: String::new(),
             view_history: Vec::new(),
+            show_theme_switcher: false,
+            theme_search: String::new(),
+            current_theme_name,
         }
     }
 
@@ -699,6 +716,12 @@ impl SpotifyApp {
                     // Already handled by selected_track, just a no-op toast
                 }
             },
+            Command::Theme(theme_cmd) => match theme_cmd {
+                ThemeCommand::SwitchTheme => {
+                    self.show_theme_switcher = !self.show_theme_switcher;
+                    self.theme_search.clear();
+                }
+            },
         }
     }
 
@@ -851,7 +874,7 @@ impl eframe::App for SpotifyApp {
                                 egui::RichText::new("Connect to a device")
                                     .size(14.0)
                                     .strong()
-                                    .color(theme::TEXT_PRIMARY),
+                                    .color(theme::text_primary()),
                             );
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui
@@ -859,7 +882,7 @@ impl eframe::App for SpotifyApp {
                                         egui::Button::new(
                                             egui::RichText::new("✕")
                                                 .size(14.0)
-                                                .color(theme::TEXT_DIM),
+                                                .color(theme::text_dim()),
                                         )
                                         .fill(egui::Color32::TRANSPARENT),
                                     )
@@ -886,7 +909,7 @@ impl eframe::App for SpotifyApp {
                             ui.label(
                                 egui::RichText::new("No devices available")
                                     .size(12.0)
-                                    .color(theme::TEXT_DIM),
+                                    .color(theme::text_dim()),
                             );
                         } else {
                             let active_device_id = player
@@ -927,9 +950,9 @@ impl eframe::App for SpotifyApp {
 
                                 // Device name
                                 let name_color = if is_active {
-                                    theme::GREEN
+                                    theme::green()
                                 } else {
-                                    theme::TEXT_PRIMARY
+                                    theme::text_primary()
                                 };
                                 ui.painter().text(
                                     item_rect.left_center() + egui::vec2(44.0, -8.0),
@@ -945,14 +968,14 @@ impl eframe::App for SpotifyApp {
                                     ui.painter().circle_filled(
                                         item_rect.left_center() + egui::vec2(44.0, 12.0),
                                         3.0,
-                                        theme::GREEN,
+                                        theme::green(),
                                     );
                                     ui.painter().text(
                                         item_rect.left_center() + egui::vec2(54.0, 12.0),
                                         egui::Align2::LEFT_CENTER,
                                         format!("{} · Active", device.device_type),
                                         egui::FontId::proportional(11.0),
-                                        theme::GREEN,
+                                        theme::green(),
                                     );
                                 } else {
                                     ui.painter().text(
@@ -1011,7 +1034,7 @@ impl eframe::App for SpotifyApp {
         egui::SidePanel::left("sidebar")
             .resizable(false)
             .exact_width(theme::SIDEBAR_WIDTH)
-            .frame(egui::Frame::new().fill(theme::BG_DARK).inner_margin(egui::Margin::ZERO))
+            .frame(egui::Frame::new().fill(theme::bg_dark()).inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
                 action = sidebar::render(ui, &self.current_view, &self.state);
             });
@@ -1053,6 +1076,8 @@ impl eframe::App for SpotifyApp {
                     self.show_create_playlist_popup = false;
                 } else if self.show_add_to_playlist_popup {
                     self.show_add_to_playlist_popup = false;
+                } else if self.show_theme_switcher {
+                    self.show_theme_switcher = false;
                 } else if self.show_device_popup {
                     self.show_device_popup = false;
                 } else if self.context_menu.is_open() {
@@ -1154,7 +1179,7 @@ impl eframe::App for SpotifyApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(theme::BG_BLACK)
+                    .fill(theme::bg_black())
                     .inner_margin(egui::Margin::ZERO),
             )
             .show(ctx, |ui| match self.current_view {
@@ -1273,6 +1298,11 @@ impl eframe::App for SpotifyApp {
             self.render_add_to_playlist_popup(ctx);
         }
 
+        // Render Theme Switcher popup
+        if self.show_theme_switcher {
+            self.render_theme_switcher(ctx);
+        }
+
         // Render toast message
         self.render_toast(ctx);
 
@@ -1344,7 +1374,7 @@ impl SpotifyApp {
                         egui::RichText::new("Create Playlist")
                             .size(18.0)
                             .strong()
-                            .color(theme::TEXT_PRIMARY),
+                            .color(theme::text_primary()),
                     );
                     ui.add_space(16.0);
 
@@ -1352,7 +1382,7 @@ impl SpotifyApp {
                     ui.label(
                         egui::RichText::new("Name")
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                     ui.add_space(4.0);
                     let name_input = egui::TextEdit::singleline(&mut self.create_playlist_name)
@@ -1368,7 +1398,7 @@ impl SpotifyApp {
                     ui.label(
                         egui::RichText::new("Description")
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                     ui.add_space(4.0);
                     let desc_input = egui::TextEdit::singleline(&mut self.create_playlist_desc)
@@ -1387,7 +1417,7 @@ impl SpotifyApp {
                         let (toggle_rect, toggle_resp) =
                             ui.allocate_exact_size(toggle_size, egui::Sense::click());
                         let toggle_bg = if self.create_playlist_public {
-                            theme::GREEN
+                            theme::green()
                         } else {
                             egui::Color32::from_rgb(50, 50, 50)
                         };
@@ -1413,7 +1443,7 @@ impl SpotifyApp {
                         ui.label(
                             egui::RichText::new("Public")
                                 .size(13.0)
-                                .color(theme::TEXT_SECONDARY),
+                                .color(theme::text_secondary()),
                         );
 
                         ui.add_space(20.0);
@@ -1422,7 +1452,7 @@ impl SpotifyApp {
                         let (toggle_rect2, toggle_resp2) =
                             ui.allocate_exact_size(toggle_size, egui::Sense::click());
                         let toggle_bg2 = if self.create_playlist_collab {
-                            theme::GREEN
+                            theme::green()
                         } else {
                             egui::Color32::from_rgb(50, 50, 50)
                         };
@@ -1448,7 +1478,7 @@ impl SpotifyApp {
                         ui.label(
                             egui::RichText::new("Collaborative")
                                 .size(13.0)
-                                .color(theme::TEXT_SECONDARY),
+                                .color(theme::text_secondary()),
                         );
                     });
 
@@ -1476,7 +1506,7 @@ impl SpotifyApp {
                             egui::Align2::CENTER_CENTER,
                             "Cancel",
                             egui::FontId::proportional(13.0),
-                            theme::TEXT_PRIMARY,
+                            theme::text_primary(),
                         );
                         if cancel_resp.clicked() {
                             close = true;
@@ -1493,9 +1523,9 @@ impl SpotifyApp {
                         let create_bg = if !can_create {
                             egui::Color32::from_rgb(30, 30, 30)
                         } else if create_resp.hovered() {
-                            theme::GREEN_HOVER
+                            theme::green_hover()
                         } else {
-                            theme::GREEN
+                            theme::green()
                         };
                         ui.painter().rect_filled(
                             create_rect,
@@ -1505,7 +1535,7 @@ impl SpotifyApp {
                         let create_text_color = if can_create {
                             egui::Color32::from_rgb(0, 0, 0)
                         } else {
-                            theme::TEXT_MUTED
+                            theme::text_muted()
                         };
                         ui.painter().text(
                             create_rect.center(),
@@ -1594,7 +1624,7 @@ impl SpotifyApp {
                             egui::RichText::new("Add to Playlist")
                                 .size(16.0)
                                 .strong()
-                                .color(theme::TEXT_PRIMARY),
+                                .color(theme::text_primary()),
                         );
                         ui.with_layout(
                             egui::Layout::right_to_left(egui::Align::Center),
@@ -1604,7 +1634,7 @@ impl SpotifyApp {
                                         egui::Button::new(
                                             egui::RichText::new("\u{2715}")
                                                 .size(14.0)
-                                                .color(theme::TEXT_DIM),
+                                                .color(theme::text_dim()),
                                         )
                                         .fill(egui::Color32::TRANSPARENT),
                                     )
@@ -1659,7 +1689,7 @@ impl SpotifyApp {
                                 ui.label(
                                     egui::RichText::new("No playlists found")
                                         .size(12.0)
-                                        .color(theme::TEXT_DIM),
+                                        .color(theme::text_dim()),
                                 );
                             }
                             for playlist in &playlists {
@@ -1684,9 +1714,9 @@ impl SpotifyApp {
                                 );
 
                                 let text_color = if item_resp.hovered() {
-                                    theme::TEXT_PRIMARY
+                                    theme::text_primary()
                                 } else {
-                                    theme::TEXT_SECONDARY
+                                    theme::text_secondary()
                                 };
 
                                 ui.painter().text(
@@ -1701,7 +1731,7 @@ impl SpotifyApp {
                                     egui::Align2::LEFT_CENTER,
                                     &playlist.owner.0,
                                     egui::FontId::proportional(11.0),
-                                    theme::TEXT_DIM,
+                                    theme::text_dim(),
                                 );
 
                                 if item_resp.clicked() {
@@ -1753,6 +1783,311 @@ impl SpotifyApp {
         }
     }
 
+    fn render_theme_switcher(&mut self, ctx: &egui::Context) {
+        let popup_width = 340.0;
+        let popup_height = 420.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut selected_theme: Option<String> = None;
+
+        // Collect built-in themes and custom themes
+        let built_in = theme::built_in_themes();
+        let config = crate::config::get_config();
+        let custom_themes: Vec<_> = config.theme_config.themes.clone();
+
+        egui::Area::new(egui::Id::new("theme_switcher"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::new()
+                    .fill(theme::bg_dark())
+                    .stroke(egui::Stroke::new(1.0, theme::border()))
+                    .corner_radius(egui::CornerRadius::same(8))
+                    .inner_margin(egui::Margin::same(16));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 32.0);
+
+                    // Header
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Switch Theme")
+                                .size(16.0)
+                                .strong()
+                                .color(theme::text_primary()),
+                        );
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new("\u{2715}")
+                                                .size(14.0)
+                                                .color(theme::text_dim()),
+                                        )
+                                        .fill(egui::Color32::TRANSPARENT),
+                                    )
+                                    .clicked()
+                                {
+                                    close = true;
+                                }
+                            },
+                        );
+                    });
+                    ui.add_space(10.0);
+
+                    // Search input
+                    let filter_input = egui::TextEdit::singleline(&mut self.theme_search)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Search themes...")
+                        .font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8))
+                        .background_color(theme::bg_input());
+                    ui.add(filter_input);
+                    ui.add_space(8.0);
+
+                    // Current theme indicator
+                    ui.label(
+                        egui::RichText::new(format!("Current: {}", self.current_theme_name))
+                            .size(11.0)
+                            .color(theme::text_dim()),
+                    );
+                    ui.add_space(8.0);
+
+                    // Theme list
+                    let filter = self.theme_search.to_lowercase();
+                    let list_max_height = popup_height - 160.0;
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("theme_list")
+                        .max_height(list_max_height)
+                        .show(ui, |ui| {
+                            // Built-in themes section
+                            if filter.is_empty() || "built-in".contains(&filter) {
+                                ui.label(
+                                    egui::RichText::new("Built-in")
+                                        .size(11.0)
+                                        .color(theme::text_dim()),
+                                );
+                                ui.add_space(4.0);
+                            }
+
+                            for builtin in &built_in {
+                                if !filter.is_empty()
+                                    && !builtin.name.to_lowercase().contains(&filter)
+                                {
+                                    continue;
+                                }
+                                let is_current = self.current_theme_name.eq_ignore_ascii_case(builtin.name);
+                                let item_rect = ui
+                                    .allocate_exact_size(
+                                        egui::vec2(ui.available_width(), 36.0),
+                                        egui::Sense::click(),
+                                    )
+                                    .0;
+                                let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+
+                                let bg = if is_current {
+                                    theme::bg_active()
+                                } else if item_resp.hovered() {
+                                    theme::bg_hover()
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+                                ui.painter().rect_filled(
+                                    item_rect,
+                                    egui::CornerRadius::same(4),
+                                    bg,
+                                );
+
+                                // Color preview swatches
+                                let swatch_size = 10.0;
+                                let swatch_y = item_rect.center().y - swatch_size / 2.0;
+                                let gui_palette = theme::GuiPalette::from_config_palette(&builtin.palette);
+                                let swatches = [
+                                    gui_palette.accent,
+                                    gui_palette.bg_dark,
+                                    gui_palette.text_primary,
+                                ];
+                                for (j, color) in swatches.iter().enumerate() {
+                                    let swatch_rect = egui::Rect::from_min_size(
+                                        egui::pos2(item_rect.left() + 8.0 + j as f32 * 14.0, swatch_y),
+                                        egui::vec2(swatch_size, swatch_size),
+                                    );
+                                    ui.painter().rect_filled(swatch_rect, 2.0, *color);
+                                }
+
+                                let name_color = if is_current {
+                                    theme::green()
+                                } else if item_resp.hovered() {
+                                    theme::text_primary()
+                                } else {
+                                    theme::text_secondary()
+                                };
+                                ui.painter().text(
+                                    item_rect.left_center() + egui::vec2(56.0, 0.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    builtin.name,
+                                    egui::FontId::proportional(13.0),
+                                    name_color,
+                                );
+
+                                if is_current {
+                                    ui.painter().text(
+                                        item_rect.right_center() + egui::vec2(-12.0, 0.0),
+                                        egui::Align2::RIGHT_CENTER,
+                                        "\u{2713}",
+                                        egui::FontId::proportional(14.0),
+                                        theme::green(),
+                                    );
+                                }
+
+                                if item_resp.clicked() && !is_current {
+                                    selected_theme = Some(builtin.name.to_string());
+                                }
+                            }
+
+                            // Custom themes section
+                            if !custom_themes.is_empty() {
+                                ui.add_space(8.0);
+                                if filter.is_empty() || "custom".contains(&filter) {
+                                    ui.label(
+                                        egui::RichText::new("Custom")
+                                            .size(11.0)
+                                            .color(theme::text_dim()),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+
+                                for custom_theme in &custom_themes {
+                                    if !filter.is_empty()
+                                        && !custom_theme.name.to_lowercase().contains(&filter)
+                                    {
+                                        continue;
+                                    }
+                                    let is_current = self.current_theme_name.eq_ignore_ascii_case(&custom_theme.name);
+                                    let item_rect = ui
+                                        .allocate_exact_size(
+                                            egui::vec2(ui.available_width(), 36.0),
+                                            egui::Sense::click(),
+                                        )
+                                        .0;
+                                    let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+
+                                    let bg = if is_current {
+                                        theme::bg_active()
+                                    } else if item_resp.hovered() {
+                                        theme::bg_hover()
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    };
+                                    ui.painter().rect_filled(
+                                        item_rect,
+                                        egui::CornerRadius::same(4),
+                                        bg,
+                                    );
+
+                                    // Color preview swatches
+                                    let swatch_size = 10.0;
+                                    let swatch_y = item_rect.center().y - swatch_size / 2.0;
+                                    let gui_palette = theme::GuiPalette::from_config_palette(&custom_theme.palette);
+                                    let swatches = [
+                                        gui_palette.accent,
+                                        gui_palette.bg_dark,
+                                        gui_palette.text_primary,
+                                    ];
+                                    for (j, color) in swatches.iter().enumerate() {
+                                        let swatch_rect = egui::Rect::from_min_size(
+                                            egui::pos2(item_rect.left() + 8.0 + j as f32 * 14.0, swatch_y),
+                                            egui::vec2(swatch_size, swatch_size),
+                                        );
+                                        ui.painter().rect_filled(swatch_rect, 2.0, *color);
+                                    }
+
+                                    let name_color = if is_current {
+                                        theme::green()
+                                    } else if item_resp.hovered() {
+                                        theme::text_primary()
+                                    } else {
+                                        theme::text_secondary()
+                                    };
+                                    ui.painter().text(
+                                        item_rect.left_center() + egui::vec2(56.0, 0.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        &custom_theme.name,
+                                        egui::FontId::proportional(13.0),
+                                        name_color,
+                                    );
+
+                                    if is_current {
+                                        ui.painter().text(
+                                            item_rect.right_center() + egui::vec2(-12.0, 0.0),
+                                            egui::Align2::RIGHT_CENTER,
+                                            "\u{2713}",
+                                            egui::FontId::proportional(14.0),
+                                            theme::green(),
+                                        );
+                                    }
+
+                                    if item_resp.clicked() && !is_current {
+                                        selected_theme = Some(custom_theme.name.clone());
+                                    }
+                                }
+                            }
+                        });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        // Handle click outside
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed()
+                    && i.pointer
+                        .latest_pos()
+                        .map(|pos| {
+                            pos.x < popup_pos.x
+                                || pos.x > popup_pos.x + popup_width
+                                || pos.y < popup_pos.y
+                                || pos.y > popup_pos.y + popup_height
+                        })
+                        .unwrap_or(false)
+            });
+            if click_outside {
+                close = true;
+            }
+        }
+
+        if let Some(theme_name) = selected_theme {
+            // Check built-in first
+            if let Some(builtin) = built_in.iter().find(|t| t.name.eq_ignore_ascii_case(&theme_name)) {
+                theme::set_palette_from_config(&builtin.palette);
+                self.current_theme_name = builtin.name.to_string();
+            } else if let Some(custom) = custom_themes.iter().find(|t| t.name.eq_ignore_ascii_case(&theme_name)) {
+                theme::set_palette_from_config(&custom.palette);
+                self.current_theme_name = custom.name.clone();
+            }
+            // Re-apply theme to egui
+            theme::setup_theme(ctx);
+            self.toast(format!("Theme: {}", self.current_theme_name));
+            close = true;
+        }
+
+        if close {
+            self.show_theme_switcher = false;
+            self.theme_search.clear();
+        }
+    }
+
     fn toast(&mut self, message: String) {
         self.toast_message = Some(message);
         self.toast_expires = Some(
@@ -1788,7 +2123,7 @@ impl SpotifyApp {
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
                     .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(1.0, theme::GREEN))
+                    .stroke(egui::Stroke::new(1.0, theme::green()))
                     .corner_radius(egui::CornerRadius::same(6))
                     .inner_margin(egui::Margin::symmetric(16, 10));
 
@@ -1798,13 +2133,13 @@ impl SpotifyApp {
                         ui.label(
                             egui::RichText::new("\u{2713}")
                                 .size(14.0)
-                                .color(theme::GREEN),
+                                .color(theme::green()),
                         );
                         ui.add_space(6.0);
                         ui.label(
                             egui::RichText::new(message)
                                 .size(13.0)
-                                .color(theme::TEXT_PRIMARY),
+                                .color(theme::text_primary()),
                         );
                     });
                 });
@@ -1830,7 +2165,7 @@ impl SpotifyApp {
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
                     .fill(egui::Color32::from_rgb(20, 20, 20))
-                    .stroke(egui::Stroke::new(1.0, theme::GREEN))
+                    .stroke(egui::Stroke::new(1.0, theme::green()))
                     .corner_radius(egui::CornerRadius::same(4))
                     .inner_margin(egui::Margin::symmetric(12, 6));
 
@@ -1839,7 +2174,7 @@ impl SpotifyApp {
                         egui::RichText::new(format!("- {} -", display))
                             .size(14.0)
                             .monospace()
-                            .color(theme::GREEN),
+                            .color(theme::green()),
                     );
                 });
             });

@@ -27,7 +27,7 @@ pub fn render(
 
     // Top border
     let rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
-    ui.painter().rect_filled(rect, 0.0, theme::DIVIDER);
+    ui.painter().rect_filled(rect, 0.0, theme::divider());
 
     ui.allocate_space(egui::vec2(ui.available_width(), 9.0));
 
@@ -71,7 +71,7 @@ pub fn render(
                         ui.painter().rect_filled(
                             art_rect,
                             theme::ART_CORNER_RADIUS,
-                            theme::BG_ACTIVE,
+                            theme::bg_active(),
                         );
                         egui::Image::new(texture)
                             .corner_radius(theme::ART_CORNER_RADIUS)
@@ -92,13 +92,13 @@ pub fn render(
                 };
 
                 if !art_drawn {
-                    ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+                    ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
                     ui.painter().text(
                         art_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "\u{266B}",
                         egui::FontId::proportional(24.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                 }
 
@@ -108,7 +108,7 @@ pub fn render(
                     egui::Align2::LEFT_CENTER,
                     &name,
                     egui::FontId::proportional(14.0),
-                    theme::TEXT_PRIMARY,
+                    theme::text_primary(),
                 );
 
                 // Artists
@@ -117,40 +117,40 @@ pub fn render(
                     egui::Align2::LEFT_CENTER,
                     &artists_str,
                     egui::FontId::proportional(12.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
             } else {
-                ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+                ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
                 ui.painter().text(
                     art_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     "\u{266B}",
                     egui::FontId::proportional(24.0),
-                    theme::TEXT_MUTED,
+                    theme::text_muted(),
                 );
                 ui.painter().text(
                     track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 32.0),
                     egui::Align2::LEFT_CENTER,
                     "No track playing",
                     egui::FontId::proportional(13.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
             }
         } else {
-            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
             ui.painter().text(
                 art_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "\u{266B}",
                 egui::FontId::proportional(24.0),
-                theme::TEXT_MUTED,
+                theme::text_muted(),
             );
             ui.painter().text(
                 track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 32.0),
                 egui::Align2::LEFT_CENTER,
                 "Connect to Spotify",
                 egui::FontId::proportional(13.0),
-                theme::TEXT_DIM,
+                theme::text_dim(),
             );
         }
 
@@ -243,7 +243,7 @@ pub fn render(
                     ui.label(
                         egui::RichText::new(theme::format_duration_secs(p_secs))
                             .size(11.0)
-                            .color(theme::TEXT_DIM)
+                            .color(theme::text_dim())
                             .monospace(),
                     );
 
@@ -262,19 +262,14 @@ pub fn render(
                     );
 
                     // Track background
-                    ui.painter().rect_filled(full_bar, 2.0, theme::BG_ACTIVE);
+                    ui.painter().rect_filled(full_bar, 2.0, theme::bg_active());
 
                     // Progress fill
                     let progress_rect = egui::Rect::from_min_size(
                         full_bar.min,
                         egui::vec2(full_bar.width() * ratio, full_bar.height()),
                     );
-                    let progress_color = if bar_response.hovered() {
-                        theme::GREEN
-                    } else {
-                        theme::GREEN
-                    };
-                    ui.painter().rect_filled(progress_rect, 2.0, progress_color);
+                    ui.painter().rect_filled(progress_rect, 2.0, theme::green());
 
                     // Hover dot
                     if bar_response.hovered() {
@@ -282,7 +277,7 @@ pub fn render(
                         ui.painter().circle_filled(
                             egui::pos2(dot_x, bar_rect.center().y),
                             4.0,
-                            theme::GREEN,
+                            theme::green(),
                         );
                     }
 
@@ -304,7 +299,7 @@ pub fn render(
                     ui.label(
                         egui::RichText::new(theme::format_duration_secs(d_secs))
                             .size(11.0)
-                            .color(theme::TEXT_DIM)
+                            .color(theme::text_dim())
                             .monospace(),
                     );
                 } else {
@@ -313,7 +308,7 @@ pub fn render(
                     ui.label(
                         egui::RichText::new("0:00")
                             .size(11.0)
-                            .color(theme::TEXT_MUTED)
+                            .color(theme::text_muted())
                             .monospace(),
                     );
                     let bar_width = (ui.available_width() - 100.0).max(100.0);
@@ -326,13 +321,13 @@ pub fn render(
                             egui::vec2(bar_rect.width(), 4.0),
                         ),
                         2.0,
-                        theme::BG_ACTIVE,
+                        theme::bg_active(),
                     );
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new("0:00")
                             .size(11.0)
-                            .color(theme::TEXT_MUTED)
+                            .color(theme::text_muted())
                             .monospace(),
                     );
                 }
@@ -348,7 +343,7 @@ pub fn render(
                 ui.label(
                     egui::RichText::new(&playback.device.name)
                         .size(11.0)
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                 );
                 ui.add_space(12.0);
 
@@ -370,13 +365,13 @@ pub fn render(
                 // Volume icon
                 let vol_icon = if volume == 0.0 { "🔇" } else if volume < 30.0 { "🔈" } else if volume < 70.0 { "🔉" } else { "🔊" };
                 ui.label(
-                    egui::RichText::new(vol_icon).size(14.0).color(theme::TEXT_DIM),
+                    egui::RichText::new(vol_icon).size(14.0).color(theme::text_dim()),
                 );
 
                 ui.label(
                     egui::RichText::new(format!("{}%", volume as u32))
                         .size(11.0)
-                        .color(theme::TEXT_DIM)
+                        .color(theme::text_dim())
                         .monospace(),
                 );
 

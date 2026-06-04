@@ -7,6 +7,12 @@ pub enum Command {
     Sorting(SortCommand),
     Page(PageCommand),
     Action(ActionCommand),
+    Theme(ThemeCommand),
+}
+
+#[derive(Clone, Debug)]
+pub enum ThemeCommand {
+    SwitchTheme,
 }
 
 #[derive(Clone, Debug)]
@@ -150,6 +156,9 @@ pub fn resolve_command(id: &CommandId, count: usize) -> Option<(Command, usize)>
         "create_playlist" => Command::Action(ActionCommand::CreatePlaylist),
         "jump_to_current" => Command::Action(ActionCommand::JumpToCurrentInContext),
         "jump_to_highlighted" => Command::Action(ActionCommand::JumpToHighlightedInContext),
+
+        // Theme
+        "switch_theme" => Command::Theme(ThemeCommand::SwitchTheme),
 
         _ => return None,
     };

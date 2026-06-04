@@ -52,7 +52,7 @@ pub fn render_library(
                     egui::RichText::new("Playlists")
                         .size(22.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(12.0);
@@ -120,7 +120,7 @@ pub fn render_library(
                     egui::RichText::new("Albums")
                         .size(22.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(12.0);
@@ -181,9 +181,9 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, card_height), egui::Sense::click());
 
     let bg = if response.hovered() {
-        theme::BG_HOVER
+        theme::bg_hover()
     } else {
-        theme::BG_CARD
+        theme::bg_card()
     };
 
     ui.painter().rect_filled(rect, 8.0, bg);
@@ -193,13 +193,13 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
         rect.left_center() + egui::vec2(36.0, 0.0),
         egui::vec2(48.0, 48.0),
     );
-    ui.painter().rect_filled(icon_rect, 24.0, theme::GREEN_DARK);
+    ui.painter().rect_filled(icon_rect, 24.0, theme::green_dark());
     ui.painter().text(
         icon_rect.center(),
         egui::Align2::CENTER_CENTER,
         icon,
         egui::FontId::proportional(22.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
 
     // Title
@@ -208,7 +208,7 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
         egui::Align2::LEFT_CENTER,
         title,
         egui::FontId::proportional(14.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
 
     // Description
@@ -217,7 +217,7 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
         egui::Align2::LEFT_CENTER,
         desc,
         egui::FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 
     if response.clicked() {
@@ -238,9 +238,9 @@ fn grid_card(
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
     let bg = if response.hovered() {
-        theme::BG_HOVER
+        theme::bg_hover()
     } else {
-        theme::BG_CARD
+        theme::bg_card()
     };
 
     ui.painter().rect_filled(rect, 8.0, bg);
@@ -255,7 +255,7 @@ fn grid_card(
     let mut art_drawn = false;
     if let Some(path) = cover_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
             egui::Image::new(texture)
                 .corner_radius(theme::ART_CORNER_RADIUS)
                 .paint_at(ui, art_rect);
@@ -264,19 +264,19 @@ fn grid_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
         if response.hovered() {
             let play_rect = egui::Rect::from_center_size(
                 art_rect.center() + egui::vec2(0.0, 10.0),
                 egui::vec2(40.0, 40.0),
             );
-            ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+            ui.painter().rect_filled(play_rect, 20.0, theme::green());
             ui.painter().text(
                 play_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "\u{25B6}",
                 egui::FontId::proportional(16.0),
-                theme::BG_BLACK,
+                theme::bg_black(),
             );
         } else {
             ui.painter().text(
@@ -284,7 +284,7 @@ fn grid_card(
                 egui::Align2::CENTER_CENTER,
                 "\u{266B}",
                 egui::FontId::proportional(28.0),
-                theme::TEXT_MUTED,
+                theme::text_muted(),
             );
         }
     }
@@ -301,13 +301,13 @@ fn grid_card(
             theme::ART_CORNER_RADIUS,
             egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
         );
-        ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+        ui.painter().rect_filled(play_rect, 20.0, theme::green());
         ui.painter().text(
             play_rect.center(),
             egui::Align2::CENTER_CENTER,
             "\u{25B6}",
             egui::FontId::proportional(16.0),
-            theme::BG_BLACK,
+            theme::bg_black(),
         );
     }
 
@@ -317,7 +317,7 @@ fn grid_card(
         egui::Align2::LEFT_TOP,
         title,
         egui::FontId::proportional(13.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
 
     // Subtitle
@@ -326,7 +326,7 @@ fn grid_card(
         egui::Align2::LEFT_TOP,
         subtitle,
         egui::FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 
     if response.clicked() {
@@ -370,7 +370,7 @@ pub fn render_tracks(
     // Table header — clickable columns
     let header_color_default = egui::Color32::from_rgb(136, 136, 136); // #888888
     let header_color_hover = egui::Color32::from_rgb(204, 204, 204); // #CCCCCC
-    let header_color_active = theme::GREEN; // #1DB954
+    let header_color_active = theme::green(); // #1DB954
 
     ui.horizontal(|ui| {
         ui.add_space(24.0);
@@ -535,7 +535,7 @@ pub fn render_tracks(
                 div_rect.size(),
             ),
             0.0,
-            theme::DIVIDER,
+            theme::divider(),
         );
 
         egui::ScrollArea::vertical()
@@ -555,9 +555,9 @@ pub fn render_tracks(
                     );
 
                 let bg = if is_selected {
-                    theme::BG_SELECTED
+                    theme::bg_selected()
                 } else if response.hovered() {
-                    theme::BG_CARD
+                    theme::bg_card()
                 } else {
                     egui::Color32::TRANSPARENT
                 };
@@ -569,15 +569,15 @@ pub fn render_tracks(
                     ui.painter().rect_filled(
                         egui::Rect::from_min_size(row_rect.min, egui::vec2(3.0, row_rect.height())),
                         1.5,
-                        theme::GREEN,
+                        theme::green(),
                     );
                 }
 
                 // Number
                 let num_color = if is_playing {
-                    theme::GREEN
+                    theme::green()
                 } else {
-                    theme::TEXT_MUTED
+                    theme::text_muted()
                 };
                 let num_str = if is_playing { "\u{25B6}".to_string() } else { format!("{}", i + 1) };
                 ui.painter().text(
@@ -600,7 +600,7 @@ pub fn render_tracks(
                             ui.painter().rect_filled(
                                 thumb_rect,
                                 theme::ART_CORNER_RADIUS,
-                                theme::BG_ACTIVE,
+                                theme::bg_active(),
                             );
                             egui::Image::new(texture)
                                 .corner_radius(theme::ART_CORNER_RADIUS)
@@ -613,22 +613,22 @@ pub fn render_tracks(
                     ui.painter().rect_filled(
                         thumb_rect,
                         theme::ART_CORNER_RADIUS,
-                        theme::BG_ACTIVE,
+                        theme::bg_active(),
                     );
                     ui.painter().text(
                         thumb_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "\u{266B}",
                         egui::FontId::proportional(14.0),
-                        theme::TEXT_MUTED,
+                        theme::text_muted(),
                     );
                 }
 
                 // Track info
                 let title_color = if is_playing {
-                    theme::GREEN
+                    theme::green()
                 } else {
-                    theme::TEXT_PRIMARY
+                    theme::text_primary()
                 };
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(92.0, -7.0),
@@ -642,7 +642,7 @@ pub fn render_tracks(
                     egui::Align2::LEFT_CENTER,
                     track.artists_info(),
                     egui::FontId::proportional(12.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
 
                 // Album name (middle)
@@ -653,7 +653,7 @@ pub fn render_tracks(
                         egui::Align2::CENTER_CENTER,
                         &album_name,
                         egui::FontId::proportional(12.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                 }
 
@@ -665,7 +665,7 @@ pub fn render_tracks(
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
 
                 // "..." button on hover
@@ -686,7 +686,7 @@ pub fn render_tracks(
                         egui::Align2::CENTER_CENTER,
                         "\u{22EF}",
                         egui::FontId::proportional(14.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                     if more_resp.clicked() {
                         context_menu.open(
@@ -707,13 +707,13 @@ pub fn render_tracks(
                         egui::vec2(24.0, 24.0),
                     );
                     ui.painter()
-                        .rect_filled(play_btn_rect, 12.0, theme::GREEN);
+                        .rect_filled(play_btn_rect, 12.0, theme::green());
                     ui.painter().text(
                         play_btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "\u{25B6}",
                         egui::FontId::proportional(10.0),
-                        theme::BG_BLACK,
+                        theme::bg_black(),
                     );
                 }
 
@@ -765,7 +765,7 @@ pub fn render_tracks(
                     row_rect.left_bottom() + egui::vec2(24.0, 0.0),
                     egui::vec2(row_rect.width() - 48.0, 1.0),
                 );
-                ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                ui.painter().rect_filled(div, 0.0, theme::divider());
             }
         });
 
@@ -794,7 +794,7 @@ pub fn render_search(
             .0;
 
         // Search input background
-        ui.painter().rect_filled(search_rect, 22.0, theme::BG_INPUT);
+        ui.painter().rect_filled(search_rect, 22.0, theme::bg_input());
 
         // Search icon
         ui.painter().text(
@@ -802,7 +802,7 @@ pub fn render_search(
             egui::Align2::CENTER_CENTER,
             "🔍",
             egui::FontId::proportional(16.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
 
         // Text input
@@ -815,7 +815,7 @@ pub fn render_search(
             egui::TextEdit::singleline(search_query)
                 .hint_text(
                     egui::RichText::new("What do you want to listen to?")
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::text_muted()),
                 )
                 .frame(false),
         );
@@ -845,7 +845,7 @@ pub fn render_search(
                     egui::RichText::new("Songs")
                         .size(20.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(8.0);
@@ -863,9 +863,9 @@ pub fn render_search(
 
                         let is_selected = *selected_track == Some(i);
                         let bg = if is_selected {
-                            theme::BG_SELECTED
+                            theme::bg_selected()
                         } else if response.hovered() {
-                            theme::BG_CARD
+                            theme::bg_card()
                         } else {
                             egui::Color32::TRANSPARENT
                         };
@@ -876,7 +876,7 @@ pub fn render_search(
                             egui::Align2::CENTER_CENTER,
                             format!("{}", i + 1),
                             egui::FontId::monospace(12.0),
-                            theme::TEXT_MUTED,
+                            theme::text_muted(),
                         );
 
                         // Thumbnail
@@ -891,7 +891,7 @@ pub fn render_search(
                                     ui.painter().rect_filled(
                                         thumb_rect,
                                         theme::ART_CORNER_RADIUS,
-                                        theme::BG_ACTIVE,
+                                        theme::bg_active(),
                                     );
                                     egui::Image::new(texture)
                                         .corner_radius(theme::ART_CORNER_RADIUS)
@@ -904,14 +904,14 @@ pub fn render_search(
                             ui.painter().rect_filled(
                                 thumb_rect,
                                 theme::ART_CORNER_RADIUS,
-                                theme::BG_ACTIVE,
+                                theme::bg_active(),
                             );
                             ui.painter().text(
                                 thumb_rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 "\u{266B}",
                                 egui::FontId::proportional(14.0),
-                                theme::TEXT_MUTED,
+                                theme::text_muted(),
                             );
                         }
 
@@ -920,21 +920,21 @@ pub fn render_search(
                             egui::Align2::LEFT_CENTER,
                             &track.name,
                             egui::FontId::proportional(14.0),
-                            theme::TEXT_PRIMARY,
+                            theme::text_primary(),
                         );
                         ui.painter().text(
                             row_rect.left_center() + egui::vec2(92.0, 10.0),
                             egui::Align2::LEFT_CENTER,
                             track.artists_info(),
                             egui::FontId::proportional(12.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
                         ui.painter().text(
                             row_rect.right_center() + egui::vec2(-52.0, 0.0),
                             egui::Align2::RIGHT_CENTER,
                             theme::format_duration_secs(track.duration.as_secs()),
                             egui::FontId::monospace(12.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
 
                         // "..." button on hover
@@ -955,7 +955,7 @@ pub fn render_search(
                                 egui::Align2::CENTER_CENTER,
                                 "\u{22EF}",
                                 egui::FontId::proportional(14.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
                             if more_resp.clicked() {
                                 context_menu.open(
@@ -987,13 +987,13 @@ pub fn render_search(
                                 row_rect.left_center() + egui::vec2(28.0, 0.0),
                                 egui::vec2(24.0, 24.0),
                             );
-                            ui.painter().rect_filled(play_btn_rect, 12.0, theme::GREEN);
+                            ui.painter().rect_filled(play_btn_rect, 12.0, theme::green());
                             ui.painter().text(
                                 play_btn_rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 "\u{25B6}",
                                 egui::FontId::proportional(10.0),
-                                theme::BG_BLACK,
+                                theme::bg_black(),
                             );
                         }
 
@@ -1016,7 +1016,7 @@ pub fn render_search(
                             row_rect.left_bottom() + egui::vec2(24.0, 0.0),
                             egui::vec2(row_rect.width() - 48.0, 1.0),
                         );
-                        ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                        ui.painter().rect_filled(div, 0.0, theme::divider());
                     }
                 });
 
@@ -1030,7 +1030,7 @@ pub fn render_search(
                     egui::RichText::new("Artists")
                         .size(20.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(8.0);
@@ -1047,9 +1047,9 @@ pub fn render_search(
                             );
 
                             let bg = if response.hovered() {
-                                theme::BG_HOVER
+                                theme::bg_hover()
                             } else {
-                                theme::BG_CARD
+                                theme::bg_card()
                             };
                             ui.painter().rect_filled(rect, 8.0, bg);
 
@@ -1058,13 +1058,13 @@ pub fn render_search(
                                 rect.center() + egui::vec2(0.0, -30.0),
                                 egui::vec2(100.0, 100.0),
                             );
-                            ui.painter().rect_filled(circle_rect, 50.0, theme::BG_ACTIVE);
+                            ui.painter().rect_filled(circle_rect, 50.0, theme::bg_active());
                             ui.painter().text(
                                 circle_rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 "🎤",
                                 egui::FontId::proportional(28.0),
-                                theme::TEXT_MUTED,
+                                theme::text_muted(),
                             );
 
                             ui.painter().text(
@@ -1072,14 +1072,14 @@ pub fn render_search(
                                 egui::Align2::CENTER_CENTER,
                                 &artist.name,
                                 egui::FontId::proportional(13.0),
-                                theme::TEXT_PRIMARY,
+                                theme::text_primary(),
                             );
                             ui.painter().text(
                                 rect.center() + egui::vec2(0.0, 58.0),
                                 egui::Align2::CENTER_CENTER,
                                 "Artist",
                                 egui::FontId::proportional(11.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
 
                             if response.secondary_clicked() {
@@ -1105,7 +1105,7 @@ pub fn render_search(
                     egui::RichText::new("Albums")
                         .size(20.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(8.0);
@@ -1149,7 +1149,7 @@ pub fn render_search(
                     egui::RichText::new("Playlists")
                         .size(20.0)
                         .strong()
-                        .color(theme::TEXT_PRIMARY),
+                        .color(theme::text_primary()),
                 );
             });
             ui.add_space(8.0);
@@ -1187,7 +1187,7 @@ pub fn render_search(
             ui.label(
                 egui::RichText::new("🔍")
                     .size(48.0)
-                    .color(theme::TEXT_MUTED),
+                    .color(theme::text_muted()),
             );
         });
         ui.add_space(16.0);
@@ -1196,7 +1196,7 @@ pub fn render_search(
             ui.label(
                 egui::RichText::new("Search for your favorite music")
                     .size(16.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     } else {
@@ -1221,9 +1221,9 @@ fn search_grid_card(
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
     let bg = if response.hovered() {
-        theme::BG_HOVER
+        theme::bg_hover()
     } else {
-        theme::BG_CARD
+        theme::bg_card()
     };
     ui.painter().rect_filled(rect, 8.0, bg);
 
@@ -1236,7 +1236,7 @@ fn search_grid_card(
     let mut art_drawn = false;
     if let Some(path) = cover_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
             egui::Image::new(texture)
                 .corner_radius(theme::ART_CORNER_RADIUS)
                 .paint_at(ui, art_rect);
@@ -1245,19 +1245,19 @@ fn search_grid_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
         if response.hovered() {
             let play_rect = egui::Rect::from_center_size(
                 art_rect.center() + egui::vec2(0.0, 10.0),
                 egui::vec2(40.0, 40.0),
             );
-            ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+            ui.painter().rect_filled(play_rect, 20.0, theme::green());
             ui.painter().text(
                 play_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "\u{25B6}",
                 egui::FontId::proportional(16.0),
-                theme::BG_BLACK,
+                theme::bg_black(),
             );
         } else {
             ui.painter().text(
@@ -1265,7 +1265,7 @@ fn search_grid_card(
                 egui::Align2::CENTER_CENTER,
                 "\u{266B}",
                 egui::FontId::proportional(28.0),
-                theme::TEXT_MUTED,
+                theme::text_muted(),
             );
         }
     }
@@ -1280,13 +1280,13 @@ fn search_grid_card(
             art_rect.center(),
             egui::vec2(40.0, 40.0),
         );
-        ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+        ui.painter().rect_filled(play_rect, 20.0, theme::green());
         ui.painter().text(
             play_rect.center(),
             egui::Align2::CENTER_CENTER,
             "\u{25B6}",
             egui::FontId::proportional(16.0),
-            theme::BG_BLACK,
+            theme::bg_black(),
         );
     }
 
@@ -1295,14 +1295,14 @@ fn search_grid_card(
         egui::Align2::LEFT_TOP,
         title,
         egui::FontId::proportional(13.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
         subtitle,
         egui::FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 
     response
@@ -1336,7 +1336,7 @@ pub fn render_browse(
             ui.label(
                 egui::RichText::new("Loading categories...")
                     .size(16.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     } else {
@@ -1415,7 +1415,7 @@ fn category_card(
     let mut icon_drawn = false;
     if let Some(path) = icon_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-            ui.painter().rect_filled(icon_rect, 8.0, theme::BG_ACTIVE);
+            ui.painter().rect_filled(icon_rect, 8.0, theme::bg_active());
             egui::Image::new(texture)
                 .corner_radius(8.0)
                 .paint_at(ui, icon_rect);
@@ -1424,13 +1424,13 @@ fn category_card(
     }
 
     if !icon_drawn {
-        ui.painter().rect_filled(icon_rect, 8.0, theme::GREEN_DARK);
+        ui.painter().rect_filled(icon_rect, 8.0, theme::green_dark());
         ui.painter().text(
             icon_rect.center(),
             egui::Align2::CENTER_CENTER,
             "\u{1F3B5}",
             egui::FontId::proportional(36.0),
-            theme::TEXT_PRIMARY,
+            theme::text_primary(),
         );
     }
 
@@ -1440,7 +1440,7 @@ fn category_card(
         egui::Align2::CENTER_CENTER,
         name,
         egui::FontId::proportional(14.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
 
     if response.clicked() {
@@ -1465,9 +1465,9 @@ pub fn render_browse_category_playlists(
         let back_rect = ui
             .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
         let bg = if back_rect.1.hovered() {
-            theme::BG_HOVER
+            theme::bg_hover()
         } else {
-            theme::BG_CARD
+            theme::bg_card()
         };
         ui.painter().rect_filled(back_rect.0, 6.0, bg);
         ui.painter().text(
@@ -1475,7 +1475,7 @@ pub fn render_browse_category_playlists(
             egui::Align2::CENTER_CENTER,
             "\u{2190} Back",
             egui::FontId::proportional(13.0),
-            theme::TEXT_PRIMARY,
+            theme::text_primary(),
         );
         if back_rect.1.clicked() {
             action = Action::BackToBrowse;
@@ -1505,7 +1505,7 @@ pub fn render_browse_category_playlists(
             ui.label(
                 egui::RichText::new("Loading playlists...")
                     .size(16.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     } else {
@@ -1582,7 +1582,7 @@ pub fn render_queue(
                     egui::RichText::new("Now Playing")
                         .size(14.0)
                         .strong()
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                 );
             });
             ui.add_space(8.0);
@@ -1592,13 +1592,13 @@ pub fn render_queue(
                 let width = ui.available_width() - 48.0;
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 64.0), egui::Sense::hover());
 
-                ui.painter().rect_filled(rect, 8.0, theme::BG_CARD);
+                ui.painter().rect_filled(rect, 8.0, theme::bg_card());
 
                 // Green left accent
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())),
                     1.5,
-                    theme::GREEN,
+                    theme::green(),
                 );
 
                 match item {
@@ -1608,7 +1608,7 @@ pub fn render_queue(
                             egui::Align2::LEFT_CENTER,
                             &track.name,
                             egui::FontId::proportional(15.0),
-                            theme::GREEN,
+                            theme::green(),
                         );
                         let artists: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
                         ui.painter().text(
@@ -1616,7 +1616,7 @@ pub fn render_queue(
                             egui::Align2::LEFT_CENTER,
                             artists.join(", "),
                             egui::FontId::proportional(12.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
                     }
                     rspotify::model::PlayableItem::Episode(ep) => {
@@ -1625,14 +1625,14 @@ pub fn render_queue(
                             egui::Align2::LEFT_CENTER,
                             &ep.name,
                             egui::FontId::proportional(15.0),
-                            theme::GREEN,
+                            theme::green(),
                         );
                         ui.painter().text(
                             rect.left_center() + egui::vec2(24.0, 10.0),
                             egui::Align2::LEFT_CENTER,
                             &ep.show.name,
                             egui::FontId::proportional(12.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
                     }
                     _ => {}
@@ -1651,7 +1651,7 @@ pub fn render_queue(
                 egui::RichText::new("Next Up")
                     .size(14.0)
                     .strong()
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
         ui.add_space(8.0);
@@ -1667,7 +1667,7 @@ pub fn render_queue(
                     );
 
                     let bg = if response.hovered() {
-                        theme::BG_CARD
+                        theme::bg_card()
                     } else {
                         egui::Color32::TRANSPARENT
                     };
@@ -1678,7 +1678,7 @@ pub fn render_queue(
                         egui::Align2::CENTER_CENTER,
                         format!("{}", i + 1),
                         egui::FontId::monospace(12.0),
-                        theme::TEXT_MUTED,
+                        theme::text_muted(),
                     );
 
                     match item {
@@ -1688,7 +1688,7 @@ pub fn render_queue(
                                 egui::Align2::LEFT_CENTER,
                                 &track.name,
                                 egui::FontId::proportional(14.0),
-                                theme::TEXT_PRIMARY,
+                                theme::text_primary(),
                             );
                             let artists: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
                             ui.painter().text(
@@ -1696,7 +1696,7 @@ pub fn render_queue(
                                 egui::Align2::LEFT_CENTER,
                                 artists.join(", "),
                                 egui::FontId::proportional(12.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
                             let dur = theme::format_duration_secs(track.duration.num_seconds() as u64);
                             ui.painter().text(
@@ -1704,7 +1704,7 @@ pub fn render_queue(
                                 egui::Align2::RIGHT_CENTER,
                                 &dur,
                                 egui::FontId::monospace(12.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
                         }
                         rspotify::model::PlayableItem::Episode(ep) => {
@@ -1713,14 +1713,14 @@ pub fn render_queue(
                                 egui::Align2::LEFT_CENTER,
                                 &ep.name,
                                 egui::FontId::proportional(14.0),
-                                theme::TEXT_PRIMARY,
+                                theme::text_primary(),
                             );
                             ui.painter().text(
                                 row_rect.left_center() + egui::vec2(80.0, 10.0),
                                 egui::Align2::LEFT_CENTER,
                                 &ep.show.name,
                                 egui::FontId::proportional(12.0),
-                                theme::TEXT_DIM,
+                                theme::text_dim(),
                             );
                         }
                         _ => {}
@@ -1730,7 +1730,7 @@ pub fn render_queue(
                         row_rect.left_bottom() + egui::vec2(24.0, 0.0),
                         egui::vec2(row_rect.width() - 48.0, 1.0),
                     );
-                    ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                    ui.painter().rect_filled(div, 0.0, theme::divider());
                 }
             });
     } else {
@@ -1740,7 +1740,7 @@ pub fn render_queue(
             ui.label(
                 egui::RichText::new("Queue is empty")
                     .size(16.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     }
@@ -1758,12 +1758,12 @@ pub fn render_settings(ui: &mut egui::Ui) {
                 egui::RichText::new("Configuration")
                     .size(18.0)
                     .strong()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(theme::text_primary()),
             );
             ui.add_space(12.0);
             ui.label(
                 egui::RichText::new("Edit the config files to customize the app:")
-                    .color(theme::TEXT_SECONDARY),
+                    .color(theme::text_secondary()),
             );
             ui.add_space(12.0);
 
@@ -1779,12 +1779,12 @@ pub fn render_settings(ui: &mut egui::Ui) {
                         egui::RichText::new(*path)
                             .monospace()
                             .size(13.0)
-                            .color(theme::GREEN),
+                            .color(theme::green()),
                     );
                     ui.label(
                         egui::RichText::new(format!("— {desc}"))
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                 });
                 ui.add_space(4.0);
@@ -1801,7 +1801,7 @@ pub fn render_lyrics(
 ) -> Action {
     // Background fill
     let full_rect = ui.max_rect();
-    ui.painter().rect_filled(full_rect, 0.0, theme::LYRICS_BG);
+    ui.painter().rect_filled(full_rect, 0.0, theme::lyrics_bg());
 
     let player = state.player.read();
     let playback = player.current_playback();
@@ -1849,7 +1849,7 @@ pub fn render_lyrics(
             egui::RichText::new("Lyrics")
                 .size(28.0)
                 .strong()
-                .color(theme::TEXT_PRIMARY),
+                .color(theme::text_primary()),
         );
     });
     ui.add_space(16.0);
@@ -1862,7 +1862,7 @@ pub fn render_lyrics(
                 egui::RichText::new(&track_name)
                     .size(18.0)
                     .strong()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(theme::text_primary()),
             );
         });
         ui.add_space(4.0);
@@ -1871,7 +1871,7 @@ pub fn render_lyrics(
             ui.label(
                 egui::RichText::new(&artists_str)
                     .size(14.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text_dim()),
             );
         });
     }
@@ -1879,7 +1879,7 @@ pub fn render_lyrics(
 
     // Divider
     let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
-    ui.painter().rect_filled(div_rect, 0.0, theme::DIVIDER);
+    ui.painter().rect_filled(div_rect, 0.0, theme::divider());
     ui.add_space(16.0);
 
     // Lyrics content
@@ -1913,11 +1913,11 @@ pub fn render_lyrics(
 
                     for (i, (_ts, text)) in lines.iter().enumerate() {
                         let (color, size, is_bold) = if i < current_idx {
-                            (theme::LYRICS_PLAYED, 16.0, false)
+                            (theme::lyrics_played(), 16.0, false)
                         } else if i == current_idx {
-                            (theme::LYRICS_CURRENT, 20.0, true)
+                            (theme::lyrics_current(), 20.0, true)
                         } else {
-                            (theme::LYRICS_UPCOMING, 16.0, false)
+                            (theme::lyrics_upcoming(), 16.0, false)
                         };
 
                         let font_id = if is_bold {
@@ -1977,7 +1977,7 @@ pub fn render_lyrics(
                     ui.label(
                         egui::RichText::new("No track playing")
                             .size(16.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                 });
             } else {
@@ -1992,7 +1992,7 @@ pub fn render_lyrics(
                     ui.label(
                         egui::RichText::new("Loading lyrics...")
                             .size(14.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::text_dim()),
                     );
                 });
             }
@@ -2009,7 +2009,7 @@ fn render_no_lyrics(ui: &mut egui::Ui) {
         ui.label(
             egui::RichText::new("🎤")
                 .size(48.0)
-                .color(theme::TEXT_MUTED),
+                .color(theme::text_muted()),
         );
     });
     ui.add_space(16.0);
@@ -2018,7 +2018,7 @@ fn render_no_lyrics(ui: &mut egui::Ui) {
         ui.label(
             egui::RichText::new("No lyrics available")
                 .size(16.0)
-                .color(theme::TEXT_DIM),
+                .color(theme::text_dim()),
         );
     });
 }
@@ -2049,7 +2049,7 @@ pub fn render_artist(
                 ui.label(
                     egui::RichText::new("Loading artist...")
                         .size(14.0)
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                 );
             });
             return Action::None;
@@ -2083,7 +2083,7 @@ pub fn render_artist(
                 image_cache.request_download(url, path);
             }
             if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-                ui.painter().rect_filled(img_rect, img_size / 2.0, theme::BG_ACTIVE);
+                ui.painter().rect_filled(img_rect, img_size / 2.0, theme::bg_active());
                 egui::Image::new(texture)
                     .corner_radius(img_size / 2.0)
                     .paint_at(ui, img_rect);
@@ -2091,13 +2091,13 @@ pub fn render_artist(
             }
         }
         if !img_drawn {
-            ui.painter().rect_filled(img_rect, img_size / 2.0, theme::BG_ACTIVE);
+            ui.painter().rect_filled(img_rect, img_size / 2.0, theme::bg_active());
             ui.painter().text(
                 img_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "🎤",
                 egui::FontId::proportional(40.0),
-                theme::TEXT_MUTED,
+                theme::text_muted(),
             );
         }
 
@@ -2108,7 +2108,7 @@ pub fn render_artist(
             egui::Align2::LEFT_TOP,
             &artist.name,
             egui::FontId::proportional(32.0),
-            theme::TEXT_PRIMARY,
+            theme::text_primary(),
         );
 
         let followers_str = format_followers(artist.followers);
@@ -2117,7 +2117,7 @@ pub fn render_artist(
             egui::Align2::LEFT_TOP,
             &followers_str,
             egui::FontId::proportional(13.0),
-            theme::TEXT_DIM,
+            theme::text_dim(),
         );
 
         if !artist.genres.is_empty() {
@@ -2127,7 +2127,7 @@ pub fn render_artist(
                 egui::Align2::LEFT_TOP,
                 &genres_str,
                 egui::FontId::proportional(12.0),
-                theme::TEXT_SECONDARY,
+                theme::text_secondary(),
             );
         }
 
@@ -2137,14 +2137,14 @@ pub fn render_artist(
             egui::vec2(120.0, 36.0),
         );
         let play_response = ui.allocate_rect(play_btn_rect, egui::Sense::click());
-        let play_bg = if play_response.hovered() { theme::GREEN_HOVER } else { theme::GREEN };
+        let play_bg = if play_response.hovered() { theme::green_hover() } else { theme::green() };
         ui.painter().rect_filled(play_btn_rect, 18.0, play_bg);
         ui.painter().text(
             play_btn_rect.center(),
             egui::Align2::CENTER_CENTER,
             "Play",
             egui::FontId::proportional(14.0),
-            theme::BG_BLACK,
+            theme::bg_black(),
         );
         if play_response.clicked() {
             let track_uris: Vec<PlayableId<'static>> = top_tracks
@@ -2171,7 +2171,7 @@ pub fn render_artist(
             egui::RichText::new("Popular")
                 .size(18.0)
                 .strong()
-                .color(theme::TEXT_PRIMARY),
+                .color(theme::text_primary()),
         );
     });
     ui.add_space(12.0);
@@ -2208,12 +2208,12 @@ pub fn render_artist(
                 } else if i % 2 == 0 {
                     egui::Color32::from_rgb(10, 10, 10)
                 } else {
-                    theme::BG_BLACK
+                    theme::bg_black()
                 };
                 ui.painter().rect_filled(row_rect, 4.0, bg);
 
                 // Number / play indicator
-                let num_color = if is_playing { theme::GREEN } else { theme::TEXT_MUTED };
+                let num_color = if is_playing { theme::green() } else { theme::text_muted() };
                 let num_str = if is_playing { "\u{25B6}".to_string() } else { format!("{}", i + 1) };
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(28.0, 0.0),
@@ -2235,7 +2235,7 @@ pub fn render_artist(
                             ui.painter().rect_filled(
                                 thumb_rect,
                                 theme::ART_CORNER_RADIUS,
-                                theme::BG_ACTIVE,
+                                theme::bg_active(),
                             );
                             egui::Image::new(texture)
                                 .corner_radius(theme::ART_CORNER_RADIUS)
@@ -2245,18 +2245,18 @@ pub fn render_artist(
                     }
                 }
                 if !thumb_drawn {
-                    ui.painter().rect_filled(thumb_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+                    ui.painter().rect_filled(thumb_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
                     ui.painter().text(
                         thumb_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "\u{266B}",
                         egui::FontId::proportional(14.0),
-                        theme::TEXT_MUTED,
+                        theme::text_muted(),
                     );
                 }
 
                 // Track name
-                let title_color = if is_playing { theme::GREEN } else { theme::TEXT_PRIMARY };
+                let title_color = if is_playing { theme::green() } else { theme::text_primary() };
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(92.0, -7.0),
                     egui::Align2::LEFT_CENTER,
@@ -2273,7 +2273,7 @@ pub fn render_artist(
                         egui::Align2::CENTER_CENTER,
                         &album_name,
                         egui::FontId::proportional(12.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                 }
 
@@ -2284,7 +2284,7 @@ pub fn render_artist(
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
-                    theme::TEXT_DIM,
+                    theme::text_dim(),
                 );
 
                 // "..." button on hover
@@ -2305,7 +2305,7 @@ pub fn render_artist(
                         egui::Align2::CENTER_CENTER,
                         "\u{22EF}",
                         egui::FontId::proportional(14.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                     if more_resp.clicked() {
                         context_menu.open(
@@ -2339,13 +2339,13 @@ pub fn render_artist(
                         row_rect.left_center() + egui::vec2(28.0, 0.0),
                         egui::vec2(24.0, 24.0),
                     );
-                    ui.painter().rect_filled(play_btn_rect, 12.0, theme::GREEN);
+                    ui.painter().rect_filled(play_btn_rect, 12.0, theme::green());
                     ui.painter().text(
                         play_btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "\u{25B6}",
                         egui::FontId::proportional(10.0),
-                        theme::BG_BLACK,
+                        theme::bg_black(),
                     );
                 }
 
@@ -2371,7 +2371,7 @@ pub fn render_artist(
                     row_rect.left_bottom() + egui::vec2(24.0, 0.0),
                     egui::vec2(row_rect.width() - 48.0, 1.0),
                 );
-                ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                ui.painter().rect_filled(div, 0.0, theme::divider());
             }
         });
 
@@ -2385,7 +2385,7 @@ pub fn render_artist(
                 egui::RichText::new("Discography")
                     .size(18.0)
                     .strong()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(theme::text_primary()),
             );
         });
         ui.add_space(12.0);
@@ -2434,7 +2434,7 @@ pub fn render_artist(
         ui.painter().rect_filled(
             egui::Rect::from_min_size(div_rect.min + egui::vec2(24.0, 0.0), div_rect.size()),
             0.0,
-            theme::DIVIDER,
+            theme::divider(),
         );
         ui.add_space(24.0);
 
@@ -2444,7 +2444,7 @@ pub fn render_artist(
                 egui::RichText::new("Fans also like")
                     .size(18.0)
                     .strong()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(theme::text_primary()),
             );
         });
         ui.add_space(12.0);
@@ -2507,7 +2507,7 @@ fn artist_album_card(
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
     let bg = if response.hovered() {
-        theme::BG_HOVER
+        theme::bg_hover()
     } else {
         egui::Color32::from_rgb(17, 17, 17)
     };
@@ -2522,7 +2522,7 @@ fn artist_album_card(
     let mut art_drawn = false;
     if let Some(path) = cover_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
             egui::Image::new(texture)
                 .corner_radius(theme::ART_CORNER_RADIUS)
                 .paint_at(ui, art_rect);
@@ -2531,13 +2531,13 @@ fn artist_album_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::BG_ACTIVE);
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
         ui.painter().text(
             art_rect.center(),
             egui::Align2::CENTER_CENTER,
             "\u{266B}",
             egui::FontId::proportional(28.0),
-            theme::TEXT_MUTED,
+            theme::text_muted(),
         );
     }
 
@@ -2552,13 +2552,13 @@ fn artist_album_card(
             art_rect.center(),
             egui::vec2(40.0, 40.0),
         );
-        ui.painter().rect_filled(play_rect, 20.0, theme::GREEN);
+        ui.painter().rect_filled(play_rect, 20.0, theme::green());
         ui.painter().text(
             play_rect.center(),
             egui::Align2::CENTER_CENTER,
             "\u{25B6}",
             egui::FontId::proportional(16.0),
-            theme::BG_BLACK,
+            theme::bg_black(),
         );
     }
 
@@ -2568,7 +2568,7 @@ fn artist_album_card(
         egui::Align2::LEFT_TOP,
         title,
         egui::FontId::proportional(13.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
 
     // Subtitle
@@ -2577,7 +2577,7 @@ fn artist_album_card(
         egui::Align2::LEFT_TOP,
         subtitle,
         egui::FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 
     if response.clicked() {
@@ -2599,9 +2599,9 @@ fn artist_card(
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
     let bg = if response.hovered() {
-        theme::BG_HOVER
+        theme::bg_hover()
     } else {
-        theme::BG_CARD
+        theme::bg_card()
     };
     ui.painter().rect_filled(rect, 8.0, bg);
 
@@ -2615,7 +2615,7 @@ fn artist_card(
     let mut img_drawn = false;
     if let Some(path) = cover_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
-            ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::BG_ACTIVE);
+            ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::bg_active());
             egui::Image::new(texture)
                 .corner_radius(circle_size / 2.0)
                 .paint_at(ui, circle_rect);
@@ -2623,13 +2623,13 @@ fn artist_card(
         }
     }
     if !img_drawn {
-        ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::BG_ACTIVE);
+        ui.painter().rect_filled(circle_rect, circle_size / 2.0, theme::bg_active());
         ui.painter().text(
             circle_rect.center(),
             egui::Align2::CENTER_CENTER,
             "🎤",
             egui::FontId::proportional(28.0),
-            theme::TEXT_MUTED,
+            theme::text_muted(),
         );
     }
 
@@ -2639,14 +2639,14 @@ fn artist_card(
         egui::Align2::CENTER_CENTER,
         name,
         egui::FontId::proportional(13.0),
-        theme::TEXT_PRIMARY,
+        theme::text_primary(),
     );
     ui.painter().text(
         rect.center() + egui::vec2(0.0, 58.0),
         egui::Align2::CENTER_CENTER,
         "Artist",
         egui::FontId::proportional(11.0),
-        theme::TEXT_DIM,
+        theme::text_dim(),
     );
 
     if response.clicked() {
@@ -2670,7 +2670,7 @@ pub fn render_help(
         let search_rect = ui
             .allocate_exact_size(egui::vec2(search_width, 36.0), egui::Sense::click())
             .0;
-        ui.painter().rect_filled(search_rect, 18.0, theme::BG_INPUT);
+        ui.painter().rect_filled(search_rect, 18.0, theme::bg_input());
         let text_rect = egui::Rect::from_min_size(
             search_rect.min + egui::vec2(12.0, 4.0),
             egui::vec2(search_rect.width() - 24.0, search_rect.height() - 8.0),
@@ -2680,7 +2680,7 @@ pub fn render_help(
             egui::TextEdit::singleline(search_query)
                 .hint_text(
                     egui::RichText::new("Search shortcuts...")
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::text_muted()),
                 )
                 .frame(false)
                 .font(egui::FontId::proportional(13.0)),
@@ -2729,7 +2729,7 @@ pub fn render_help(
                         egui::RichText::new(*cat_name)
                             .size(16.0)
                             .strong()
-                            .color(theme::GREEN),
+                            .color(theme::green()),
                     );
                 });
                 ui.add_space(8.0);
@@ -2747,14 +2747,14 @@ pub fn render_help(
                         egui::Align2::LEFT_CENTER,
                         "KEYS",
                         egui::FontId::monospace(11.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                     ui.painter().text(
                         header_rect.left_center() + egui::vec2(200.0, 0.0),
                         egui::Align2::LEFT_CENTER,
                         "DESCRIPTION",
                         egui::FontId::monospace(11.0),
-                        theme::TEXT_DIM,
+                        theme::text_dim(),
                     );
                 });
 
@@ -2767,7 +2767,7 @@ pub fn render_help(
                         div_rect.size(),
                     ),
                     0.0,
-                    theme::DIVIDER,
+                    theme::divider(),
                 );
 
                 for binding in bindings {
@@ -2781,7 +2781,7 @@ pub fn render_help(
 
                     if ui.allocate_rect(row_rect, egui::Sense::hover()).hovered() {
                         ui.painter()
-                            .rect_filled(row_rect, 4.0, theme::BG_CARD);
+                            .rect_filled(row_rect, 4.0, theme::bg_card());
                     }
 
                     let key_strs: Vec<_> = binding
@@ -2798,7 +2798,7 @@ pub fn render_help(
                                 egui::Align2::LEFT_CENTER,
                                 "|",
                                 egui::FontId::proportional(11.0),
-                                theme::TEXT_MUTED,
+                                theme::text_muted(),
                             );
                             x_offset += 16.0;
                         }
@@ -2825,7 +2825,7 @@ pub fn render_help(
                             egui::Align2::CENTER_CENTER,
                             key_str,
                             egui::FontId::monospace(11.0),
-                            theme::TEXT_PRIMARY,
+                            theme::text_primary(),
                         );
                         x_offset += badge_text_width + 4.0;
                     }
@@ -2835,14 +2835,14 @@ pub fn render_help(
                         egui::Align2::LEFT_CENTER,
                         binding.description,
                         egui::FontId::proportional(13.0),
-                        theme::TEXT_SECONDARY,
+                        theme::text_secondary(),
                     );
 
                     let div = egui::Rect::from_min_size(
                         row_rect.left_bottom() + egui::vec2(24.0, 0.0),
                         egui::vec2(row_rect.width() - 48.0, 1.0),
                     );
-                    ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                    ui.painter().rect_filled(div, 0.0, theme::divider());
                 }
             }
 
@@ -2852,7 +2852,7 @@ pub fn render_help(
                 ui.label(
                     egui::RichText::new("Tip: Use vim-style count prefixes (e.g. 5j, 10k, 3gg)")
                         .size(12.0)
-                        .color(theme::TEXT_HINT)
+                        .color(theme::text_hint())
                         .italics(),
                 );
             });

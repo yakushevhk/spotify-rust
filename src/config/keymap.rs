@@ -486,5 +486,13 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
             description: "Open Spotify link from clipboard",
             category: CommandCategory::Pages,
         },
+
+        // === Theme ===
+        CommandBinding {
+            command: CommandId("switch_theme"),
+            keybindings: vec![KeyBinding::Key('T')],
+            description: "Switch theme",
+            category: CommandCategory::Other,
+        },
     ]
 }

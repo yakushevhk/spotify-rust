@@ -17,14 +17,14 @@ pub fn render(
         ui.label(
             egui::RichText::new("♫")
                 .size(22.0)
-                .color(theme::GREEN),
+                .color(theme::green()),
         );
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new("Spotify Player")
                 .size(18.0)
                 .strong()
-                .color(theme::TEXT_PRIMARY),
+                .color(theme::text_primary()),
         );
     });
     ui.allocate_space(egui::vec2(ui.available_width(), 20.0));
@@ -47,7 +47,7 @@ pub fn render(
     }
 
     ui.allocate_space(egui::vec2(ui.available_width(), 12.0));
-    theme::divider(ui);
+    theme::divider_line(ui);
 
     // Playlists
     theme::section_header(ui, "PLAYLISTS");
@@ -59,16 +59,16 @@ pub fn render(
         .0;
     let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
     let btn_bg = if btn_resp.hovered() {
-        egui::Color32::from_rgb(26, 26, 26)
+        theme::bg_hover()
     } else {
-        egui::Color32::from_rgb(17, 17, 17)
+        theme::bg_dark()
     };
     ui.painter()
         .rect_filled(btn_rect, egui::CornerRadius::same(6), btn_bg);
     ui.painter().rect_stroke(
         btn_rect,
         egui::CornerRadius::same(6),
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50)),
+        egui::Stroke::new(1.0, theme::text_muted()),
         egui::StrokeKind::Outside,
     );
     ui.painter().text(
@@ -76,14 +76,14 @@ pub fn render(
         egui::Align2::LEFT_CENTER,
         "\u{2795}",
         egui::FontId::proportional(14.0),
-        theme::GREEN,
+        theme::green(),
     );
     ui.painter().text(
         btn_rect.left_center() + egui::vec2(34.0, 0.0),
         egui::Align2::LEFT_CENTER,
         "New Playlist",
         egui::FontId::proportional(13.0),
-        theme::TEXT_SECONDARY,
+        theme::text_secondary(),
     );
     if btn_resp.clicked() {
         action = Action::OpenCreatePlaylist;
@@ -109,7 +109,7 @@ pub fn render(
                             egui::Align2::LEFT_CENTER,
                             format!("📁 {}", folder.name),
                             egui::FontId::proportional(13.0),
-                            theme::TEXT_DIM,
+                            theme::text_dim(),
                         );
                     }
                 }
@@ -117,7 +117,7 @@ pub fn render(
         });
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
-    theme::divider(ui);
+    theme::divider_line(ui);
 
     // Albums
     theme::section_header(ui, "ALBUMS");
@@ -145,7 +145,7 @@ pub fn render(
         });
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
-    theme::divider(ui);
+    theme::divider_line(ui);
 
     // Artists
     theme::section_header(ui, "ARTISTS");
@@ -162,7 +162,7 @@ pub fn render(
         });
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
-    theme::divider(ui);
+    theme::divider_line(ui);
 
     // Keyboard hints
     ui.add_space(4.0);
@@ -184,14 +184,14 @@ pub fn render(
             ui.label(
                 egui::RichText::new(*key)
                     .size(10.0)
-                    .color(theme::GREEN)
+                    .color(theme::green())
                     .monospace(),
             );
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new(*desc)
                     .size(10.0)
-                    .color(theme::TEXT_HINT),
+                    .color(theme::text_hint()),
             );
         });
     }

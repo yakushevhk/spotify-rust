@@ -1,5 +1,5 @@
 pub mod keymap;
-mod theme;
+pub mod theme;
 
 const DEFAULT_CONFIG_FOLDER: &str = ".config/spotify-player";
 const DEFAULT_CACHE_FOLDER: &str = ".cache/spotify-player";
@@ -21,7 +21,7 @@ use anyhow::Context;
 use keymap::KeymapConfig;
 use theme::ThemeConfig;
 
-pub use theme::Theme;
+pub use theme::{Theme, Palette};
 
 use crate::auth::{NCSPOT_CLIENT_ID, SPOTIFY_CLIENT_ID};
 
