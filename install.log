@@ -1,0 +1,9 @@
+[23:10:42 2026-06-04] FETCHING Version 2.43.2
+[23:10:42 2026-06-04] CREATING /Users/yakushev/.spicetify
+[23:10:42 2026-06-04] DOWNLOADING https://github.com/spicetify/cli/releases/download/v2.43.2/spicetify-2.43.2-darwin-arm64.tar.gz
+[23:10:43 2026-06-04] EXTRACTING /Users/yakushev/.spicetify/spicetify.tar.gz
+[23:10:43 2026-06-04] SETTING EXECUTABLE PERMISSIONS TO /Users/yakushev/.spicetify/spicetify
+[23:10:43 2026-06-04] REMOVING /Users/yakushev/.spicetify/spicetify.tar.gz
+[23:10:43 2026-06-04] APPENDING /Users/yakushev/.spicetify to PATH in /Users/yakushev/.zshrc
+[23:10:43 2026-06-04] spicetify v2.43.2 was installed successfully to /Users/yakushev/.spicetify
+[23:10:43 2026-06-04] Run 'spicetify --help' to get started

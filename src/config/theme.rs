@@ -73,27 +73,27 @@ fn default_foreground() -> String { "#ffffff".to_string() }
 fn default_accent() -> String { "#1ed760".to_string() }
 fn default_accent_hover() -> String { "#2de16e".to_string() }
 fn default_accent_dark() -> String { "#19b450".to_string() }
-fn default_bg_dark() -> String { "#0c0c0c".to_string() }
-fn default_bg_card() -> String { "#121212".to_string() }
-fn default_bg_hover() -> String { "#1c1c1c".to_string() }
-fn default_bg_active() -> String { "#262626".to_string() }
-fn default_bg_elevated() -> String { "#181818".to_string() }
-fn default_bg_input() -> String { "#232323".to_string() }
-fn default_bg_selected() -> String { "#1a1a1a".to_string() }
+fn default_bg_dark() -> String { "#000000".to_string() }
+fn default_bg_card() -> String { "#000000".to_string() }
+fn default_bg_hover() -> String { "#0a0a0a".to_string() }
+fn default_bg_active() -> String { "#0c0c0c".to_string() }
+fn default_bg_elevated() -> String { "#000000".to_string() }
+fn default_bg_input() -> String { "#050505".to_string() }
+fn default_bg_selected() -> String { "#080808".to_string() }
 fn default_text_primary() -> String { "#ffffff".to_string() }
 fn default_text_secondary() -> String { "#b3b3b3".to_string() }
 fn default_text_dim() -> String { "#737373".to_string() }
 fn default_text_muted() -> String { "#4d4d4d".to_string() }
 fn default_text_hint() -> String { "#666666".to_string() }
-fn default_border() -> String { "#212121".to_string() }
-fn default_divider() -> String { "#282828".to_string() }
+fn default_border() -> String { "#0a0a0a".to_string() }
+fn default_divider() -> String { "#0c0c0c".to_string() }
 fn default_success() -> String { "#1ed760".to_string() }
 fn default_error() -> String { "#ff5050".to_string() }
 fn default_warning() -> String { "#ffc832".to_string() }
 fn default_lyrics_current() -> String { "#1db954".to_string() }
 fn default_lyrics_played() -> String { "#555555".to_string() }
 fn default_lyrics_upcoming() -> String { "#cccccc".to_string() }
-fn default_lyrics_bg() -> String { "#0a0a0a".to_string() }
+fn default_lyrics_bg() -> String { "#000000".to_string() }
 
 impl Default for Palette {
     fn default() -> Self {

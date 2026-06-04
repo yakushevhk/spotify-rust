@@ -113,7 +113,7 @@ impl CommandPalette {
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
-                    egui::Color32::from_black_alpha(120),
+                    theme::with_alpha(theme::bg_black(), 120),
                 );
             });
 

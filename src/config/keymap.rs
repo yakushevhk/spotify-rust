@@ -365,13 +365,21 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
         },
         CommandBinding {
             command: CommandId("shuffle"),
-            keybindings: vec![],
+            keybindings: vec![KeyBinding::Modified {
+                key: 's',
+                ctrl: true,
+                shift: false,
+            }],
             description: "Toggle shuffle",
             category: CommandCategory::Playback,
         },
         CommandBinding {
             command: CommandId("repeat"),
-            keybindings: vec![],
+            keybindings: vec![KeyBinding::Modified {
+                key: 'r',
+                ctrl: true,
+                shift: false,
+            }],
             description: "Toggle repeat",
             category: CommandCategory::Playback,
         },
@@ -462,7 +470,11 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
         },
         CommandBinding {
             command: CommandId("go_to_radio"),
-            keybindings: vec![],
+            keybindings: vec![KeyBinding::Modified {
+                key: 'R',
+                ctrl: true,
+                shift: true,
+            }],
             description: "Go to radio based on selected track",
             category: CommandCategory::Actions,
         },

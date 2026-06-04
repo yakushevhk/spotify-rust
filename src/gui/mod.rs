@@ -1376,7 +1376,7 @@ impl eframe::App for SpotifyApp {
         egui::SidePanel::left("sidebar")
             .resizable(false)
             .exact_width(theme::SIDEBAR_WIDTH)
-            .frame(egui::Frame::new().fill(theme::bg_dark()).inner_margin(egui::Margin::ZERO))
+            .frame(egui::Frame::new().fill(theme::bg_black()).inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
                 action = sidebar::render(ui, &self.current_view, &self.state);
             });
@@ -1834,7 +1834,7 @@ impl SpotifyApp {
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
-                    egui::Color32::from_black_alpha(120),
+                    theme::with_alpha(theme::bg_black(), 120),
                 );
             });
 
@@ -2086,7 +2086,7 @@ impl SpotifyApp {
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
-                    egui::Color32::from_black_alpha(120),
+                    theme::with_alpha(theme::bg_black(), 120),
                 );
             });
 
@@ -2289,7 +2289,7 @@ impl SpotifyApp {
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
-                    egui::Color32::from_black_alpha(120),
+                    theme::with_alpha(theme::bg_black(), 120),
                 );
             });
 
@@ -2592,7 +2592,7 @@ impl SpotifyApp {
             .interactable(false)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
-                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+                ui.painter().rect_filled(overlay_rect, 0, theme::with_alpha(theme::bg_black(), 120));
             });
 
         egui::Area::new(egui::Id::new("browse_playlists_popup"))
@@ -2689,7 +2689,7 @@ impl SpotifyApp {
             .fixed_pos(screen.min).interactable(false)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
-                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+                ui.painter().rect_filled(overlay_rect, 0, theme::with_alpha(theme::bg_black(), 120));
             });
 
         egui::Area::new(egui::Id::new("browse_artists_popup"))
@@ -2772,7 +2772,7 @@ impl SpotifyApp {
             .fixed_pos(screen.min).interactable(false)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
-                ui.painter().rect_filled(overlay_rect, 0, egui::Color32::from_black_alpha(120));
+                ui.painter().rect_filled(overlay_rect, 0, theme::with_alpha(theme::bg_black(), 120));
             });
 
         egui::Area::new(egui::Id::new("browse_albums_popup"))

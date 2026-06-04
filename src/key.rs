@@ -166,9 +166,9 @@ impl KeySequenceState {
         // Try to read a char for vim-style keys
         let ch = key_to_char(key, modifiers);
 
-        // Handle count prefix: digits 0-9
+        // Handle count prefix: digits 1-9 (vim-style, 0 is a motion, not a count)
         if let Some(c) = ch {
-            if c.is_ascii_digit() && self.pending_keys.is_empty() {
+            if c.is_ascii_digit() && c != '0' && self.pending_keys.is_empty() {
                 let digit = c.to_digit(10).unwrap() as usize;
                 let current = self.count_prefix.unwrap_or(0);
                 self.count_prefix = Some(current * 10 + digit);
@@ -182,11 +182,25 @@ impl KeySequenceState {
             }
         }
 
-        // Build the key string for matching
-        let key_str = if let Some(c) = ch {
-            c.to_string()
+        // Build the key string for matching.
+        // For Ctrl/Alt/Cmd-modified keys, format with prefix (e.g. "C-f", "C-Space").
+        // For plain keys and Shift-only, use the character directly.
+        // For special non-character keys (Home, Enter, etc.), use their name.
+        let has_modifier = modifiers.ctrl || modifiers.alt || modifiers.mac_cmd;
+        let key_str = if key == egui::Key::Space && !has_modifier {
+            "Space".to_string()
         } else {
-            format_special_key(key, modifiers)
+            match ch {
+                Some(c) if !has_modifier => {
+                    c.to_string()
+                }
+                Some(c) => {
+                    format_modified_key(c, modifiers.ctrl, modifiers.shift)
+                }
+                None => {
+                    format_special_key(key, modifiers)
+                }
+            }
         };
 
         if key_str.is_empty() {
@@ -249,27 +263,32 @@ impl KeySequenceState {
             }
         }
 
-        // Then, try single key match (only if the pending key is a single char
-        // and no sequence binding starts with this key)
-        if self.pending_keys.len() == 1 {
-            let ch = self.pending_keys.chars().next().unwrap();
-
-            // Check if any sequence starts with this key
-            let starts_sequence = keybindings.iter().any(|b| {
-                b.keybindings.iter().any(|kb| match kb {
-                    KeyBinding::Sequence(parts) => {
-                        parts.first().map_or(false, |p| p.len() == 1 && p.chars().next() == Some(ch))
-                    }
-                    _ => false,
-                })
-            });
+        // Try single key match.
+        // A pending string without spaces is a single key (might be multi-char
+        // like "Home", "C-f", "Enter"). A string with spaces is a sequence.
+        if !self.pending_keys.contains(' ') {
+            // Only single-char keys can be start of a multi-key sequence.
+            // For multi-char keys (like "Home", "C-f"), match directly.
+            let starts_sequence = self.pending_keys.len() == 1
+                && keybindings.iter().any(|b| {
+                    b.keybindings.iter().any(|kb| match kb {
+                        KeyBinding::Sequence(parts) => {
+                            parts.first().map_or(false, |p| *p == self.pending_keys)
+                        }
+                        _ => false,
+                    })
+                });
 
             if !starts_sequence {
                 for binding in keybindings {
                     for kb in &binding.keybindings {
                         match kb {
-                            KeyBinding::Key(c) if *c == ch => {
-                                return KeySequenceResult::Complete(binding.command.clone());
+                            KeyBinding::Key(c) => {
+                                if self.pending_keys.len() == 1
+                                    && self.pending_keys.chars().next() == Some(*c)
+                                {
+                                    return KeySequenceResult::Complete(binding.command.clone());
+                                }
                             }
                             KeyBinding::Modified { key, ctrl, shift } => {
                                 let expected = format_modified_key(*key, *ctrl, *shift);
@@ -409,7 +428,11 @@ fn format_modified_key(key: char, ctrl: bool, shift: bool) -> String {
     if shift {
         s.push_str("S-");
     }
-    s.push(key);
+    if key == ' ' {
+        s.push_str("Space");
+    } else {
+        s.push(key);
+    }
     s
 }
 

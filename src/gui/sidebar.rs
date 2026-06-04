@@ -10,21 +10,9 @@ pub fn render(
 ) -> Action {
     let mut action = Action::None;
 
-    // Gradient background
+    // Solid black background (AMOLED)
     let full_rect = ui.max_rect();
-    let bg_top = theme::bg_dark();
-    let bg_bottom = theme::background();
-    let steps = 8;
-    let step_h = full_rect.height() / steps as f32;
-    for i in 0..steps {
-        let t = i as f32 / steps as f32;
-        let color = theme::lerp_color(bg_top, bg_bottom, t);
-        let step_rect = egui::Rect::from_min_size(
-            egui::pos2(full_rect.left(), full_rect.top() + i as f32 * step_h),
-            egui::vec2(full_rect.width(), step_h + 1.0),
-        );
-        ui.painter().rect_filled(step_rect, 0.0, color);
-    }
+    ui.painter().rect_filled(full_rect, 0.0, theme::bg_black());
 
     // Subtle right glow border
     let glow_rect = egui::Rect::from_min_size(

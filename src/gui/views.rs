@@ -1968,16 +1968,13 @@ fn category_card(
     let height = 180.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
-    // Gradient background for category cards
-    let (bg_top, bg_bottom) = if response.hovered() {
-        (
-            theme::lerp_color(theme::bg_card(), theme::accent(), 0.08),
-            theme::lerp_color(theme::bg_dark(), theme::accent_dark(), 0.06),
-        )
+    // Solid background for category cards
+    let bg = if response.hovered() {
+        theme::lerp_color(theme::bg_black(), theme::accent(), 0.06)
     } else {
-        (theme::bg_card(), theme::bg_dark())
+        theme::bg_black()
     };
-    theme::draw_gradient_rect_v(ui.painter(), rect, 8, bg_top, bg_bottom);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(8), bg);
 
     // Hover glow
     if response.hovered() {
@@ -3765,9 +3762,7 @@ pub fn render_artist(
                     );
 
                 let bg = if response.hovered() {
-                    theme::bg_input()
-                } else if i % 2 == 0 {
-                    theme::bg_input()
+                    theme::bg_hover()
                 } else {
                     theme::bg_black()
                 };
