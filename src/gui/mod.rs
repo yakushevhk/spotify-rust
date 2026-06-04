@@ -592,8 +592,7 @@ impl SpotifyApp {
                 PlaybackCommand::SeekForward => {
                     let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
                     let player = self.state.player.read();
-                    let current_pos = player.playback.as_ref()
-                        .and_then(|p| p.progress)
+                    let current_pos = player.playback_progress()
                         .unwrap_or(chrono::Duration::zero());
                     drop(player);
                     let new_pos = current_pos + chrono::Duration::seconds(seek_secs * count as i64);
@@ -602,8 +601,7 @@ impl SpotifyApp {
                 PlaybackCommand::SeekBackward => {
                     let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
                     let player = self.state.player.read();
-                    let current_pos = player.playback.as_ref()
-                        .and_then(|p| p.progress)
+                    let current_pos = player.playback_progress()
                         .unwrap_or(chrono::Duration::zero());
                     drop(player);
                     let new_pos = (current_pos - chrono::Duration::seconds(seek_secs * count as i64))
@@ -625,7 +623,7 @@ impl SpotifyApp {
                 }
                 PlaybackCommand::VolumeUp => {
                     let vol = self.state.player.read()
-                        .playback.as_ref()
+                        .current_playback()
                         .and_then(|p| p.device.volume_percent)
                         .unwrap_or(50) as u8;
                     let new_vol = vol.saturating_add(5).min(100);
@@ -633,7 +631,7 @@ impl SpotifyApp {
                 }
                 PlaybackCommand::VolumeDown => {
                     let vol = self.state.player.read()
-                        .playback.as_ref()
+                        .current_playback()
                         .and_then(|p| p.device.volume_percent)
                         .unwrap_or(50) as u8;
                     let new_vol = vol.saturating_sub(5);

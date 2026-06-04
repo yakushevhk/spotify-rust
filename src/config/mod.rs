@@ -330,7 +330,7 @@ impl Default for AppConfig {
             proxy: None,
             ap_port: None,
             app_refresh_duration_in_ms: 32,
-            playback_refresh_duration_in_ms: 0,
+            playback_refresh_duration_in_ms: 5000,
 
             page_size_in_rows: 20,
 

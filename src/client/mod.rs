@@ -147,7 +147,7 @@ impl AppClient {
 
                     // if playback exists, don't connect to a new device
                     if state.player.read().playback.is_some() {
-                        continue;
+                        break;
                     }
 
                     let id = match client.find_available_device().await {
@@ -402,9 +402,21 @@ impl AppClient {
                 state.data.write().user_data.user = Some(user);
             }
             ClientRequest::Player(request) => {
+                let seek_position = if let PlayerRequest::SeekTrack(pos) = &request {
+                    Some(*pos)
+                } else {
+                    None
+                };
                 let playback = state.player.read().buffered_playback.clone();
                 let playback = self.handle_player_request(request, playback).await?;
                 state.player.write().buffered_playback = playback;
+                if let Some(position_ms) = seek_position {
+                    let mut player = state.player.write();
+                    if let Some(ref mut pb) = player.playback {
+                        pb.progress = Some(position_ms);
+                    }
+                    player.playback_last_updated_time = Some(std::time::Instant::now());
+                }
                 self.update_playback(state);
             }
             ClientRequest::GetCurrentPlayback => {
