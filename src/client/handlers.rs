@@ -59,11 +59,13 @@ fn handle_playback_change_event(
         player.buffered_playback.as_ref(),
         player.currently_playing(),
     ) {
-        (Some(playback), Some(rspotify::model::PlayableItem::Track(track))) => (
-            playback,
-            PlayableId::Track(track.id.clone().expect("null track_id")),
-            track.duration,
-        ),
+        (Some(playback), Some(rspotify::model::PlayableItem::Track(track))) => {
+            let id = match track.id.clone() {
+                Some(id) => PlayableId::Track(id),
+                None => return Ok(()),
+            };
+            (playback, id, track.duration)
+        },
         (Some(playback), Some(rspotify::model::PlayableItem::Episode(episode))) => (
             playback,
             PlayableId::Episode(episode.id.clone()),
@@ -82,12 +84,14 @@ fn handle_playback_change_event(
     if let Some(queue) = player.queue.as_ref() {
         // queue needs to be updated if its playing track is different from actual playback's playing track
         if let Some(queue_track) = queue.currently_playing.as_ref() {
-            if queue_track.id().expect("null track_id") != id {
+            if let Some(qid) = queue_track.id() {
+                if qid != id {
+                    client_pub.send(ClientRequest::GetCurrentUserQueue)?;
+                }
+            } else {
                 client_pub.send(ClientRequest::GetCurrentUserQueue)?;
             }
         }
-    } else {
-        client_pub.send(ClientRequest::GetCurrentUserQueue)?;
     }
 
     Ok(())

@@ -319,6 +319,7 @@ impl CustomQueue {
                     .iter()
                     .position(|t| *t == current_track)
                     .unwrap_or(0);
+                self.batch_start = 0;
             }
             ShuffleMode::Shuffle => {
                 // Build a shuffled order with current track at front.
@@ -333,6 +334,7 @@ impl CustomQueue {
                 order.insert(0, current_track);
                 self.play_order = order;
                 self.position = 0;
+                self.batch_start = 0;
             }
             ShuffleMode::SmartShuffle(radio_tracks) => {
                 // Shuffle first, then interleave radio tracks.
@@ -365,6 +367,7 @@ impl CustomQueue {
                     self.play_order = interleaved;
                 }
                 self.position = 0;
+                self.batch_start = 0;
             }
         }
 

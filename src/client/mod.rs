@@ -1727,12 +1727,13 @@ impl AppClient {
 
         let filename = (match curr_item {
             rspotify::model::PlayableItem::Track(ref track) => {
+                let artist_name = track.album.artists.first().map_or("unknown", |a| &a.name);
+                let album_id_prefix = track.album.id.as_ref().map_or("unknown", |id| &id.id()[..6.min(id.id().len())]);
                 format!(
                     "{}-{}-cover-{}.jpg",
                     track.album.name,
-                    track.album.artists.first().unwrap().name,
-                    // first 6 characters of the album's id
-                    &track.album.id.as_ref().unwrap().id()[..6]
+                    artist_name,
+                    album_id_prefix
                 )
             }
             rspotify::model::PlayableItem::Episode(ref episode) => {
@@ -1959,7 +1960,7 @@ impl AppClient {
     /// - sort albums by the release date
     /// - sort albums by the type if `sort_artist_albums_by_type` config is enabled
     fn process_artist_albums(mut albums: Vec<Album>) -> Vec<Album> {
-        albums.sort_by(|x, y| y.release_date.partial_cmp(&x.release_date).unwrap());
+        albums.sort_by(|x, y| y.release_date.partial_cmp(&x.release_date).unwrap_or(std::cmp::Ordering::Equal));
 
         if config::get_config().app_config.sort_artist_albums_by_type {
             fn get_priority(album_type: &str) -> usize {

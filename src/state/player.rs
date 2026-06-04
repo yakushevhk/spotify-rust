@@ -34,15 +34,15 @@ impl PlayerState {
     pub fn current_playback(&self) -> Option<rspotify::model::CurrentPlaybackContext> {
         let mut playback = self.playback.clone()?;
 
-        // update the playback's progress based on the `playback_last_updated_time`
-        playback.progress = playback.progress.map(|d| {
-            d + if playback.is_playing {
-                chrono::Duration::from_std(self.playback_last_updated_time.unwrap().elapsed())
-                    .unwrap()
-            } else {
-                chrono::Duration::zero()
+        playback.progress = match (playback.progress, self.playback_last_updated_time) {
+            (Some(d), Some(last_time)) if playback.is_playing => {
+                chrono::Duration::from_std(last_time.elapsed())
+                    .ok()
+                    .map(|elapsed| d + elapsed)
             }
-        });
+            (Some(d), _) => Some(d),
+            _ => None,
+        };
 
         // update the playback's metadata based on the `buffered_playback` metadata
         if let Some(ref p) = self.buffered_playback {
@@ -65,16 +65,13 @@ impl PlayerState {
         match self.playback {
             None => None,
             Some(ref playback) => {
-                let progress = playback.progress.unwrap()
-                    + if playback.is_playing {
-                        chrono::Duration::from_std(
-                            self.playback_last_updated_time.unwrap().elapsed(),
-                        )
-                        .ok()?
-                    } else {
-                        chrono::Duration::zero()
-                    };
-                Some(progress)
+                let base = playback.progress?;
+                if !playback.is_playing {
+                    return Some(base);
+                }
+                let elapsed = self.playback_last_updated_time.map(|t| t.elapsed())?;
+                let delta = chrono::Duration::from_std(elapsed).ok()?;
+                Some(base + delta)
             }
         }
     }

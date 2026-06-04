@@ -40,7 +40,8 @@ pub async fn new_connection(
     );
     mixer.set_volume(volume);
 
-    let backend = audio_backend::find(None).expect("should be able to find an audio backend");
+    let backend = audio_backend::find(None)
+        .ok_or_else(|| anyhow::anyhow!("no audio backend found on this system"))?;
     let player_config = PlayerConfig {
         bitrate: device
             .bitrate
