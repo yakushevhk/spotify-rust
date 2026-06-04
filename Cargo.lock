@@ -835,15 +835,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chrono-humanize"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "799627e6b4d27827a814e837b9d8a504832086081806d45b1afa34dc982b023b"
-dependencies = [
- "chrono",
-]
-
-[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1868,6 +1859,15 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "fuzzy-matcher"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
+dependencies = [
+ "thread_local",
 ]
 
 [[package]]
@@ -5135,7 +5135,6 @@ dependencies = [
  "async-trait",
  "backtrace",
  "chrono",
- "chrono-humanize",
  "clap",
  "config_parser2",
  "dirs-next",
@@ -5143,6 +5142,7 @@ dependencies = [
  "egui",
  "flume",
  "futures",
+ "fuzzy-matcher",
  "html-escape",
  "image",
  "librespot-connect",

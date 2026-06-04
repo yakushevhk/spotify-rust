@@ -455,6 +455,14 @@ pub fn render(
 
                 ui.add_space(12.0);
 
+                // Mute button
+                let mute_text = if volume == 0.0 { "🔇" } else { "🔊" };
+                if ui.button(egui::RichText::new(mute_text).size(14.0)).clicked() {
+                    let _ = client_pub.send(ClientRequest::Player(PlayerRequest::ToggleMute));
+                }
+
+                ui.add_space(8.0);
+
                 // Device name label
                 ui.label(
                     egui::RichText::new(&playback.device.name)
