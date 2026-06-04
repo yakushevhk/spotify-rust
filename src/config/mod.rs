@@ -46,7 +46,7 @@ impl Configs {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, ConfigParse)]
+#[derive(Debug, Deserialize, Serialize, Clone, ConfigParse)]
 #[allow(clippy::struct_excessive_bools)]
 /// Application configurations
 pub struct AppConfig {

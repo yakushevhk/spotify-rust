@@ -139,6 +139,12 @@ pub struct SpotifyApp {
     current_theme_name: String,
     show_command_palette: bool,
     command_palette: command_palette::CommandPalette,
+    settings_tab: views::SettingsTab,
+    settings_editing: crate::config::AppConfig,
+    settings_original: crate::config::AppConfig,
+    settings_dirty: bool,
+    settings_keybinding_search: String,
+    settings_editing_keybinding: Option<usize>,
 }
 
 impl SpotifyApp {
@@ -195,6 +201,12 @@ impl SpotifyApp {
             current_theme_name,
             show_command_palette: false,
             command_palette: command_palette::CommandPalette::new(),
+            settings_tab: views::SettingsTab::General,
+            settings_editing: crate::config::get_config().app_config.clone(),
+            settings_original: crate::config::get_config().app_config.clone(),
+            settings_dirty: false,
+            settings_keybinding_search: String::new(),
+            settings_editing_keybinding: None,
         }
     }
 
@@ -1254,7 +1266,25 @@ impl eframe::App for SpotifyApp {
                     views::render_queue(ui, &self.state, &self.client_pub, &mut self.image_cache);
                 }
                 View::Settings => {
-                    views::render_settings(ui);
+                    let settings_action = views::render_settings(
+                        ui,
+                        &mut self.settings_tab,
+                        &mut self.settings_editing,
+                        &mut self.settings_dirty,
+                        &mut self.settings_keybinding_search,
+                        &mut self.settings_editing_keybinding,
+                        &self.keybindings,
+                        &self.current_theme_name,
+                        &self.client_pub,
+                    );
+                    match settings_action {
+                        views::SettingsAction::Save => self.save_settings(),
+                        views::SettingsAction::Reset => {
+                            self.settings_editing = crate::config::AppConfig::default();
+                            self.settings_dirty = true;
+                        }
+                        views::SettingsAction::None => {}
+                    }
                 }
                 View::Lyrics => {
                     action = views::render_lyrics(ui, &self.state, &self.client_pub, &mut self.image_cache);
@@ -1324,6 +1354,13 @@ impl eframe::App for SpotifyApp {
             self.show_command_palette = !self.show_command_palette;
             if self.show_command_palette {
                 self.command_palette.open();
+            }
+        }
+
+        // Settings save: Ctrl+S (works even when text input is focused)
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+            if self.current_view == View::Settings && self.settings_dirty {
+                self.save_settings();
             }
         }
 
@@ -2220,5 +2257,41 @@ impl SpotifyApp {
                     );
                 });
             });
+    }
+
+    fn save_settings(&mut self) {
+        let needs_restart = self.settings_editing.client_id != self.settings_original.client_id
+            || self.settings_editing.client_port != self.settings_original.client_port
+            || self.settings_editing.default_device != self.settings_original.default_device
+            || self.settings_editing.device.name != self.settings_original.device.name
+            || self.settings_editing.device.bitrate != self.settings_original.device.bitrate;
+
+        match crate::config::get_config_folder_path() {
+            Ok(config_folder) => {
+                let file_path = config_folder.join("app.toml");
+                match toml::to_string_pretty(&self.settings_editing) {
+                    Ok(content) => match std::fs::write(&file_path, content) {
+                        Ok(()) => {
+                            self.settings_dirty = false;
+                            self.settings_original = self.settings_editing.clone();
+                            if needs_restart {
+                                self.toast("Settings saved. Some changes require restart.".to_string());
+                            } else {
+                                self.toast("Settings saved".to_string());
+                            }
+                        }
+                        Err(e) => {
+                            self.toast(format!("Failed to save: {}", e));
+                        }
+                    },
+                    Err(e) => {
+                        self.toast(format!("Failed to serialize config: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.toast(format!("Config folder not found: {}", e));
+            }
+        }
     }
 }

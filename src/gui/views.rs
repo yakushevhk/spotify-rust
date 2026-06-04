@@ -1746,51 +1746,1042 @@ pub fn render_queue(
     }
 }
 
-pub fn render_settings(ui: &mut egui::Ui) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsTab {
+    General,
+    Playback,
+    Appearance,
+    Keybindings,
+    About,
+}
+
+pub enum SettingsAction {
+    None,
+    Save,
+    Reset,
+}
+
+impl SettingsTab {
+    fn label(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Playback => "Playback",
+            Self::Appearance => "Appearance",
+            Self::Keybindings => "Keybindings",
+            Self::About => "About",
+        }
+    }
+    fn icon(self) -> &'static str {
+        match self {
+            Self::General => "⚙",
+            Self::Playback => "▶",
+            Self::Appearance => "🎨",
+            Self::Keybindings => "⌨",
+            Self::About => "ℹ",
+        }
+    }
+    fn all() -> &'static [SettingsTab] {
+        &[
+            Self::General,
+            Self::Playback,
+            Self::Appearance,
+            Self::Keybindings,
+            Self::About,
+        ]
+    }
+}
+
+fn settings_toggle(ui: &mut egui::Ui, label: &str, value: &mut bool) -> bool {
+    let toggle_size = egui::vec2(36.0, 20.0);
+    let (toggle_rect, toggle_resp) = ui.allocate_exact_size(toggle_size, egui::Sense::click());
+    let toggle_bg = if *value {
+        theme::green()
+    } else {
+        theme::bg_active()
+    };
+    ui.painter()
+        .rect_filled(toggle_rect, egui::CornerRadius::same(10), toggle_bg);
+    let knob_x = if *value {
+        toggle_rect.right() - 10.0
+    } else {
+        toggle_rect.left() + 10.0
+    };
+    ui.painter().circle_filled(
+        egui::pos2(knob_x, toggle_rect.center().y),
+        7.0,
+        egui::Color32::from_rgb(255, 255, 255),
+    );
+    ui.add_space(8.0);
+    ui.label(
+        egui::RichText::new(label)
+            .size(13.0)
+            .color(theme::text_secondary()),
+    );
+    toggle_resp.clicked()
+}
+
+fn settings_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, hint: &str) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    ui.add(
+        egui::TextEdit::singleline(value)
+            .desired_width(f32::INFINITY)
+            .hint_text(hint)
+            .font(egui::FontId::proportional(13.0))
+            .margin(egui::Margin::symmetric(10, 8))
+            .background_color(theme::bg_input()),
+    );
+    ui.add_space(12.0);
+}
+
+fn settings_number_field_u16(ui: &mut egui::Ui, label: &str, value: &mut u16) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    let mut s = value.to_string();
+    let resp = ui.add(
+        egui::TextEdit::singleline(&mut s)
+            .desired_width(120.0)
+            .font(egui::FontId::proportional(13.0))
+            .margin(egui::Margin::symmetric(10, 8))
+            .background_color(theme::bg_input()),
+    );
+    if resp.changed() {
+        if let Ok(n) = s.parse::<u16>() {
+            *value = n;
+        }
+    }
+    ui.add_space(12.0);
+}
+
+fn settings_number_field_u8(ui: &mut egui::Ui, label: &str, value: &mut u8, min: u8, max: u8) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    let mut s = value.to_string();
+    let resp = ui.add(
+        egui::TextEdit::singleline(&mut s)
+            .desired_width(120.0)
+            .font(egui::FontId::proportional(13.0))
+            .margin(egui::Margin::symmetric(10, 8))
+            .background_color(theme::bg_input()),
+    );
+    if resp.changed() {
+        if let Ok(n) = s.parse::<u8>() {
+            *value = n.clamp(min, max);
+        }
+    }
+    ui.add_space(12.0);
+}
+
+fn settings_number_field_usize(ui: &mut egui::Ui, label: &str, value: &mut usize, min: usize, max: usize) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    let mut s = value.to_string();
+    let resp = ui.add(
+        egui::TextEdit::singleline(&mut s)
+            .desired_width(120.0)
+            .font(egui::FontId::proportional(13.0))
+            .margin(egui::Margin::symmetric(10, 8))
+            .background_color(theme::bg_input()),
+    );
+    if resp.changed() {
+        if let Ok(n) = s.parse::<usize>() {
+            *value = n.clamp(min, max);
+        }
+    }
+    ui.add_space(12.0);
+}
+
+fn settings_slider_u8(ui: &mut egui::Ui, label: &str, value: &mut u8, min: u8, max: u8) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::Slider::new(value, min..=max)
+                .fixed_decimals(0)
+                .custom_formatter(|v, _| format!("{}", v as u8)),
+        );
+        ui.label(
+            egui::RichText::new(format!("{}", value))
+                .size(13.0)
+                .monospace()
+                .color(theme::text_primary()),
+        );
+    });
+    ui.add_space(12.0);
+}
+
+fn settings_slider_u16(ui: &mut egui::Ui, label: &str, value: &mut u16, min: u16, max: u16) {
+    ui.label(
+        egui::RichText::new(label)
+            .size(12.0)
+            .color(theme::text_dim()),
+    );
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::Slider::new(value, min..=max)
+                .fixed_decimals(0),
+        );
+        ui.label(
+            egui::RichText::new(format!("{}", value))
+                .size(13.0)
+                .monospace()
+                .color(theme::text_primary()),
+        );
+    });
+    ui.add_space(12.0);
+}
+
+pub fn render_settings(
+    ui: &mut egui::Ui,
+    current_tab: &mut SettingsTab,
+    config: &mut crate::config::AppConfig,
+    dirty: &mut bool,
+    keybinding_search: &mut String,
+    editing_keybinding: &mut Option<usize>,
+    keybindings: &[crate::key::CommandBinding],
+    current_theme_name: &str,
+    _client_pub: &flume::Sender<ClientRequest>,
+) -> SettingsAction {
+    let mut action = SettingsAction::None;
+
     theme::page_title(ui, "Settings");
 
+    // Tab bar
     ui.horizontal(|ui| {
         ui.add_space(24.0);
-        let width = ui.available_width() - 48.0;
-        theme::card(ui, |ui| {
-            ui.set_width(width - 32.0);
-            ui.label(
-                egui::RichText::new("Configuration")
-                    .size(18.0)
-                    .strong()
-                    .color(theme::text_primary()),
+        for tab in SettingsTab::all() {
+            let is_selected = *current_tab == *tab;
+            let label = format!("{} {}", tab.icon(), tab.label());
+            let text_color = if is_selected {
+                theme::bg_black()
+            } else {
+                theme::text_secondary()
+            };
+            let btn_rect = ui
+                .allocate_exact_size(egui::vec2(label.len() as f32 * 9.0 + 24.0, 32.0), egui::Sense::click())
+                .0;
+            let resp = ui.allocate_rect(btn_rect, egui::Sense::click());
+            let bg = if is_selected {
+                theme::green()
+            } else if resp.hovered() {
+                theme::bg_hover()
+            } else {
+                theme::bg_card()
+            };
+            ui.painter()
+                .rect_filled(btn_rect, egui::CornerRadius::same(6), bg);
+            ui.painter().text(
+                btn_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &label,
+                egui::FontId::proportional(13.0),
+                text_color,
             );
-            ui.add_space(12.0);
-            ui.label(
-                egui::RichText::new("Edit the config files to customize the app:")
-                    .color(theme::text_secondary()),
-            );
-            ui.add_space(12.0);
+            if resp.clicked() && *current_tab != *tab {
+                *current_tab = *tab;
+            }
+            ui.add_space(4.0);
+        }
 
-            let paths = [
-                ("~/.config/spotify-player/app.toml", "Application settings"),
-                ("~/.config/spotify-player/theme.toml", "Theme configuration"),
-                ("~/.config/spotify-player/keymap.toml", "Key bindings"),
-            ];
+        // Save / Reset buttons on the right
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(24.0);
+            if *dirty {
+                // Reset button
+                let reset_rect = ui
+                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click())
+                    .0;
+                let reset_resp = ui.allocate_rect(reset_rect, egui::Sense::click());
+                let reset_bg = if reset_resp.hovered() {
+                    theme::bg_hover()
+                } else {
+                    theme::bg_card()
+                };
+                ui.painter()
+                    .rect_filled(reset_rect, egui::CornerRadius::same(6), reset_bg);
+                ui.painter().rect_stroke(
+                    reset_rect,
+                    egui::CornerRadius::same(6),
+                    egui::Stroke::new(1.0, theme::divider()),
+                    egui::StrokeKind::Outside,
+                );
+                ui.painter().text(
+                    reset_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Reset",
+                    egui::FontId::proportional(13.0),
+                    theme::text_primary(),
+                );
+                if reset_resp.clicked() {
+                    action = SettingsAction::Reset;
+                }
+                ui.add_space(8.0);
 
-            for (path, desc) in &paths {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(*path)
-                            .monospace()
-                            .size(13.0)
-                            .color(theme::green()),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!("— {desc}"))
-                            .size(12.0)
-                            .color(theme::text_dim()),
-                    );
-                });
-                ui.add_space(4.0);
+                // Save button
+                let save_rect = ui
+                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click())
+                    .0;
+                let save_resp = ui.allocate_rect(save_rect, egui::Sense::click());
+                let save_bg = if save_resp.hovered() {
+                    theme::green_hover()
+                } else {
+                    theme::green()
+                };
+                ui.painter()
+                    .rect_filled(save_rect, egui::CornerRadius::same(6), save_bg);
+                ui.painter().text(
+                    save_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Save",
+                    egui::FontId::proportional(13.0),
+                    theme::bg_black(),
+                );
+                if save_resp.clicked() {
+                    action = SettingsAction::Save;
+                }
+            } else {
+                ui.label(
+                    egui::RichText::new("No changes")
+                        .size(12.0)
+                        .color(theme::text_dim()),
+                );
             }
         });
     });
+
+    ui.add_space(16.0);
+
+    // Divider
+    let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
+    ui.painter().rect_filled(div_rect, 0.0, theme::divider());
+
+    ui.add_space(8.0);
+
+    match current_tab {
+        SettingsTab::General => render_settings_general(ui, config, dirty),
+        SettingsTab::Playback => render_settings_playback(ui, config, dirty),
+        SettingsTab::Appearance => render_settings_appearance(ui, config, dirty, current_theme_name),
+        SettingsTab::Keybindings => {
+            render_settings_keybindings(ui, keybinding_search, editing_keybinding, keybindings)
+        }
+        SettingsTab::About => render_settings_about(ui),
+    }
+
+    action
+}
+
+fn render_settings_general(
+    ui: &mut egui::Ui,
+    config: &mut crate::config::AppConfig,
+    dirty: &mut bool,
+) {
+    egui::ScrollArea::vertical()
+        .id_salt("settings_general")
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+
+            // Connection section
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Connection")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    let old_client_id = config.client_id.clone().unwrap_or_default();
+                    let mut client_id_str = old_client_id.clone();
+                    settings_text_field(ui, "Client ID", &mut client_id_str, "Spotify app client ID");
+                    if client_id_str != old_client_id {
+                        config.client_id = Some(client_id_str);
+                    }
+
+                    let old_port = config.client_port;
+                    settings_number_field_u16(ui, "Client Port", &mut config.client_port);
+                    if config.client_port != old_port {
+                        *dirty = true;
+                    }
+
+                    let old_device = config.default_device.clone();
+                    settings_text_field(
+                        ui,
+                        "Default Device",
+                        &mut config.default_device,
+                        "Device name for Spotify connect",
+                    );
+                    if config.default_device != old_device {
+                        *dirty = true;
+                    }
+                });
+            });
+
+            ui.add_space(20.0);
+
+            // Device section
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Device")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    let old_name = config.device.name.clone();
+                    settings_text_field(ui, "Device Name", &mut config.device.name, "spotify-player");
+                    if config.device.name != old_name {
+                        *dirty = true;
+                    }
+
+                    // Bitrate dropdown
+                    ui.label(
+                        egui::RichText::new("Bitrate")
+                            .size(12.0)
+                            .color(theme::text_dim()),
+                    );
+                    ui.add_space(4.0);
+                    let bitrate_options = [96u16, 160, 320];
+                    let current_bitrate = config.device.bitrate;
+                    let selected_label = format!("{} kbps", current_bitrate);
+                    egui::ComboBox::from_id_salt("bitrate_select")
+                        .selected_text(&selected_label)
+                        .width(120.0)
+                        .show_ui(ui, |ui| {
+                            for &opt in &bitrate_options {
+                                let label = format!("{} kbps", opt);
+                                if ui
+                                    .selectable_value(&mut config.device.bitrate, opt, &label)
+                                    .changed()
+                                {
+                                    *dirty = true;
+                                }
+                            }
+                        });
+                    ui.add_space(12.0);
+
+                    if settings_toggle(ui, "Autoplay", &mut config.device.autoplay) {
+                        *dirty = true;
+                    }
+                    ui.add_space(4.0);
+
+                    if settings_toggle(ui, "Normalization", &mut config.device.normalization) {
+                        *dirty = true;
+                    }
+                    ui.add_space(4.0);
+                });
+            });
+
+            ui.add_space(20.0);
+
+            // Behavior section
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Behavior")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    if settings_toggle(ui, "Enable media control", &mut config.enable_media_control) {
+                        *dirty = true;
+                    }
+                    ui.add_space(4.0);
+
+                    if settings_toggle(ui, "Enable cover image cache", &mut config.enable_cover_image_cache) {
+                        *dirty = true;
+                    }
+                    ui.add_space(4.0);
+
+                    let old_limit = config.tracks_playback_limit;
+                    settings_number_field_usize(
+                        ui,
+                        "Tracks playback limit",
+                        &mut config.tracks_playback_limit,
+                        1,
+                        50,
+                    );
+                    if config.tracks_playback_limit != old_limit {
+                        *dirty = true;
+                    }
+
+                    let old_seek = config.seek_duration_secs;
+                    settings_number_field_u16(ui, "Seek duration (seconds)", &mut config.seek_duration_secs);
+                    if config.seek_duration_secs != old_seek {
+                        *dirty = true;
+                    }
+
+                    let old_step = config.volume_scroll_step;
+                    settings_number_field_u8(ui, "Volume scroll step", &mut config.volume_scroll_step, 1, 20);
+                    if config.volume_scroll_step != old_step {
+                        *dirty = true;
+                    }
+                });
+            });
+
+            ui.add_space(24.0);
+        });
+}
+
+fn render_settings_playback(
+    ui: &mut egui::Ui,
+    config: &mut crate::config::AppConfig,
+    dirty: &mut bool,
+) {
+    egui::ScrollArea::vertical()
+        .id_salt("settings_playback")
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+
+            // Volume & Device
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Volume & Device")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    settings_slider_u8(ui, "Default Volume", &mut config.device.volume, 0, 100);
+
+                    if settings_toggle(ui, "Audio cache", &mut config.device.audio_cache) {
+                        *dirty = true;
+                    }
+                    ui.add_space(4.0);
+                });
+            });
+
+            ui.add_space(20.0);
+
+            // Format templates
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Format Templates")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    let old_format = config.playback_format.clone();
+                    settings_text_field(
+                        ui,
+                        "Playback format",
+                        &mut config.playback_format,
+                        "{status} {track} • {artists}",
+                    );
+                    if config.playback_format != old_format {
+                        *dirty = true;
+                    }
+
+                    // Preview
+                    ui.label(
+                        egui::RichText::new("Preview:")
+                            .size(11.0)
+                            .color(theme::text_dim()),
+                    );
+                    let preview = config
+                        .playback_format
+                        .replace("{status}", "▶")
+                        .replace("{track}", "Bohemian Rhapsody")
+                        .replace("{artists}", "Queen")
+                        .replace("{album}", "A Night at the Opera")
+                        .replace("{liked}", "♥")
+                        .replace("{genres}", "rock, classic")
+                        .replace("{metadata}", "vol:50%");
+                    ui.label(
+                        egui::RichText::new(&preview)
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(12.0);
+                });
+            });
+
+            ui.add_space(24.0);
+        });
+}
+
+fn render_settings_appearance(
+    ui: &mut egui::Ui,
+    config: &mut crate::config::AppConfig,
+    dirty: &mut bool,
+    _current_theme_name: &str,
+) {
+    egui::ScrollArea::vertical()
+        .id_salt("settings_appearance")
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+
+            // Theme
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Theme")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    ui.label(
+                        egui::RichText::new("Current theme")
+                            .size(12.0)
+                            .color(theme::text_dim()),
+                    );
+                    ui.add_space(4.0);
+
+                    let built_in = theme::built_in_themes();
+                    let theme_config = crate::config::get_config();
+                    let custom_themes: Vec<_> = theme_config.theme_config.themes.clone();
+
+                    let mut all_theme_names: Vec<String> = built_in
+                        .iter()
+                        .map(|t| t.name.to_string())
+                        .collect();
+                    for ct in &custom_themes {
+                        all_theme_names.push(ct.name.clone());
+                    }
+
+                    let current = config.theme.clone();
+                    egui::ComboBox::from_id_salt("theme_select")
+                        .selected_text(&current)
+                        .width(200.0)
+                        .show_ui(ui, |ui| {
+                            for name in &all_theme_names {
+                                if ui
+                                    .selectable_value(&mut config.theme, name.clone(), name)
+                                    .changed()
+                                {
+                                    *dirty = true;
+                                }
+                            }
+                        });
+
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new("Use T or Ctrl+Shift+P → 'Switch Theme' for live preview")
+                            .size(11.0)
+                            .color(theme::text_dim()),
+                    );
+                });
+            });
+
+            ui.add_space(20.0);
+
+            // Layout
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Library Layout")
+                        .size(16.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(12.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    settings_slider_u16(
+                        ui,
+                        "Playlist section width (%)",
+                        &mut config.layout.library.playlist_percent,
+                        10,
+                        80,
+                    );
+
+                    settings_slider_u16(
+                        ui,
+                        "Album section width (%)",
+                        &mut config.layout.library.album_percent,
+                        10,
+                        80,
+                    );
+                });
+            });
+
+            ui.add_space(24.0);
+        });
+}
+
+fn render_settings_keybindings(
+    ui: &mut egui::Ui,
+    keybinding_search: &mut String,
+    editing_keybinding: &mut Option<usize>,
+    keybindings: &[crate::key::CommandBinding],
+) {
+    // Search bar
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let search_width = (ui.available_width() - 48.0).min(400.0);
+        let search_rect = ui
+            .allocate_exact_size(egui::vec2(search_width, 36.0), egui::Sense::click())
+            .0;
+        ui.painter()
+            .rect_filled(search_rect, 18.0, theme::bg_input());
+        let text_rect = egui::Rect::from_min_size(
+            search_rect.min + egui::vec2(12.0, 4.0),
+            egui::vec2(search_rect.width() - 24.0, search_rect.height() - 8.0),
+        );
+        ui.put(
+            text_rect,
+            egui::TextEdit::singleline(keybinding_search)
+                .hint_text(
+                    egui::RichText::new("Search keybindings...").color(theme::text_muted()),
+                )
+                .frame(false)
+                .font(egui::FontId::proportional(13.0)),
+        );
+    });
+    ui.add_space(12.0);
+
+    let filter = keybinding_search.to_lowercase();
+
+    // Group by category
+    let category_order = [
+        crate::key::CommandCategory::Navigation,
+        crate::key::CommandCategory::Playback,
+        crate::key::CommandCategory::Sorting,
+        crate::key::CommandCategory::Actions,
+        crate::key::CommandCategory::Pages,
+        crate::key::CommandCategory::Other,
+    ];
+
+    egui::ScrollArea::vertical()
+        .id_salt("settings_keybindings")
+        .show(ui, |ui| {
+            let mut binding_idx = 0usize;
+
+            for cat in &category_order {
+                let items: Vec<_> = keybindings
+                    .iter()
+                    .filter(|b| b.category == *cat)
+                    .filter(|b| {
+                        filter.is_empty()
+                            || b.description.to_lowercase().contains(&filter)
+                            || b.command.0.to_lowercase().contains(&filter)
+                            || b.keybindings.iter().any(|kb| {
+                                kb.display_string().to_lowercase().contains(&filter)
+                            })
+                    })
+                    .collect();
+
+                if items.is_empty() {
+                    binding_idx += keybindings.iter().filter(|b| b.category == *cat).count();
+                    continue;
+                }
+
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(
+                        egui::RichText::new(cat.display_name())
+                            .size(14.0)
+                            .strong()
+                            .color(theme::green()),
+                    );
+                });
+                ui.add_space(6.0);
+
+                for binding in &items {
+                    let is_editing = *editing_keybinding == Some(binding_idx);
+
+                    ui.horizontal(|ui| {
+                        ui.add_space(24.0);
+                        let row_width = ui.available_width() - 48.0;
+                        let row_height = 36.0;
+                        let (row_rect, _) =
+                            ui.allocate_exact_size(egui::vec2(row_width, row_height), egui::Sense::hover());
+
+                        let bg = if is_editing {
+                            theme::bg_active()
+                        } else {
+                            theme::bg_card()
+                        };
+                        ui.painter()
+                            .rect_filled(row_rect, 4.0, bg);
+
+                        // Command description
+                        ui.painter().text(
+                            row_rect.left_center() + egui::vec2(12.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            binding.description,
+                            egui::FontId::proportional(13.0),
+                            theme::text_primary(),
+                        );
+
+                        // Keybindings display
+                        // Key badges display
+                        let badge_x = row_rect.right() - 200.0;
+                        if is_editing {
+                            // Show "Press a key..." prompt
+                            ui.painter().text(
+                                egui::pos2(badge_x, row_rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                "Press a key... (Esc to cancel)",
+                                egui::FontId::proportional(12.0),
+                                theme::green(),
+                            );
+                        } else {
+                            // Render key badges
+                            let mut x = badge_x;
+                            for kb in binding.keybindings.iter() {
+                                let display = kb.display_string();
+                                let badge_w = (display.len() as f32 * 8.0) + 16.0;
+                                let badge_rect = egui::Rect::from_min_size(
+                                    egui::pos2(x, row_rect.center().y - 10.0),
+                                    egui::vec2(badge_w, 20.0),
+                                );
+                                ui.painter().rect_filled(
+                                    badge_rect,
+                                    egui::CornerRadius::same(4),
+                                    theme::bg_input(),
+                                );
+                                ui.painter().rect_stroke(
+                                    badge_rect,
+                                    egui::CornerRadius::same(4),
+                                    egui::Stroke::new(1.0, theme::divider()),
+                                    egui::StrokeKind::Outside,
+                                );
+                                ui.painter().text(
+                                    badge_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    &display,
+                                    egui::FontId::monospace(11.0),
+                                    theme::text_secondary(),
+                                );
+                                x += badge_w + 4.0;
+                            }
+
+                            // Edit button
+                            let edit_rect = egui::Rect::from_center_size(
+                                egui::pos2(row_rect.right() - 16.0, row_rect.center().y),
+                                egui::vec2(24.0, 24.0),
+                            );
+                            let edit_resp = ui.allocate_rect(edit_rect, egui::Sense::click());
+                            let edit_bg = if edit_resp.hovered() {
+                                theme::bg_hover()
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+                            ui.painter().rect_filled(edit_rect, 4.0, edit_bg);
+                            ui.painter().text(
+                                edit_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "✎",
+                                egui::FontId::proportional(12.0),
+                                if edit_resp.hovered() {
+                                    theme::text_primary()
+                                } else {
+                                    theme::text_dim()
+                                },
+                            );
+                            if edit_resp.clicked() {
+                                *editing_keybinding = Some(binding_idx);
+                            }
+                        }
+                    });
+                    ui.add_space(2.0);
+                    binding_idx += 1;
+                }
+
+                // Skip remaining bindings for this category that weren't filtered
+                let total_in_cat = keybindings.iter().filter(|b| b.category == *cat).count();
+                binding_idx += total_in_cat - items.len();
+            }
+
+            // Handle keybinding editing (capture key presses)
+            if editing_keybinding.is_some() {
+                // Check for escape to cancel
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    *editing_keybinding = None;
+                }
+            }
+        });
+}
+
+fn render_settings_about(ui: &mut egui::Ui) {
+    egui::ScrollArea::vertical()
+        .id_salt("settings_about")
+        .show(ui, |ui| {
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let card_width = ui.available_width() - 48.0;
+                theme::card(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
+
+                    // App name and version
+                    ui.label(
+                        egui::RichText::new("spotify-player-gui")
+                            .size(20.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Version 0.1.0")
+                            .size(13.0)
+                            .color(theme::text_dim()),
+                    );
+                    ui.add_space(16.0);
+
+                    theme::divider_line(ui);
+
+                    ui.label(
+                        egui::RichText::new("A native macOS Spotify player with a dark GUI, built in Rust")
+                            .size(13.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(16.0);
+
+                    // Links
+                    ui.label(
+                        egui::RichText::new("Configuration")
+                            .size(14.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(8.0);
+
+                    let paths = [
+                        ("~/.config/spotify-player/app.toml", "Application settings"),
+                        ("~/.config/spotify-player/theme.toml", "Theme configuration"),
+                        ("~/.config/spotify-player/keymap.toml", "Key bindings"),
+                    ];
+
+                    for (path, desc) in &paths {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(*path)
+                                    .monospace()
+                                    .size(12.0)
+                                    .color(theme::green()),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!("— {desc}"))
+                                    .size(12.0)
+                                    .color(theme::text_dim()),
+                            );
+                        });
+                        ui.add_space(4.0);
+                    }
+
+                    ui.add_space(16.0);
+
+                    // Tech stack
+                    ui.label(
+                        egui::RichText::new("Built with")
+                            .size(14.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(8.0);
+
+                    let tech = [
+                        ("Rust", "Systems language"),
+                        ("egui / eframe", "Immediate mode GUI"),
+                        ("librespot", "Spotify client library"),
+                        ("rspotify", "Spotify Web API client"),
+                    ];
+
+                    for (name, desc) in &tech {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(*name)
+                                    .monospace()
+                                    .size(12.0)
+                                    .color(theme::green()),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!("— {desc}"))
+                                    .size(12.0)
+                                    .color(theme::text_dim()),
+                            );
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
+            });
+
+            ui.add_space(24.0);
+        });
 }
 
 pub fn render_lyrics(
