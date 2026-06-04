@@ -1,4 +1,4 @@
-mod keymap;
+pub mod keymap;
 mod theme;
 
 const DEFAULT_CONFIG_FOLDER: &str = ".config/spotify-player";

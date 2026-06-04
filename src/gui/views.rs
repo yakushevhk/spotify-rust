@@ -2655,3 +2655,207 @@ fn artist_card(
 
     response
 }
+
+pub fn render_help(
+    ui: &mut egui::Ui,
+    keybindings: &[crate::key::CommandBinding],
+    search_query: &mut String,
+) {
+    theme::page_title(ui, "Keyboard Shortcuts");
+
+    // Search bar
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let search_width = (ui.available_width() - 48.0).min(400.0);
+        let search_rect = ui
+            .allocate_exact_size(egui::vec2(search_width, 36.0), egui::Sense::click())
+            .0;
+        ui.painter().rect_filled(search_rect, 18.0, theme::BG_INPUT);
+        let text_rect = egui::Rect::from_min_size(
+            search_rect.min + egui::vec2(12.0, 4.0),
+            egui::vec2(search_rect.width() - 24.0, search_rect.height() - 8.0),
+        );
+        ui.put(
+            text_rect,
+            egui::TextEdit::singleline(search_query)
+                .hint_text(
+                    egui::RichText::new("Search shortcuts...")
+                        .color(theme::TEXT_MUTED),
+                )
+                .frame(false)
+                .font(egui::FontId::proportional(13.0)),
+        );
+    });
+    ui.add_space(16.0);
+
+    let filter = search_query.to_lowercase();
+
+    let mut categories: Vec<(&str, Vec<&crate::key::CommandBinding>)> = Vec::new();
+    let category_order = [
+        crate::key::CommandCategory::Navigation,
+        crate::key::CommandCategory::Playback,
+        crate::key::CommandCategory::Sorting,
+        crate::key::CommandCategory::Actions,
+        crate::key::CommandCategory::Pages,
+        crate::key::CommandCategory::Other,
+    ];
+
+    for cat in &category_order {
+        let items: Vec<_> = keybindings
+            .iter()
+            .filter(|b| b.category == *cat)
+            .filter(|b| {
+                filter.is_empty()
+                    || b.description.to_lowercase().contains(&filter)
+                    || b.command.0.to_lowercase().contains(&filter)
+                    || b.keybindings.iter().any(|kb| {
+                        kb.display_string().to_lowercase().contains(&filter)
+                    })
+            })
+            .collect();
+        if !items.is_empty() {
+            categories.push((cat.display_name(), items));
+        }
+    }
+
+    egui::ScrollArea::vertical()
+        .id_salt("help_scroll")
+        .show(ui, |ui| {
+            for (cat_name, bindings) in &categories {
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(
+                        egui::RichText::new(*cat_name)
+                            .size(16.0)
+                            .strong()
+                            .color(theme::GREEN),
+                    );
+                });
+                ui.add_space(8.0);
+
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    let header_rect = ui
+                        .allocate_exact_size(
+                            egui::vec2(ui.available_width() - 48.0, 24.0),
+                            egui::Sense::hover(),
+                        )
+                        .0;
+                    ui.painter().text(
+                        header_rect.left_center() + egui::vec2(8.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        "KEYS",
+                        egui::FontId::monospace(11.0),
+                        theme::TEXT_DIM,
+                    );
+                    ui.painter().text(
+                        header_rect.left_center() + egui::vec2(200.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        "DESCRIPTION",
+                        egui::FontId::monospace(11.0),
+                        theme::TEXT_DIM,
+                    );
+                });
+
+                let div_rect = ui
+                    .allocate_space(egui::vec2(ui.available_width() - 48.0, 1.0))
+                    .1;
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        div_rect.min + egui::vec2(24.0, 0.0),
+                        div_rect.size(),
+                    ),
+                    0.0,
+                    theme::DIVIDER,
+                );
+
+                for binding in bindings {
+                    let row_height = 32.0;
+                    let row_rect = ui
+                        .allocate_exact_size(
+                            egui::vec2(ui.available_width(), row_height),
+                            egui::Sense::hover(),
+                        )
+                        .0;
+
+                    if ui.allocate_rect(row_rect, egui::Sense::hover()).hovered() {
+                        ui.painter()
+                            .rect_filled(row_rect, 4.0, theme::BG_CARD);
+                    }
+
+                    let key_strs: Vec<_> = binding
+                        .keybindings
+                        .iter()
+                        .map(|kb| kb.display_string())
+                        .collect();
+
+                    let mut x_offset = 32.0_f32;
+                    for (i, key_str) in key_strs.iter().enumerate() {
+                        if i > 0 {
+                            ui.painter().text(
+                                row_rect.left_center() + egui::vec2(x_offset, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                "|",
+                                egui::FontId::proportional(11.0),
+                                theme::TEXT_MUTED,
+                            );
+                            x_offset += 16.0;
+                        }
+
+                        let badge_padding = 6.0;
+                        let badge_text_width = key_str.len() as f32 * 7.5 + badge_padding * 2.0;
+                        let badge_rect = egui::Rect::from_min_size(
+                            row_rect.left_top() + egui::vec2(x_offset, 6.0),
+                            egui::vec2(badge_text_width, 20.0),
+                        );
+                        ui.painter().rect_filled(
+                            badge_rect,
+                            4.0,
+                            egui::Color32::from_rgb(30, 30, 30),
+                        );
+                        ui.painter().rect_stroke(
+                            badge_rect,
+                            4.0,
+                            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50)),
+                            egui::StrokeKind::Outside,
+                        );
+                        ui.painter().text(
+                            badge_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            key_str,
+                            egui::FontId::monospace(11.0),
+                            theme::TEXT_PRIMARY,
+                        );
+                        x_offset += badge_text_width + 4.0;
+                    }
+
+                    ui.painter().text(
+                        row_rect.left_center() + egui::vec2(200.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        binding.description,
+                        egui::FontId::proportional(13.0),
+                        theme::TEXT_SECONDARY,
+                    );
+
+                    let div = egui::Rect::from_min_size(
+                        row_rect.left_bottom() + egui::vec2(24.0, 0.0),
+                        egui::vec2(row_rect.width() - 48.0, 1.0),
+                    );
+                    ui.painter().rect_filled(div, 0.0, theme::DIVIDER);
+                }
+            }
+
+            ui.add_space(32.0);
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Tip: Use vim-style count prefixes (e.g. 5j, 10k, 3gg)")
+                        .size(12.0)
+                        .color(theme::TEXT_HINT)
+                        .italics(),
+                );
+            });
+            ui.add_space(24.0);
+        });
+}

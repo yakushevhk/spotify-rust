@@ -37,6 +37,7 @@ pub fn render(
         (View::Queue, "📋", "Queue"),
         (View::Lyrics, "🎤", "Lyrics"),
         (View::Settings, "⚙", "Settings"),
+        (View::Help, "❓", "Help"),
     ];
 
     for (view, icon, label) in &nav {
@@ -167,14 +168,15 @@ pub fn render(
     ui.add_space(4.0);
     let hints: &[(&str, &str)] = &[
         ("Space", "Play/Pause"),
-        ("\u{2190}\u{2192}", "Prev/Next"),
-        ("\u{2191}\u{2193}", "Navigate"),
+        ("j / k", "Navigate"),
+        ("gg / G", "First / Last"),
         ("Enter", "Play selected"),
+        ("?  ", "Help"),
         ("Esc", "Back"),
-        ("Ctrl+\u{2191}\u{2193}", "Volume"),
-        ("Ctrl+L", "Lyrics"),
-        ("Ctrl+Q", "Queue"),
-        ("Ctrl+/", "Search"),
+        ("Ctrl+↑↓", "Volume"),
+        ("l  ", "Lyrics"),
+        ("z  ", "Queue"),
+        ("/  ", "Search"),
     ];
     for (key, desc) in hints {
         ui.horizontal(|ui| {

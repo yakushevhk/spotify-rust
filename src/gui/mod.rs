@@ -9,6 +9,9 @@ use eframe::egui;
 use rspotify::prelude::Id;
 
 use crate::client::{ClientRequest, PlayerRequest};
+use crate::command::{self, ActionCommand, Command, NavCommand, PageCommand, PlaybackCommand, SortCommand};
+use crate::config::keymap::default_keybindings;
+use crate::key::{CommandBinding, KeySequenceResult, KeySequenceState};
 use crate::state::{self, PlayableId, SharedState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +25,7 @@ pub enum View {
     Settings,
     Lyrics,
     Artist,
+    Help,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +129,10 @@ pub struct SpotifyApp {
     toast_message: Option<String>,
     toast_expires: Option<std::time::Instant>,
     current_context_id: Option<state::ContextId>,
+    key_seq_state: KeySequenceState,
+    keybindings: Vec<CommandBinding>,
+    help_search: String,
+    view_history: Vec<View>,
 }
 
 impl SpotifyApp {
@@ -161,12 +169,19 @@ impl SpotifyApp {
             toast_message: None,
             toast_expires: None,
             current_context_id: None,
+            key_seq_state: KeySequenceState::new(),
+            keybindings: default_keybindings(),
+            help_search: String::new(),
+            view_history: Vec::new(),
         }
     }
 
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::Navigate(view) => {
+                if view != self.current_view && view != View::Help {
+                    self.view_history.push(self.current_view.clone());
+                }
                 self.current_view = view;
             }
             Action::OpenPlaylist(idx) => {
@@ -325,6 +340,401 @@ impl SpotifyApp {
                 self.create_playlist_collab = false;
             }
             Action::None => {}
+        }
+    }
+
+    fn navigate_to_view(&mut self, view: View) {
+        if view != self.current_view {
+            self.view_history.push(self.current_view.clone());
+        }
+        self.current_view = view;
+    }
+
+    fn go_back(&mut self) {
+        if let Some(prev) = self.view_history.pop() {
+            self.current_view = prev;
+        }
+    }
+
+    fn execute_command(&mut self, cmd: &Command, count: usize) {
+        match cmd {
+            Command::Navigation(nav) => match nav {
+                NavCommand::Up => {
+                    for _ in 0..count {
+                        match self.selected_track {
+                            Some(ref mut sel) if *sel > 0 => *sel -= 1,
+                            None if !self.context_tracks.is_empty() => {
+                                self.selected_track = Some(self.context_tracks.len() - 1);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                NavCommand::Down => {
+                    for _ in 0..count {
+                        match self.selected_track {
+                            Some(sel) if sel + 1 < self.context_tracks.len() => {
+                                self.selected_track = Some(sel + 1);
+                            }
+                            None if !self.context_tracks.is_empty() => {
+                                self.selected_track = Some(0);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                NavCommand::PageUp => {
+                    let page_size = 20;
+                    for _ in 0..count {
+                        match self.selected_track {
+                            Some(ref mut sel) => {
+                                *sel = sel.saturating_sub(page_size);
+                            }
+                            None if !self.context_tracks.is_empty() => {
+                                self.selected_track = Some(0);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                NavCommand::PageDown => {
+                    let page_size = 20;
+                    for _ in 0..count {
+                        match self.selected_track {
+                            Some(sel) => {
+                                let new_sel = (sel + page_size).min(self.context_tracks.len().saturating_sub(1));
+                                self.selected_track = Some(new_sel);
+                            }
+                            None if !self.context_tracks.is_empty() => {
+                                self.selected_track = Some(0);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                NavCommand::First => {
+                    if !self.context_tracks.is_empty() {
+                        self.selected_track = Some(0);
+                    }
+                }
+                NavCommand::Last => {
+                    if !self.context_tracks.is_empty() {
+                        self.selected_track = Some(self.context_tracks.len() - 1);
+                    }
+                }
+                NavCommand::FocusNext => {
+                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics];
+                    if let Some(idx) = views.iter().position(|v| *v == self.current_view) {
+                        let next = (idx + 1) % views.len();
+                        self.navigate_to_view(views[next].clone());
+                    }
+                }
+                NavCommand::FocusPrev => {
+                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics];
+                    if let Some(idx) = views.iter().position(|v| *v == self.current_view) {
+                        let prev = if idx == 0 { views.len() - 1 } else { idx - 1 };
+                        self.navigate_to_view(views[prev].clone());
+                    }
+                }
+                NavCommand::Back => {
+                    self.go_back();
+                }
+                NavCommand::Enter => {
+                    if let Some(idx) = self.selected_track {
+                        if idx < self.context_tracks.len() {
+                            let track = self.context_tracks[idx].clone();
+                            self.play_track_from_context(&track);
+                        }
+                    }
+                }
+            },
+            Command::Playback(pb) => match pb {
+                PlaybackCommand::PlayPause => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause));
+                }
+                PlaybackCommand::NextTrack => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack));
+                }
+                PlaybackCommand::PrevTrack => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack));
+                }
+                PlaybackCommand::RefreshPlayback => {
+                    let _ = self.client_pub.send(ClientRequest::GetCurrentPlayback);
+                    self.toast("Refreshing playback...".to_string());
+                }
+                PlaybackCommand::RestartClient => {
+                    #[cfg(feature = "streaming")]
+                    {
+                        let _ = self.client_pub.send(ClientRequest::RestartIntegratedClient);
+                        self.toast("Restarting client...".to_string());
+                    }
+                }
+                PlaybackCommand::MuteToggle => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::ToggleMute));
+                }
+                PlaybackCommand::SeekToStart => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(
+                        chrono::Duration::zero(),
+                    )));
+                }
+                PlaybackCommand::SeekForward => {
+                    let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
+                    let player = self.state.player.read();
+                    let current_pos = player.playback.as_ref()
+                        .and_then(|p| p.progress)
+                        .unwrap_or(chrono::Duration::zero());
+                    drop(player);
+                    let new_pos = current_pos + chrono::Duration::seconds(seek_secs * count as i64);
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
+                }
+                PlaybackCommand::SeekBackward => {
+                    let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
+                    let player = self.state.player.read();
+                    let current_pos = player.playback.as_ref()
+                        .and_then(|p| p.progress)
+                        .unwrap_or(chrono::Duration::zero());
+                    drop(player);
+                    let new_pos = (current_pos - chrono::Duration::seconds(seek_secs * count as i64))
+                        .max(chrono::Duration::zero());
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
+                }
+                PlaybackCommand::PlayRandom => {
+                    if !self.context_tracks.is_empty() {
+                        let idx = rand::random_range(0..self.context_tracks.len());
+                        let track = self.context_tracks[idx].clone();
+                        self.play_track_from_context(&track);
+                    }
+                }
+                PlaybackCommand::Shuffle => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle));
+                }
+                PlaybackCommand::Repeat => {
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Repeat));
+                }
+                PlaybackCommand::VolumeUp => {
+                    let vol = self.state.player.read()
+                        .playback.as_ref()
+                        .and_then(|p| p.device.volume_percent)
+                        .unwrap_or(50) as u8;
+                    let new_vol = vol.saturating_add(5).min(100);
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
+                }
+                PlaybackCommand::VolumeDown => {
+                    let vol = self.state.player.read()
+                        .playback.as_ref()
+                        .and_then(|p| p.device.volume_percent)
+                        .unwrap_or(50) as u8;
+                    let new_vol = vol.saturating_sub(5);
+                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
+                }
+            },
+            Command::Sorting(sort) => {
+                match sort {
+                    SortCommand::ByTitle => {
+                        let new_state = SortState { column: SortColumn::Title, direction: SortDirection::Ascending };
+                        self.apply_sort(new_state);
+                    }
+                    SortCommand::ByArtist => {
+                        let new_state = SortState { column: SortColumn::Artist, direction: SortDirection::Ascending };
+                        self.apply_sort(new_state);
+                    }
+                    SortCommand::ByAlbum => {
+                        let new_state = SortState { column: SortColumn::Album, direction: SortDirection::Ascending };
+                        self.apply_sort(new_state);
+                    }
+                    SortCommand::ByDuration => {
+                        let new_state = SortState { column: SortColumn::Duration, direction: SortDirection::Ascending };
+                        self.apply_sort(new_state);
+                    }
+                    SortCommand::ByAddedDate => {
+                        // Sort by added_at (falling back to track order)
+                        self.context_tracks.sort_by(|a, b| a.added_at.cmp(&b.added_at));
+                        self.toast("Sorted by added date".to_string());
+                    }
+                    SortCommand::Reverse => {
+                        self.context_tracks.reverse();
+                        self.toast("Reversed track order".to_string());
+                    }
+                    SortCommand::LibraryAlphabetical => {
+                        self.toast("Library sorted alphabetically".to_string());
+                    }
+                    SortCommand::LibraryRecentlyAdded => {
+                        self.toast("Library sorted by recently added".to_string());
+                    }
+                }
+            }
+            Command::Page(page) => match page {
+                PageCommand::CurrentlyPlaying => {
+                    self.update_context_tracks();
+                    if !self.context_tracks.is_empty() {
+                        // Find the currently playing track and select it
+                        let player = self.state.player.read();
+                        let current_uri = player.playback.as_ref().and_then(|p| {
+                            p.item.as_ref().map(|item| match item {
+                                rspotify::model::PlayableItem::Track(t) => {
+                                    t.id.as_ref().map(|id| id.uri()).unwrap_or_default()
+                                }
+                                rspotify::model::PlayableItem::Episode(e) => e.id.uri(),
+                                _ => String::new(),
+                            })
+                        });
+                        drop(player);
+                        if let Some(uri) = current_uri {
+                            if let Some(idx) = self.context_tracks.iter().position(|t| t.id.uri() == uri) {
+                                self.selected_track = Some(idx);
+                            }
+                        }
+                        self.navigate_to_view(View::Tracks);
+                    }
+                }
+                PageCommand::TopTracks => {
+                    self.handle_action(Action::OpenTopTracks);
+                }
+                PageCommand::RecentlyPlayed => {
+                    self.handle_action(Action::OpenRecentlyPlayed);
+                }
+                PageCommand::LikedTracks => {
+                    self.handle_action(Action::OpenLikedTracks);
+                }
+                PageCommand::Library => {
+                    self.navigate_to_view(View::Library);
+                }
+                PageCommand::Search => {
+                    self.navigate_to_view(View::Search);
+                }
+                PageCommand::Browse => {
+                    self.navigate_to_view(View::Browse);
+                }
+                PageCommand::Lyrics => {
+                    self.navigate_to_view(View::Lyrics);
+                }
+                PageCommand::Queue => {
+                    self.navigate_to_view(View::Queue);
+                }
+                PageCommand::Logs => {
+                    self.toast("Logs page not yet implemented".to_string());
+                }
+                PageCommand::Help => {
+                    self.help_search.clear();
+                    self.navigate_to_view(View::Help);
+                }
+                PageCommand::OpenSpotifyLink => {
+                    self.open_spotify_link_from_clipboard();
+                }
+            },
+            Command::Action(act) => match act {
+                ActionCommand::ShowActionsOnSelected => {
+                    if let Some(idx) = self.selected_track {
+                        if idx < self.context_tracks.len() {
+                            let track = self.context_tracks[idx].clone();
+                            let center = egui::pos2(400.0, 400.0);
+                            self.context_menu.open(
+                                context_menu::ContextTarget::Track {
+                                    track,
+                                    index: idx,
+                                    playlist_id: None,
+                                },
+                                center,
+                            );
+                        }
+                    }
+                }
+                ActionCommand::ShowActionsOnCurrent => {
+                    let player = self.state.player.read();
+                    if let Some(ref playback) = player.playback {
+                        if let Some(ref item) = playback.item {
+                            if let rspotify::model::PlayableItem::Track(t) = item {
+                                let track = crate::state::Track::try_from_full_track(t.clone());
+                                if let Some(track) = track {
+                                    let center = egui::pos2(400.0, 400.0);
+                                    self.context_menu.open(
+                                        context_menu::ContextTarget::Track {
+                                            track,
+                                            index: 0,
+                                            playlist_id: None,
+                                        },
+                                        center,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                ActionCommand::ShowActionsOnContext => {
+                    self.toast("Context actions".to_string());
+                }
+                ActionCommand::AddToQueue => {
+                    if let Some(idx) = self.selected_track {
+                        if idx < self.context_tracks.len() {
+                            let track = &self.context_tracks[idx];
+                            let _ = self.client_pub.send(ClientRequest::AddPlayableToQueue(
+                                PlayableId::Track(track.id.clone()),
+                            ));
+                            self.toast("Added to queue".to_string());
+                        }
+                    }
+                }
+                ActionCommand::CreatePlaylist => {
+                    self.handle_action(Action::OpenCreatePlaylist);
+                }
+                ActionCommand::JumpToCurrentInContext => {
+                    let player = self.state.player.read();
+                    let current_uri = player.playback.as_ref().and_then(|p| {
+                        p.item.as_ref().map(|item| match item {
+                            rspotify::model::PlayableItem::Track(t) => {
+                                t.id.as_ref().map(|id| id.uri()).unwrap_or_default()
+                            }
+                            rspotify::model::PlayableItem::Episode(e) => e.id.uri(),
+                            _ => String::new(),
+                        })
+                    });
+                    drop(player);
+                    if let Some(uri) = current_uri {
+                        if let Some(idx) = self.context_tracks.iter().position(|t| t.id.uri() == uri) {
+                            self.selected_track = Some(idx);
+                        }
+                    }
+                }
+                ActionCommand::JumpToHighlightedInContext => {
+                    // Already handled by selected_track, just a no-op toast
+                }
+            },
+        }
+    }
+
+    fn apply_sort(&mut self, new_state: SortState) {
+        if self.sort_state == Some(new_state) {
+            // Already sorted this way, toggle direction
+            let toggled = SortState {
+                column: new_state.column,
+                direction: new_state.direction.toggle(),
+            };
+            self.sort_state = Some(toggled);
+            self.context_tracks.sort_by(|a, b| toggled.compare(a, b));
+        } else {
+            self.sort_state = Some(new_state);
+            self.context_tracks.sort_by(|a, b| new_state.compare(a, b));
+        }
+        self.selected_track = None;
+    }
+
+    fn open_spotify_link_from_clipboard(&mut self) {
+        // Try to read clipboard and open a spotify link
+        // On macOS we can use pbpaste
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(output) = Command::new("pbpaste").output() {
+                if let Ok(text) = String::from_utf8(output.stdout) {
+                    let text = text.trim();
+                    if text.contains("open.spotify.com") {
+                        self.toast(format!("Opening: {}", text));
+                        // TODO: Parse and navigate to the link
+                    } else {
+                        self.toast("No Spotify link in clipboard".to_string());
+                    }
+                }
+            }
         }
     }
 
@@ -609,63 +1019,37 @@ impl eframe::App for SpotifyApp {
 
         // Keyboard shortcuts (disabled when text input is focused)
         if !ctx.wants_keyboard_input() {
-            let (space, next_track, prev_track, nav_up, nav_down, enter, escape,
-                 vol_up, vol_down, go_lyrics, go_queue, go_search) = ctx.input(|i| {
+            // Check for raw key events to feed into the key sequence state machine
+            let mut key_event: Option<(egui::Key, egui::Modifiers)> = None;
+            ctx.input(|i| {
+                for event in &i.events {
+                    if let egui::Event::Key {
+                        key,
+                        modifiers,
+                        pressed: true,
+                        ..
+                    } = event
+                    {
+                        key_event = Some((*key, *modifiers));
+                        break;
+                    }
+                }
+            });
+
+            // Process raw special keys that bypass the sequence state machine
+            let raw_keys = ctx.input(|i| {
                 (
-                    i.key_pressed(egui::Key::Space),
-                    i.key_pressed(egui::Key::ArrowRight) && !i.modifiers.ctrl,
-                    i.key_pressed(egui::Key::ArrowLeft) && !i.modifiers.ctrl,
-                    i.key_pressed(egui::Key::ArrowUp) && !i.modifiers.ctrl,
-                    i.key_pressed(egui::Key::ArrowDown) && !i.modifiers.ctrl,
-                    i.key_pressed(egui::Key::Enter),
                     i.key_pressed(egui::Key::Escape),
                     i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowUp),
                     i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowDown),
-                    i.modifiers.ctrl && i.key_pressed(egui::Key::L),
-                    i.modifiers.ctrl && i.key_pressed(egui::Key::Q),
-                    i.modifiers.ctrl && i.key_pressed(egui::Key::Slash),
                 )
             });
 
-            if space {
-                let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause));
-            }
-            if next_track {
-                let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack));
-            }
-            if prev_track {
-                let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack));
-            }
-            if nav_up {
-                match self.selected_track {
-                    Some(ref mut sel) if *sel > 0 => *sel -= 1,
-                    None if !self.context_tracks.is_empty() => {
-                        self.selected_track = Some(self.context_tracks.len() - 1);
-                    }
-                    _ => {}
-                }
-            }
-            if nav_down {
-                match self.selected_track {
-                    Some(sel) if sel + 1 < self.context_tracks.len() => {
-                        self.selected_track = Some(sel + 1);
-                    }
-                    None if !self.context_tracks.is_empty() => {
-                        self.selected_track = Some(0);
-                    }
-                    _ => {}
-                }
-            }
-            if enter {
-                if let Some(idx) = self.selected_track {
-                    if idx < self.context_tracks.len() {
-                        let track = self.context_tracks[idx].clone();
-                        self.play_track_from_context(&track);
-                    }
-                }
-            }
-            if escape {
-                if self.show_create_playlist_popup {
+            if raw_keys.0 {
+                // Escape handling
+                if self.key_seq_state.is_pending() {
+                    self.key_seq_state.reset();
+                } else if self.show_create_playlist_popup {
                     self.show_create_playlist_popup = false;
                 } else if self.show_add_to_playlist_popup {
                     self.show_add_to_playlist_popup = false;
@@ -679,14 +1063,17 @@ impl eframe::App for SpotifyApp {
                         | View::Artist
                         | View::BrowseCategory { .. }
                         | View::Lyrics
-                        | View::Queue => {
-                            self.current_view = View::Library;
+                        | View::Queue
+                        | View::Help => {
+                            self.go_back();
                         }
                         _ => {}
                     }
                 }
             }
-            if vol_up {
+
+            // Volume controls via Ctrl+Arrow (keep for compatibility)
+            if raw_keys.1 {
                 let vol = self
                     .state
                     .player
@@ -700,7 +1087,7 @@ impl eframe::App for SpotifyApp {
                     .client_pub
                     .send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
             }
-            if vol_down {
+            if raw_keys.2 {
                 let vol = self
                     .state
                     .player
@@ -714,14 +1101,28 @@ impl eframe::App for SpotifyApp {
                     .client_pub
                     .send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
             }
-            if go_lyrics {
-                self.current_view = View::Lyrics;
-            }
-            if go_queue {
-                self.current_view = View::Queue;
-            }
-            if go_search {
-                self.current_view = View::Search;
+
+            // Process through key sequence state machine
+            if let Some((key, modifiers)) = key_event {
+                let (result, count) =
+                    self.key_seq_state.process_key(key, modifiers, &self.keybindings);
+                match result {
+                    KeySequenceResult::Complete(cmd_id) => {
+                        let count = count.unwrap_or(1);
+                        if let Some((cmd, _)) = command::resolve_command(&cmd_id, count) {
+                            self.execute_command(&cmd, count);
+                        }
+                    }
+                    KeySequenceResult::Pending(_) => {
+                        // Will be shown as a hint
+                    }
+                    KeySequenceResult::CountPending(_, _) => {
+                        // Accumulating count
+                    }
+                    KeySequenceResult::None => {
+                        // Unrecognized key, already reset
+                    }
+                }
             }
         }
 
@@ -836,6 +1237,9 @@ impl eframe::App for SpotifyApp {
                         &mut self.context_menu,
                     );
                 }
+                View::Help => {
+                    views::render_help(ui, &self.keybindings, &mut self.help_search);
+                }
             });
         self.handle_action(action);
 
@@ -871,6 +1275,9 @@ impl eframe::App for SpotifyApp {
 
         // Render toast message
         self.render_toast(ctx);
+
+        // Render key sequence hint
+        self.render_key_hint(ctx);
     }
 }
 
@@ -1400,6 +1807,40 @@ impl SpotifyApp {
                                 .color(theme::TEXT_PRIMARY),
                         );
                     });
+                });
+            });
+    }
+
+    fn render_key_hint(&self, ctx: &egui::Context) {
+        if !self.key_seq_state.is_pending() {
+            return;
+        }
+        let display = self.key_seq_state.pending_display();
+        let hint_width = 120.0;
+        let screen = ctx.screen_rect();
+        let hint_pos = egui::pos2(
+            screen.center().x - hint_width / 2.0,
+            screen.bottom() - theme::PLAYBACK_BAR_HEIGHT - 40.0,
+        );
+
+        egui::Area::new(egui::Id::new("key_hint"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(hint_pos)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(20, 20, 20))
+                    .stroke(egui::Stroke::new(1.0, theme::GREEN))
+                    .corner_radius(egui::CornerRadius::same(4))
+                    .inner_margin(egui::Margin::symmetric(12, 6));
+
+                frame.show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("- {} -", display))
+                            .size(14.0)
+                            .monospace()
+                            .color(theme::GREEN),
+                    );
                 });
             });
     }
