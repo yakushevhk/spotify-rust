@@ -447,7 +447,7 @@ pub fn setup_theme(ctx: &egui::Context) {
         },
         hyperlink_color: p.accent,
         faint_bg_color: p.bg_card,
-        extreme_bg_color: p.background,
+        extreme_bg_color: p.bg_dark,
         code_bg_color: p.bg_card,
         warn_fg_color: p.warning,
         error_fg_color: p.error,
@@ -459,7 +459,7 @@ pub fn setup_theme(ctx: &egui::Context) {
 
     drop(p);
 
-    style.spacing.item_spacing = egui::vec2(0.0, 0.0);
+    style.spacing.item_spacing = egui::vec2(4.0, 4.0);
     style.spacing.window_margin = egui::Margin::same(0);
 
     ctx.set_style(style);

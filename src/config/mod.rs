@@ -286,7 +286,7 @@ impl Command {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            theme: "Dracula".to_owned(),
+            theme: "Spotify".to_owned(),
             // Use ncspot's client ID as a fallback for user-provided client ID
             //
             // Most of the time, using ncspot's client ID is better than user-provided one

@@ -42,8 +42,8 @@ pub fn render(
     let full_rect = ui.max_rect();
 
     // Gradient background from dark to slightly lighter
-    let bg_top = theme::with_alpha(theme::bg_dark(), 220);
-    let bg_bottom = theme::with_alpha(theme::background(), 240);
+    let bg_top = theme::bg_dark();
+    let bg_bottom = theme::background();
     let steps = 6;
     let step_h = full_rect.height() / steps as f32;
     for i in 0..steps {

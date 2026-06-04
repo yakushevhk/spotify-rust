@@ -12,8 +12,8 @@ pub fn render(
 
     // Gradient background
     let full_rect = ui.max_rect();
-    let bg_top = theme::with_alpha(theme::bg_dark(), 230);
-    let bg_bottom = theme::with_alpha(theme::background(), 250);
+    let bg_top = theme::bg_dark();
+    let bg_bottom = theme::background();
     let steps = 8;
     let step_h = full_rect.height() / steps as f32;
     for i in 0..steps {
