@@ -1,3 +1,4 @@
+mod command_palette;
 mod context_menu;
 mod image_cache;
 mod playback_bar;
@@ -136,6 +137,8 @@ pub struct SpotifyApp {
     show_theme_switcher: bool,
     theme_search: String,
     current_theme_name: String,
+    show_command_palette: bool,
+    command_palette: command_palette::CommandPalette,
 }
 
 impl SpotifyApp {
@@ -190,6 +193,8 @@ impl SpotifyApp {
             show_theme_switcher: false,
             theme_search: String::new(),
             current_theme_name,
+            show_command_palette: false,
+            command_palette: command_palette::CommandPalette::new(),
         }
     }
 
@@ -1072,6 +1077,8 @@ impl eframe::App for SpotifyApp {
                 // Escape handling
                 if self.key_seq_state.is_pending() {
                     self.key_seq_state.reset();
+                } else if self.show_command_palette {
+                    self.show_command_palette = false;
                 } else if self.show_create_playlist_popup {
                     self.show_create_playlist_popup = false;
                 } else if self.show_add_to_playlist_popup {
@@ -1308,6 +1315,41 @@ impl eframe::App for SpotifyApp {
 
         // Render key sequence hint
         self.render_key_hint(ctx);
+
+        // Command Palette: Ctrl+Shift+P trigger (works even when text input is focused)
+        let cmd_palette_triggered = ctx.input(|i| {
+            i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::P)
+        });
+        if cmd_palette_triggered {
+            self.show_command_palette = !self.show_command_palette;
+            if self.show_command_palette {
+                self.command_palette.open();
+            }
+        }
+
+        // Command Palette: ':' trigger (only when no text input focused)
+        if !self.show_command_palette && !ctx.wants_keyboard_input() {
+            let colon_triggered = ctx.input(|i| {
+                i.key_pressed(egui::Key::Colon)
+            });
+            if colon_triggered {
+                self.show_command_palette = true;
+                self.command_palette.open();
+            }
+        }
+
+        // Render command palette
+        if self.show_command_palette {
+            if let Some(cmd_id) = self.command_palette.render(ctx) {
+                if let Some((cmd, count)) = crate::command::resolve_command(&cmd_id, 1) {
+                    self.command_palette.record_usage(&cmd_id);
+                    self.execute_command(&cmd, count);
+                }
+                self.show_command_palette = false;
+            }
+            // Close if flag was cleared (e.g. by Escape inside render)
+            // We need to check if the render returned None but should still be showing
+        }
     }
 }
 
