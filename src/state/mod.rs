@@ -37,6 +37,9 @@ pub struct State {
     pub vis_bands: Option<Arc<Mutex<crate::ui::streaming::VisBands>>>,
 
     pub logs: Arc<Mutex<VecDeque<String>>>,
+
+    /// A queue of toast messages to display in the GUI, written from background tasks.
+    pub toast_queue: Mutex<VecDeque<String>>,
 }
 
 impl State {
@@ -66,6 +69,7 @@ impl State {
             },
 
             logs: log_buffer,
+            toast_queue: Mutex::new(VecDeque::new()),
         }
     }
 

@@ -11,6 +11,9 @@ mod token;
 mod ui;
 mod utils;
 
+#[cfg(feature = "streaming")]
+mod streaming;
+
 mod gui;
 #[cfg(feature = "media-control")]
 mod media_control;

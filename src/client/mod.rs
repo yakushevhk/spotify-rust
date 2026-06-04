@@ -442,6 +442,8 @@ impl AppClient {
                     let local_device = Device {
                         id: session.device_id().to_string(),
                         name: configs.app_config.device.name.clone(),
+                        is_active: true,
+                        device_type: "Computer".to_string(),
                     };
 
                     // Only add if not already in the list (avoid duplicates)

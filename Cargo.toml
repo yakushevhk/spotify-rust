@@ -6,7 +6,7 @@ description = "A native macOS Spotify player with a dark GUI, built in Rust"
 license = "MIT"
 
 [features]
-default = ["notify", "media-control"]
+default = ["notify", "media-control", "streaming"]
 notify = ["notify-rust"]
 media-control = ["souvlaki"]
 streaming = []
@@ -19,7 +19,7 @@ dirs-next = "2.0.0"
 librespot-connect = { version = "0.8.0" }
 librespot-core = { version = "0.8.0" }
 librespot-oauth = { version = "0.8.0" }
-librespot-playback = { version = "0.8.0", default-features = false, features = ["native-tls"] }
+librespot-playback = { version = "0.8.0", default-features = false, features = ["native-tls", "rodio-backend"] }
 librespot-metadata = { version = "0.8.0" }
 log = "0.4.29"
 chrono = "0.4.44"

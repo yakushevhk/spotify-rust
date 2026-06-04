@@ -1032,6 +1032,12 @@ impl eframe::App for SpotifyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
 
+        // Drain toast messages from background tasks
+        let toasts: Vec<String> = self.state.toast_queue.lock().drain(..).collect();
+        for msg in toasts {
+            self.toast(msg);
+        }
+
         if self.current_view == View::Tracks && self.context_tracks.is_empty() {
             self.update_context_tracks();
         }

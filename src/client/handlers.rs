@@ -37,7 +37,9 @@ pub async fn start_client_handler(
         tokio::task::spawn(
             async move {
                 if let Err(err) = client.handle_request(&state, request).await {
-                    tracing::error!("Failed to handle client request: {err:#}");
+                    let msg = format!("Request failed: {err:#}");
+                    tracing::error!("{msg}");
+                    state.toast_queue.lock().push_back(msg);
                     let mut data = state.data.write();
                     data.shows_loading = false;
                     data.browse.categories_loading = false;
