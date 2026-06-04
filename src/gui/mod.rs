@@ -95,6 +95,7 @@ enum Action {
     BackToBrowse,
     ContextMenuNavigateArtist(state::Artist),
     ContextMenuNavigateAlbum(state::Album),
+    OpenCreatePlaylist,
     None,
 }
 
@@ -113,6 +114,16 @@ pub struct SpotifyApp {
     devices_fetched: bool,
     context_menu: context_menu::ContextMenu,
     sort_state: Option<SortState>,
+    show_create_playlist_popup: bool,
+    create_playlist_name: String,
+    create_playlist_desc: String,
+    create_playlist_public: bool,
+    create_playlist_collab: bool,
+    show_add_to_playlist_popup: bool,
+    add_to_playlist_track: Option<state::PlayableId<'static>>,
+    add_to_playlist_filter: String,
+    toast_message: Option<String>,
+    toast_expires: Option<std::time::Instant>,
 }
 
 impl SpotifyApp {
@@ -138,6 +149,16 @@ impl SpotifyApp {
             devices_fetched: false,
             context_menu: context_menu::ContextMenu::new(),
             sort_state: None,
+            show_create_playlist_popup: false,
+            create_playlist_name: String::new(),
+            create_playlist_desc: String::new(),
+            create_playlist_public: true,
+            create_playlist_collab: false,
+            show_add_to_playlist_popup: false,
+            add_to_playlist_track: None,
+            add_to_playlist_filter: String::new(),
+            toast_message: None,
+            toast_expires: None,
         }
     }
 
@@ -287,6 +308,13 @@ impl SpotifyApp {
                     .client_pub
                     .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
                 self.current_view = View::Tracks;
+            }
+            Action::OpenCreatePlaylist => {
+                self.show_create_playlist_popup = true;
+                self.create_playlist_name.clear();
+                self.create_playlist_desc.clear();
+                self.create_playlist_public = true;
+                self.create_playlist_collab = false;
             }
             Action::None => {}
         }
@@ -695,7 +723,527 @@ impl eframe::App for SpotifyApp {
                     self.context_menu.close();
                     self.handle_action(Action::ContextMenuNavigateAlbum(album));
                 }
+                context_menu::Navigation::OpenAddToPlaylist(playable_id) => {
+                    self.context_menu.close();
+                    self.show_add_to_playlist_popup = true;
+                    self.add_to_playlist_track = Some(playable_id);
+                    self.add_to_playlist_filter.clear();
+                }
             }
         }
+
+        // Render Create Playlist popup
+        if self.show_create_playlist_popup {
+            self.render_create_playlist_popup(ctx);
+        }
+
+        // Render Add to Playlist popup
+        if self.show_add_to_playlist_popup {
+            self.render_add_to_playlist_popup(ctx);
+        }
+
+        // Render toast message
+        self.render_toast(ctx);
+    }
+}
+
+impl SpotifyApp {
+    fn render_create_playlist_popup(&mut self, ctx: &egui::Context) {
+        let popup_width = 380.0;
+        let popup_height = 340.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut create = false;
+
+        egui::Area::new(egui::Id::new("create_playlist_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(17, 17, 17))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        egui::Color32::from_rgb(26, 26, 26),
+                    ))
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .inner_margin(egui::Margin::same(20));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 40.0);
+
+                    ui.label(
+                        egui::RichText::new("Create Playlist")
+                            .size(18.0)
+                            .strong()
+                            .color(theme::TEXT_PRIMARY),
+                    );
+                    ui.add_space(16.0);
+
+                    // Name input
+                    ui.label(
+                        egui::RichText::new("Name")
+                            .size(12.0)
+                            .color(theme::TEXT_DIM),
+                    );
+                    ui.add_space(4.0);
+                    let name_input = egui::TextEdit::singleline(&mut self.create_playlist_name)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Playlist name")
+                        .font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8))
+                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                    ui.add(name_input);
+                    ui.add_space(10.0);
+
+                    // Description input
+                    ui.label(
+                        egui::RichText::new("Description")
+                            .size(12.0)
+                            .color(theme::TEXT_DIM),
+                    );
+                    ui.add_space(4.0);
+                    let desc_input = egui::TextEdit::singleline(&mut self.create_playlist_desc)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Optional description")
+                        .font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8))
+                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                    ui.add(desc_input);
+                    ui.add_space(12.0);
+
+                    // Toggles
+                    ui.horizontal(|ui| {
+                        // Public toggle
+                        let toggle_size = egui::vec2(36.0, 20.0);
+                        let (toggle_rect, toggle_resp) =
+                            ui.allocate_exact_size(toggle_size, egui::Sense::click());
+                        let toggle_bg = if self.create_playlist_public {
+                            theme::GREEN
+                        } else {
+                            egui::Color32::from_rgb(50, 50, 50)
+                        };
+                        ui.painter().rect_filled(
+                            toggle_rect,
+                            egui::CornerRadius::same(10),
+                            toggle_bg,
+                        );
+                        let knob_x = if self.create_playlist_public {
+                            toggle_rect.right() - 8.0
+                        } else {
+                            toggle_rect.left() + 8.0
+                        };
+                        ui.painter().circle_filled(
+                            egui::pos2(knob_x, toggle_rect.center().y),
+                            7.0,
+                            egui::Color32::from_rgb(255, 255, 255),
+                        );
+                        if toggle_resp.clicked() {
+                            self.create_playlist_public = !self.create_playlist_public;
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new("Public")
+                                .size(13.0)
+                                .color(theme::TEXT_SECONDARY),
+                        );
+
+                        ui.add_space(20.0);
+
+                        // Collaborative toggle
+                        let (toggle_rect2, toggle_resp2) =
+                            ui.allocate_exact_size(toggle_size, egui::Sense::click());
+                        let toggle_bg2 = if self.create_playlist_collab {
+                            theme::GREEN
+                        } else {
+                            egui::Color32::from_rgb(50, 50, 50)
+                        };
+                        ui.painter().rect_filled(
+                            toggle_rect2,
+                            egui::CornerRadius::same(10),
+                            toggle_bg2,
+                        );
+                        let knob_x2 = if self.create_playlist_collab {
+                            toggle_rect2.right() - 8.0
+                        } else {
+                            toggle_rect2.left() + 8.0
+                        };
+                        ui.painter().circle_filled(
+                            egui::pos2(knob_x2, toggle_rect2.center().y),
+                            7.0,
+                            egui::Color32::from_rgb(255, 255, 255),
+                        );
+                        if toggle_resp2.clicked() {
+                            self.create_playlist_collab = !self.create_playlist_collab;
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new("Collaborative")
+                                .size(13.0)
+                                .color(theme::TEXT_SECONDARY),
+                        );
+                    });
+
+                    ui.add_space(20.0);
+
+                    // Buttons
+                    ui.horizontal(|ui| {
+                        // Cancel button
+                        let cancel_rect = ui
+                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click())
+                            .0;
+                        let cancel_resp = ui.allocate_rect(cancel_rect, egui::Sense::click());
+                        let cancel_bg = if cancel_resp.hovered() {
+                            egui::Color32::from_rgb(40, 40, 40)
+                        } else {
+                            egui::Color32::from_rgb(51, 51, 51)
+                        };
+                        ui.painter().rect_filled(
+                            cancel_rect,
+                            egui::CornerRadius::same(6),
+                            cancel_bg,
+                        );
+                        ui.painter().text(
+                            cancel_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Cancel",
+                            egui::FontId::proportional(13.0),
+                            theme::TEXT_PRIMARY,
+                        );
+                        if cancel_resp.clicked() {
+                            close = true;
+                        }
+
+                        ui.add_space(12.0);
+
+                        // Create button
+                        let can_create = !self.create_playlist_name.trim().is_empty();
+                        let create_rect = ui
+                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click())
+                            .0;
+                        let create_resp = ui.allocate_rect(create_rect, egui::Sense::click());
+                        let create_bg = if !can_create {
+                            egui::Color32::from_rgb(30, 30, 30)
+                        } else if create_resp.hovered() {
+                            theme::GREEN_HOVER
+                        } else {
+                            theme::GREEN
+                        };
+                        ui.painter().rect_filled(
+                            create_rect,
+                            egui::CornerRadius::same(6),
+                            create_bg,
+                        );
+                        let create_text_color = if can_create {
+                            egui::Color32::from_rgb(0, 0, 0)
+                        } else {
+                            theme::TEXT_MUTED
+                        };
+                        ui.painter().text(
+                            create_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Create",
+                            egui::FontId::proportional(13.0),
+                            create_text_color,
+                        );
+                        if create_resp.clicked() && can_create {
+                            create = true;
+                        }
+                    });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        // Handle click outside to close
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed()
+                    && i.pointer
+                        .latest_pos()
+                        .map(|pos| {
+                            pos.x < popup_pos.x
+                                || pos.x > popup_pos.x + popup_width
+                                || pos.y < popup_pos.y
+                                || pos.y > popup_pos.y + popup_height
+                        })
+                        .unwrap_or(false)
+            });
+            if click_outside {
+                close = true;
+            }
+        }
+
+        if create {
+            let _ = self.client_pub.send(ClientRequest::CreatePlaylist {
+                playlist_name: self.create_playlist_name.trim().to_string(),
+                public: self.create_playlist_public,
+                collab: self.create_playlist_collab,
+                desc: self.create_playlist_desc.trim().to_string(),
+            });
+            self.toast("Playlist created".to_string());
+            close = true;
+        }
+
+        if close {
+            self.show_create_playlist_popup = false;
+        }
+    }
+
+    fn render_add_to_playlist_popup(&mut self, ctx: &egui::Context) {
+        let popup_width = 360.0;
+        let popup_height = 420.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut selected_playlist_id: Option<state::PlaylistId<'static>> = None;
+
+        egui::Area::new(egui::Id::new("add_to_playlist_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(17, 17, 17))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        egui::Color32::from_rgb(26, 26, 26),
+                    ))
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .inner_margin(egui::Margin::same(16));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 32.0);
+
+                    // Header
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Add to Playlist")
+                                .size(16.0)
+                                .strong()
+                                .color(theme::TEXT_PRIMARY),
+                        );
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new("\u{2715}")
+                                                .size(14.0)
+                                                .color(theme::TEXT_DIM),
+                                        )
+                                        .fill(egui::Color32::TRANSPARENT),
+                                    )
+                                    .clicked()
+                                {
+                                    close = true;
+                                }
+                            },
+                        );
+                    });
+                    ui.add_space(10.0);
+
+                    // Search/filter input
+                    let filter_input = egui::TextEdit::singleline(&mut self.add_to_playlist_filter)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Search playlists...")
+                        .font(egui::FontId::proportional(13.0))
+                        .margin(egui::Margin::symmetric(10, 8))
+                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                    ui.add(filter_input);
+                    ui.add_space(8.0);
+
+                    // Playlist list
+                    let filter = self.add_to_playlist_filter.to_lowercase();
+                    let data = self.state.data.read();
+                    let playlists: Vec<_> = data
+                        .user_data
+                        .playlists
+                        .iter()
+                        .filter_map(|item| match item {
+                            state::PlaylistFolderItem::Playlist(p) => {
+                                if filter.is_empty()
+                                    || p.name.to_lowercase().contains(&filter)
+                                    || p.owner.0.to_lowercase().contains(&filter)
+                                {
+                                    Some(p.clone())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    drop(data);
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("add_to_playlist_list")
+                        .max_height(popup_height - 140.0)
+                        .show(ui, |ui| {
+                            if playlists.is_empty() {
+                                ui.add_space(20.0);
+                                ui.label(
+                                    egui::RichText::new("No playlists found")
+                                        .size(12.0)
+                                        .color(theme::TEXT_DIM),
+                                );
+                            }
+                            for playlist in &playlists {
+                                let item_rect = ui
+                                    .allocate_exact_size(
+                                        egui::vec2(ui.available_width(), 44.0),
+                                        egui::Sense::click(),
+                                    )
+                                    .0;
+                                let item_resp =
+                                    ui.allocate_rect(item_rect, egui::Sense::click());
+
+                                let bg = if item_resp.hovered() {
+                                    egui::Color32::from_rgb(26, 26, 26)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+                                ui.painter().rect_filled(
+                                    item_rect,
+                                    egui::CornerRadius::same(4),
+                                    bg,
+                                );
+
+                                let text_color = if item_resp.hovered() {
+                                    theme::TEXT_PRIMARY
+                                } else {
+                                    theme::TEXT_SECONDARY
+                                };
+
+                                ui.painter().text(
+                                    item_rect.left_center() + egui::vec2(8.0, -6.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    &playlist.name,
+                                    egui::FontId::proportional(13.0),
+                                    text_color,
+                                );
+                                ui.painter().text(
+                                    item_rect.left_center() + egui::vec2(8.0, 10.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    &playlist.owner.0,
+                                    egui::FontId::proportional(11.0),
+                                    theme::TEXT_DIM,
+                                );
+
+                                if item_resp.clicked() {
+                                    selected_playlist_id = Some(playlist.id.clone());
+                                }
+                            }
+                        });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        // Handle click outside
+        if !close {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed()
+                    && i.pointer
+                        .latest_pos()
+                        .map(|pos| {
+                            pos.x < popup_pos.x
+                                || pos.x > popup_pos.x + popup_width
+                                || pos.y < popup_pos.y
+                                || pos.y > popup_pos.y + popup_height
+                        })
+                        .unwrap_or(false)
+            });
+            if click_outside {
+                close = true;
+            }
+        }
+
+        if let Some(playlist_id) = selected_playlist_id {
+            if let Some(ref playable_id) = self.add_to_playlist_track {
+                let _ = self.client_pub.send(ClientRequest::AddPlayableToPlaylist(
+                    playlist_id,
+                    playable_id.clone(),
+                ));
+                self.toast("Added to playlist".to_string());
+            }
+            close = true;
+        }
+
+        if close {
+            self.show_add_to_playlist_popup = false;
+            self.add_to_playlist_track = None;
+            self.add_to_playlist_filter.clear();
+        }
+    }
+
+    fn toast(&mut self, message: String) {
+        self.toast_message = Some(message);
+        self.toast_expires = Some(
+            std::time::Instant::now() + std::time::Duration::from_secs(2),
+        );
+    }
+
+    fn render_toast(&mut self, ctx: &egui::Context) {
+        let now = std::time::Instant::now();
+        if let Some(expires) = self.toast_expires {
+            if now >= expires {
+                self.toast_message = None;
+                self.toast_expires = None;
+                return;
+            }
+        }
+        let message = match &self.toast_message {
+            Some(m) => m.clone(),
+            None => return,
+        };
+
+        let toast_width = 260.0;
+        let screen = ctx.screen_rect();
+        let toast_pos = egui::pos2(
+            screen.center().x - toast_width / 2.0,
+            screen.bottom() - 160.0,
+        );
+
+        egui::Area::new(egui::Id::new("toast"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(toast_pos)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(17, 17, 17))
+                    .stroke(egui::Stroke::new(1.0, theme::GREEN))
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .inner_margin(egui::Margin::symmetric(16, 10));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(toast_width - 32.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("\u{2713}")
+                                .size(14.0)
+                                .color(theme::GREEN),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(message)
+                                .size(13.0)
+                                .color(theme::TEXT_PRIMARY),
+                        );
+                    });
+                });
+            });
     }
 }

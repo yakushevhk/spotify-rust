@@ -9,6 +9,7 @@ use crate::state::{self, Album, Artist, Item, ItemId, PlayableId, Playback, Play
 pub enum Navigation {
     GoToArtist(Artist),
     GoToAlbum(Album),
+    OpenAddToPlaylist(PlayableId<'static>),
 }
 
 #[derive(Clone, Debug)]
@@ -556,25 +557,7 @@ impl ContextMenu {
                 None
             }
             MenuAction::AddToPlaylist(playable_id) => {
-                let data = state.data.read();
-                let playlists: Vec<_> = data
-                    .user_data
-                    .playlists
-                    .iter()
-                    .filter_map(|item| match item {
-                        state::PlaylistFolderItem::Playlist(p) => Some(p.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                drop(data);
-
-                if let Some(playlist) = playlists.first() {
-                    let _ = client_pub.send(ClientRequest::AddPlayableToPlaylist(
-                        playlist.id.clone(),
-                        playable_id,
-                    ));
-                }
-                None
+                Some(Navigation::OpenAddToPlaylist(playable_id))
             }
             MenuAction::ToggleLiked(track) => {
                 let data = state.data.read();

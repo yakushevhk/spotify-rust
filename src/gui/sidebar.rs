@@ -51,6 +51,44 @@ pub fn render(
     // Playlists
     theme::section_header(ui, "PLAYLISTS");
 
+    // New Playlist button
+    ui.add_space(4.0);
+    let btn_rect = ui
+        .allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click())
+        .0;
+    let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
+    let btn_bg = if btn_resp.hovered() {
+        egui::Color32::from_rgb(26, 26, 26)
+    } else {
+        egui::Color32::from_rgb(17, 17, 17)
+    };
+    ui.painter()
+        .rect_filled(btn_rect, egui::CornerRadius::same(6), btn_bg);
+    ui.painter().rect_stroke(
+        btn_rect,
+        egui::CornerRadius::same(6),
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50)),
+        egui::StrokeKind::Outside,
+    );
+    ui.painter().text(
+        btn_rect.left_center() + egui::vec2(12.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        "\u{2795}",
+        egui::FontId::proportional(14.0),
+        theme::GREEN,
+    );
+    ui.painter().text(
+        btn_rect.left_center() + egui::vec2(34.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        "New Playlist",
+        egui::FontId::proportional(13.0),
+        theme::TEXT_SECONDARY,
+    );
+    if btn_resp.clicked() {
+        action = Action::OpenCreatePlaylist;
+    }
+    ui.add_space(4.0);
+
     egui::ScrollArea::vertical()
         .id_salt("sidebar_playlists")
         .max_height(ui.available_height() * 0.45)
