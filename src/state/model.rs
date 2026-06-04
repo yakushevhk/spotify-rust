@@ -241,6 +241,7 @@ pub struct PlaylistFolderNode {
 pub struct Category {
     pub id: String,
     pub name: String,
+    pub icon_url: Option<String>,
 }
 
 impl Context {
@@ -710,6 +711,7 @@ impl From<rspotify::model::category::Category> for Category {
         Self {
             name: c.name,
             id: c.id,
+            icon_url: c.icons.first().map(|img| img.url.clone()),
         }
     }
 }

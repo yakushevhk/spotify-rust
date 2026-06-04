@@ -980,6 +980,249 @@ fn search_grid_card(
     );
 }
 
+pub fn render_browse(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    client_pub: &flume::Sender<ClientRequest>,
+    image_cache: &mut ImageCache,
+) -> Action {
+    let mut action = Action::None;
+
+    theme::page_title(ui, "Browse");
+
+    let data = state.data.read();
+    let categories = data.browse.categories.clone();
+    drop(data);
+
+    if categories.is_empty() {
+        let _ = client_pub.send(ClientRequest::GetBrowseCategories);
+        ui.add_space(80.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            ui.label(
+                egui::RichText::new("Loading categories...")
+                    .size(16.0)
+                    .color(theme::TEXT_DIM),
+            );
+        });
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("browse_scroll")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                });
+
+                egui::Grid::new("categories_grid")
+                    .num_columns(5)
+                    .spacing([16.0, 16.0])
+                    .show(ui, |ui| {
+                        for (i, category) in categories.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                let cover_path = image_cache::category_icon_path(category);
+                                if let (Some(path), Some(url)) = (&cover_path, &category.icon_url) {
+                                    if !path.exists() {
+                                        image_cache.request_download(url, path);
+                                    }
+                                }
+                                category_card(
+                                    ui,
+                                    &category.name,
+                                    cover_path.as_deref(),
+                                    image_cache,
+                                    || {
+                                        action = Action::OpenBrowseCategory(
+                                            category.id.clone(),
+                                            category.name.clone(),
+                                        );
+                                    },
+                                );
+                            });
+                            if (i + 1) % 5 == 0 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+
+                ui.add_space(24.0);
+            });
+    }
+
+    action
+}
+
+fn category_card(
+    ui: &mut egui::Ui,
+    name: &str,
+    icon_path: Option<&std::path::Path>,
+    image_cache: &mut ImageCache,
+    on_click: impl FnOnce(),
+) {
+    let width = 160.0;
+    let height = 180.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+
+    let bg = if response.hovered() {
+        egui::Color32::from_rgb(26, 26, 26)
+    } else {
+        egui::Color32::from_rgb(17, 17, 17)
+    };
+
+    ui.painter().rect_filled(rect, 8.0, bg);
+
+    // Icon area
+    let icon_size = width - 40.0;
+    let icon_rect = egui::Rect::from_center_size(
+        rect.center() + egui::vec2(0.0, -20.0),
+        egui::vec2(icon_size, icon_size),
+    );
+
+    let mut icon_drawn = false;
+    if let Some(path) = icon_path {
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
+            ui.painter().rect_filled(icon_rect, 8.0, theme::BG_ACTIVE);
+            egui::Image::new(texture)
+                .corner_radius(8.0)
+                .paint_at(ui, icon_rect);
+            icon_drawn = true;
+        }
+    }
+
+    if !icon_drawn {
+        ui.painter().rect_filled(icon_rect, 8.0, theme::GREEN_DARK);
+        ui.painter().text(
+            icon_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{1F3B5}",
+            egui::FontId::proportional(36.0),
+            theme::TEXT_PRIMARY,
+        );
+    }
+
+    // Category name
+    ui.painter().text(
+        rect.center() + egui::vec2(0.0, 55.0),
+        egui::Align2::CENTER_CENTER,
+        name,
+        egui::FontId::proportional(14.0),
+        theme::TEXT_PRIMARY,
+    );
+
+    if response.clicked() {
+        on_click();
+    }
+}
+
+pub fn render_browse_category_playlists(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    category_id: &str,
+    category_name: &str,
+    image_cache: &mut ImageCache,
+) -> Action {
+    let mut action = Action::None;
+
+    // Back button
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let back_rect = ui
+            .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
+        let bg = if back_rect.1.hovered() {
+            theme::BG_HOVER
+        } else {
+            theme::BG_CARD
+        };
+        ui.painter().rect_filled(back_rect.0, 6.0, bg);
+        ui.painter().text(
+            back_rect.0.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{2190} Back",
+            egui::FontId::proportional(13.0),
+            theme::TEXT_PRIMARY,
+        );
+        if back_rect.1.clicked() {
+            action = Action::BackToBrowse;
+        }
+    });
+
+    theme::page_title(ui, category_name);
+
+    let data = state.data.read();
+    let playlists = data
+        .browse
+        .category_playlists
+        .get(category_id)
+        .cloned()
+        .unwrap_or_default();
+    drop(data);
+
+    if playlists.is_empty() {
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            ui.label(
+                egui::RichText::new("Loading playlists...")
+                    .size(16.0)
+                    .color(theme::TEXT_DIM),
+            );
+        });
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("category_playlists_scroll")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                });
+
+                egui::Grid::new("category_playlists_grid")
+                    .num_columns(4)
+                    .spacing([16.0, 16.0])
+                    .show(ui, |ui| {
+                        for (i, playlist) in playlists.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                let cover_path = image_cache::playlist_cover_path(playlist);
+                                if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
+                                    if !path.exists() {
+                                        image_cache.request_download(url, path);
+                                    }
+                                }
+                                grid_card(
+                                    ui,
+                                    &playlist.name,
+                                    &playlist.owner.0,
+                                    cover_path.as_deref(),
+                                    image_cache,
+                                    || {
+                                        action = Action::OpenBrowsePlaylist(playlist.clone());
+                                    },
+                                );
+                            });
+                            if (i + 1) % 4 == 0 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+
+                ui.add_space(24.0);
+            });
+    }
+
+    action
+}
+
 pub fn render_queue(
     ui: &mut egui::Ui,
     state: &SharedState,

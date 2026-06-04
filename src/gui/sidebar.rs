@@ -33,6 +33,7 @@ pub fn render(
     let nav = [
         (View::Library, "🏠", "Library"),
         (View::Search, "🔍", "Search"),
+        (View::Browse, "📂", "Browse"),
         (View::Queue, "📋", "Queue"),
         (View::Lyrics, "🎤", "Lyrics"),
         (View::Settings, "⚙", "Settings"),

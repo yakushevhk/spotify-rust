@@ -147,3 +147,17 @@ pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
             .join(filename),
     )
 }
+
+pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
+    if category.icon_url.is_none() {
+        return None;
+    }
+    let id_prefix = &category.id[..category.id.len().min(6)];
+    let filename = format!("category-{}-icon.jpg", id_prefix).replace('/', "");
+    Some(
+        crate::config::get_config()
+            .cache_folder
+            .join("image")
+            .join(filename),
+    )
+}

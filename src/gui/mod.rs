@@ -15,6 +15,8 @@ pub enum View {
     Library,
     Tracks,
     Search,
+    Browse,
+    BrowseCategory { id: String, name: String },
     Queue,
     Settings,
     Lyrics,
@@ -31,6 +33,9 @@ enum Action {
     OpenSearchResultPlaylist(state::Playlist),
     OpenSearchResultAlbum(state::Album),
     OpenArtist(state::Artist),
+    OpenBrowseCategory(String, String),
+    OpenBrowsePlaylist(state::Playlist),
+    BackToBrowse,
     None,
 }
 
@@ -171,6 +176,28 @@ impl SpotifyApp {
                     .client_pub
                     .send(ClientRequest::GetContext(state::ContextId::Artist(artist.id)));
                 self.current_view = View::Artist;
+            }
+            Action::OpenBrowseCategory(id, name) => {
+                let _ = self.client_pub.send(ClientRequest::GetBrowseCategoryPlaylists(
+                    state::Category {
+                        id: id.clone(),
+                        name: name.clone(),
+                        icon_url: None,
+                    },
+                ));
+                self.current_view = View::BrowseCategory { id, name };
+            }
+            Action::OpenBrowsePlaylist(playlist) => {
+                self.context_title = playlist.name.clone();
+                self.context_tracks.clear();
+                self.selected_track = None;
+                let _ = self.client_pub.send(ClientRequest::GetContext(
+                    state::ContextId::Playlist(playlist.id),
+                ));
+                self.current_view = View::Tracks;
+            }
+            Action::BackToBrowse => {
+                self.current_view = View::Browse;
             }
             Action::None => {}
         }
@@ -504,6 +531,23 @@ impl eframe::App for SpotifyApp {
                         &self.client_pub,
                         &mut self.search_query,
                         &mut self.selected_track,
+                        &mut self.image_cache,
+                    );
+                }
+                View::Browse => {
+                    action = views::render_browse(
+                        ui,
+                        &self.state,
+                        &self.client_pub,
+                        &mut self.image_cache,
+                    );
+                }
+                View::BrowseCategory { ref id, ref name } => {
+                    action = views::render_browse_category_playlists(
+                        ui,
+                        &self.state,
+                        id,
+                        name,
                         &mut self.image_cache,
                     );
                 }
