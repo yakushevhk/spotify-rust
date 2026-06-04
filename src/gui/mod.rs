@@ -1,3 +1,4 @@
+mod context_menu;
 mod image_cache;
 mod playback_bar;
 mod sidebar;
@@ -36,6 +37,8 @@ enum Action {
     OpenBrowseCategory(String, String),
     OpenBrowsePlaylist(state::Playlist),
     BackToBrowse,
+    ContextMenuNavigateArtist(state::Artist),
+    ContextMenuNavigateAlbum(state::Album),
     None,
 }
 
@@ -52,6 +55,7 @@ pub struct SpotifyApp {
     artist_id: Option<String>,
     show_device_popup: bool,
     devices_fetched: bool,
+    context_menu: context_menu::ContextMenu,
 }
 
 impl SpotifyApp {
@@ -75,6 +79,7 @@ impl SpotifyApp {
             artist_id: None,
             show_device_popup: false,
             devices_fetched: false,
+            context_menu: context_menu::ContextMenu::new(),
         }
     }
 
@@ -198,6 +203,23 @@ impl SpotifyApp {
             }
             Action::BackToBrowse => {
                 self.current_view = View::Browse;
+            }
+            Action::ContextMenuNavigateArtist(artist) => {
+                self.artist_id = Some(artist.id.uri());
+                self.artist_context = None;
+                let _ = self
+                    .client_pub
+                    .send(ClientRequest::GetContext(state::ContextId::Artist(artist.id)));
+                self.current_view = View::Artist;
+            }
+            Action::ContextMenuNavigateAlbum(album) => {
+                self.context_title = album.name.clone();
+                self.context_tracks.clear();
+                self.selected_track = None;
+                let _ = self
+                    .client_pub
+                    .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
+                self.current_view = View::Tracks;
             }
             Action::None => {}
         }
@@ -511,7 +533,7 @@ impl eframe::App for SpotifyApp {
             )
             .show(ctx, |ui| match self.current_view {
                 View::Library => {
-                    action = views::render_library(ui, &self.state, &mut self.image_cache);
+                    action = views::render_library(ui, &self.state, &mut self.image_cache, &mut self.context_menu);
                 }
                 View::Tracks => {
                     views::render_tracks(
@@ -522,6 +544,8 @@ impl eframe::App for SpotifyApp {
                         &self.context_tracks,
                         &mut self.selected_track,
                         &mut self.image_cache,
+                        &mut self.context_menu,
+                        None,
                     );
                 }
                 View::Search => {
@@ -532,6 +556,7 @@ impl eframe::App for SpotifyApp {
                         &mut self.search_query,
                         &mut self.selected_track,
                         &mut self.image_cache,
+                        &mut self.context_menu,
                     );
                 }
                 View::Browse => {
@@ -540,6 +565,7 @@ impl eframe::App for SpotifyApp {
                         &self.state,
                         &self.client_pub,
                         &mut self.image_cache,
+                        &mut self.context_menu,
                     );
                 }
                 View::BrowseCategory { ref id, ref name } => {
@@ -549,6 +575,7 @@ impl eframe::App for SpotifyApp {
                         id,
                         name,
                         &mut self.image_cache,
+                        &mut self.context_menu,
                     );
                 }
                 View::Queue => {
@@ -567,9 +594,24 @@ impl eframe::App for SpotifyApp {
                         &self.client_pub,
                         &self.artist_context,
                         &mut self.image_cache,
+                        &mut self.context_menu,
                     );
                 }
             });
         self.handle_action(action);
+
+        // Render context menu overlay and handle navigation
+        if let Some(nav) = self.context_menu.render(ctx, &self.state, &self.client_pub) {
+            match nav {
+                context_menu::Navigation::GoToArtist(artist) => {
+                    self.context_menu.close();
+                    self.handle_action(Action::ContextMenuNavigateArtist(artist));
+                }
+                context_menu::Navigation::GoToAlbum(album) => {
+                    self.context_menu.close();
+                    self.handle_action(Action::ContextMenuNavigateAlbum(album));
+                }
+            }
+        }
     }
 }

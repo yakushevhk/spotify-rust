@@ -2,6 +2,7 @@ use eframe::egui;
 use rspotify::prelude::Id;
 
 use crate::client::ClientRequest;
+use crate::gui::context_menu::{self, ContextTarget};
 use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::{theme, Action};
 use crate::state::{self, PlayableId, SharedState};
@@ -10,6 +11,7 @@ pub fn render_library(
     ui: &mut egui::Ui,
     state: &SharedState,
     image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
 
@@ -84,7 +86,7 @@ pub fn render_library(
                                     image_cache.request_download(url, path);
                                 }
                             }
-                            grid_card(
+                            let response = grid_card(
                                 ui,
                                 &playlist.name,
                                 &playlist.owner.0,
@@ -94,6 +96,14 @@ pub fn render_library(
                                     action = Action::OpenSearchResultPlaylist(playlist.clone());
                                 },
                             );
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Playlist(playlist.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
                         });
                         if (i + 1) % 4 == 0 {
                             ui.end_row();
@@ -142,9 +152,17 @@ pub fn render_library(
                                     image_cache.request_download(url, path);
                                 }
                             }
-                            grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
+                            let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
                                 action = Action::OpenSearchResultAlbum(album.clone());
                             });
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Album(album.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
                         });
                         if (i + 1) % 4 == 0 {
                             ui.end_row();
@@ -214,7 +232,7 @@ fn grid_card(
     cover_path: Option<&std::path::Path>,
     image_cache: &mut ImageCache,
     on_click: impl FnOnce(),
-) {
+) -> egui::Response {
     let width = 160.0;
     let height = 200.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -314,6 +332,8 @@ fn grid_card(
     if response.clicked() {
         on_click();
     }
+
+    response
 }
 
 pub fn render_tracks(
@@ -324,6 +344,8 @@ pub fn render_tracks(
     tracks: &[state::Track],
     selected_track: &mut Option<usize>,
     image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
+    playlist_id: Option<&state::PlaylistId<'static>>,
 ) {
     use rspotify::prelude::Id;
 
@@ -497,12 +519,44 @@ pub fn render_tracks(
                 let duration = track.duration;
                 let dur_str = theme::format_duration_secs(duration.as_secs());
                 ui.painter().text(
-                    row_rect.right_center() + egui::vec2(-24.0, 0.0),
+                    row_rect.right_center() + egui::vec2(-52.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
                     theme::TEXT_DIM,
                 );
+
+                // "..." button on hover
+                let more_btn_rect = egui::Rect::from_center_size(
+                    row_rect.right_center() + egui::vec2(-16.0, 0.0),
+                    egui::vec2(24.0, 24.0),
+                );
+                if response.hovered() {
+                    let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
+                    let more_bg = if more_resp.hovered() {
+                        egui::Color32::from_rgb(40, 40, 40)
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(more_btn_rect, 12.0, more_bg);
+                    ui.painter().text(
+                        more_btn_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{22EF}",
+                        egui::FontId::proportional(14.0),
+                        theme::TEXT_DIM,
+                    );
+                    if more_resp.clicked() {
+                        context_menu.open(
+                            ContextTarget::Track {
+                                track: track.clone(),
+                                index: i,
+                                playlist_id: playlist_id.cloned(),
+                            },
+                            more_btn_rect.left_bottom(),
+                        );
+                    }
+                }
 
                 // Play button on hover
                 if response.hovered() && !is_playing {
@@ -525,6 +579,19 @@ pub fn render_tracks(
                     *selected_track = Some(i);
                 }
 
+                if response.secondary_clicked() {
+                    if let Some(click_pos) = response.interact_pointer_pos() {
+                        context_menu.open(
+                            ContextTarget::Track {
+                                track: track.clone(),
+                                index: i,
+                                playlist_id: playlist_id.cloned(),
+                            },
+                            click_pos,
+                        );
+                    }
+                }
+
                 // Row divider
                 let div = egui::Rect::from_min_size(
                     row_rect.left_bottom() + egui::vec2(24.0, 0.0),
@@ -542,6 +609,7 @@ pub fn render_search(
     search_query: &mut String,
     _selected_track: &mut Option<usize>,
     image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let action = Action::None;
 
@@ -689,12 +757,57 @@ pub fn render_search(
                             theme::TEXT_DIM,
                         );
                         ui.painter().text(
-                            row_rect.right_center() + egui::vec2(-24.0, 0.0),
+                            row_rect.right_center() + egui::vec2(-52.0, 0.0),
                             egui::Align2::RIGHT_CENTER,
                             theme::format_duration_secs(track.duration.as_secs()),
                             egui::FontId::monospace(12.0),
                             theme::TEXT_DIM,
                         );
+
+                        // "..." button on hover
+                        let more_btn_rect = egui::Rect::from_center_size(
+                            row_rect.right_center() + egui::vec2(-16.0, 0.0),
+                            egui::vec2(24.0, 24.0),
+                        );
+                        if response.hovered() {
+                            let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
+                            let more_bg = if more_resp.hovered() {
+                                egui::Color32::from_rgb(40, 40, 40)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+                            ui.painter().rect_filled(more_btn_rect, 12.0, more_bg);
+                            ui.painter().text(
+                                more_btn_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "\u{22EF}",
+                                egui::FontId::proportional(14.0),
+                                theme::TEXT_DIM,
+                            );
+                            if more_resp.clicked() {
+                                context_menu.open(
+                                    ContextTarget::Track {
+                                        track: track.clone(),
+                                        index: i,
+                                        playlist_id: None,
+                                    },
+                                    more_btn_rect.left_bottom(),
+                                );
+                            }
+                        }
+
+                        if response.secondary_clicked() {
+                            if let Some(click_pos) = response.interact_pointer_pos() {
+                                context_menu.open(
+                                    ContextTarget::Track {
+                                        track: track.clone(),
+                                        index: i,
+                                        playlist_id: None,
+                                    },
+                                    click_pos,
+                                );
+                            }
+                        }
 
                         if response.hovered() {
                             let play_btn_rect = egui::Rect::from_center_size(
@@ -781,6 +894,15 @@ pub fn render_search(
                                 theme::TEXT_DIM,
                             );
 
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Artist(artist.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
+
                             ui.add_space(12.0);
                         }
                     });
@@ -817,7 +939,15 @@ pub fn render_search(
                                     image_cache.request_download(url, path);
                                 }
                             }
-                            search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
+                            let response = search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Album(album.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
                             ui.add_space(12.0);
                         }
                     });
@@ -848,7 +978,15 @@ pub fn render_search(
                                     image_cache.request_download(url, path);
                                 }
                             }
-                            search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
+                            let response = search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Playlist(playlist.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
                             ui.add_space(12.0);
                         }
                     });
@@ -889,7 +1027,7 @@ fn search_grid_card(
     subtitle: &str,
     cover_path: Option<&std::path::Path>,
     image_cache: &mut ImageCache,
-) {
+) -> egui::Response {
     let width = 160.0;
     let height = 200.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -978,6 +1116,8 @@ fn search_grid_card(
         egui::FontId::proportional(11.0),
         theme::TEXT_DIM,
     );
+
+    response
 }
 
 pub fn render_browse(
@@ -985,6 +1125,7 @@ pub fn render_browse(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
+    _context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
 
@@ -1125,6 +1266,7 @@ pub fn render_browse_category_playlists(
     category_id: &str,
     category_name: &str,
     image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
 
@@ -1199,7 +1341,7 @@ pub fn render_browse_category_playlists(
                                         image_cache.request_download(url, path);
                                     }
                                 }
-                                grid_card(
+                                let response = grid_card(
                                     ui,
                                     &playlist.name,
                                     &playlist.owner.0,
@@ -1209,6 +1351,14 @@ pub fn render_browse_category_playlists(
                                         action = Action::OpenBrowsePlaylist(playlist.clone());
                                     },
                                 );
+                                if response.secondary_clicked() {
+                                    if let Some(click_pos) = response.interact_pointer_pos() {
+                                        context_menu.open(
+                                            ContextTarget::Playlist(playlist.clone()),
+                                            click_pos,
+                                        );
+                                    }
+                                }
                             });
                             if (i + 1) % 4 == 0 {
                                 ui.end_row();
@@ -1691,6 +1841,7 @@ pub fn render_artist(
     client_pub: &flume::Sender<ClientRequest>,
     artist_context: &Option<crate::state::Context>,
     image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
 
@@ -1941,12 +2092,58 @@ pub fn render_artist(
                 // Duration
                 let dur_str = theme::format_duration_secs(track.duration.as_secs());
                 ui.painter().text(
-                    row_rect.right_center() + egui::vec2(-24.0, 0.0),
+                    row_rect.right_center() + egui::vec2(-52.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
                     theme::TEXT_DIM,
                 );
+
+                // "..." button on hover
+                let more_btn_rect = egui::Rect::from_center_size(
+                    row_rect.right_center() + egui::vec2(-16.0, 0.0),
+                    egui::vec2(24.0, 24.0),
+                );
+                if response.hovered() {
+                    let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
+                    let more_bg = if more_resp.hovered() {
+                        egui::Color32::from_rgb(40, 40, 40)
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(more_btn_rect, 12.0, more_bg);
+                    ui.painter().text(
+                        more_btn_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{22EF}",
+                        egui::FontId::proportional(14.0),
+                        theme::TEXT_DIM,
+                    );
+                    if more_resp.clicked() {
+                        context_menu.open(
+                            ContextTarget::Track {
+                                track: track.clone(),
+                                index: i,
+                                playlist_id: None,
+                            },
+                            more_btn_rect.left_bottom(),
+                        );
+                    }
+                }
+
+                // Right-click opens context menu
+                if response.secondary_clicked() {
+                    if let Some(click_pos) = response.interact_pointer_pos() {
+                        context_menu.open(
+                            ContextTarget::Track {
+                                track: track.clone(),
+                                index: i,
+                                playlist_id: None,
+                            },
+                            click_pos,
+                        );
+                    }
+                }
 
                 // Play button on hover
                 if response.hovered() && !is_playing {
@@ -2023,9 +2220,17 @@ pub fn render_artist(
                             }
                         }
                         let album_clone = album.clone();
-                        artist_album_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
+                        let response = artist_album_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
                             action = Action::OpenSearchResultAlbum(album_clone);
                         });
+                        if response.secondary_clicked() {
+                            if let Some(click_pos) = response.interact_pointer_pos() {
+                                context_menu.open(
+                                    ContextTarget::Album(album.clone()),
+                                    click_pos,
+                                );
+                            }
+                        }
                         ui.add_space(12.0);
                     }
                 });
@@ -2069,9 +2274,17 @@ pub fn render_artist(
                                 image_cache.request_download(url, path);
                             }
                         }
-                        artist_card(ui, &related.name, cover_path.as_deref(), image_cache, || {
+                        let response = artist_card(ui, &related.name, cover_path.as_deref(), image_cache, || {
                             action = Action::OpenArtist(related_clone);
                         });
+                        if response.secondary_clicked() {
+                            if let Some(click_pos) = response.interact_pointer_pos() {
+                                context_menu.open(
+                                    ContextTarget::Artist(related.clone()),
+                                    click_pos,
+                                );
+                            }
+                        }
                         ui.add_space(12.0);
                     }
                 });
@@ -2100,7 +2313,7 @@ fn artist_album_card(
     cover_path: Option<&std::path::Path>,
     image_cache: &mut ImageCache,
     on_click: impl FnOnce(),
-) {
+) -> egui::Response {
     let width = 160.0;
     let height = 210.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -2182,6 +2395,8 @@ fn artist_album_card(
     if response.clicked() {
         on_click();
     }
+
+    response
 }
 
 fn artist_card(
@@ -2190,7 +2405,7 @@ fn artist_card(
     cover_path: Option<&std::path::Path>,
     image_cache: &mut ImageCache,
     on_click: impl FnOnce(),
-) {
+) -> egui::Response {
     let width = 160.0;
     let height = 200.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -2249,4 +2464,6 @@ fn artist_card(
     if response.clicked() {
         on_click();
     }
+
+    response
 }
