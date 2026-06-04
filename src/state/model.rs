@@ -129,6 +129,8 @@ pub struct PlaybackMetadata {
 pub struct Device {
     pub id: String,
     pub name: String,
+    pub is_active: bool,
+    pub device_type: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -332,7 +334,23 @@ impl Device {
         Some(Self {
             id: device.id?,
             name: device.name,
+            is_active: device.is_active,
+            device_type: format!("{:?}", device._type),
         })
+    }
+
+    pub fn device_icon(&self) -> &str {
+        match self.device_type.as_str() {
+            "Computer" => "\u{1F4BB}",
+            "Smartphone" => "\u{1F4F1}",
+            "Tablet" => "\u{1F4F1}",
+            "Speaker" => "\u{1F50A}",
+            "Tv" => "\u{1F4FA}",
+            "Automobile" => "\u{1F697}",
+            "GameConsole" => "\u{1F3AE}",
+            "Smartwatch" => "\u{231A}",
+            _ => "\u{1F5A5}",
+        }
     }
 }
 

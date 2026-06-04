@@ -7,7 +7,7 @@ mod views;
 use eframe::egui;
 use rspotify::prelude::Id;
 
-use crate::client::ClientRequest;
+use crate::client::{ClientRequest, PlayerRequest};
 use crate::state::{self, SharedState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +45,8 @@ pub struct SpotifyApp {
     image_cache: image_cache::ImageCache,
     artist_context: Option<crate::state::Context>,
     artist_id: Option<String>,
+    show_device_popup: bool,
+    devices_fetched: bool,
 }
 
 impl SpotifyApp {
@@ -66,6 +68,8 @@ impl SpotifyApp {
             image_cache: image_cache::ImageCache::new(),
             artist_context: None,
             artist_id: None,
+            show_device_popup: false,
+            devices_fetched: false,
         }
     }
 
@@ -231,10 +235,210 @@ impl eframe::App for SpotifyApp {
             .resizable(false)
             .exact_height(theme::PLAYBACK_BAR_HEIGHT)
             .show(ctx, |ui| {
-                if let Some(view) = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache) {
+                let bar_response = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache);
+                if let Some(view) = bar_response.navigate {
                     self.current_view = view;
                 }
+                if bar_response.device_button_clicked {
+                    if self.show_device_popup {
+                        self.show_device_popup = false;
+                    } else {
+                        self.show_device_popup = true;
+                        self.devices_fetched = false;
+                    }
+                }
             });
+
+        // Device popup overlay
+        if self.show_device_popup {
+            if !self.devices_fetched {
+                let _ = self.client_pub.send(ClientRequest::GetDevices);
+                self.devices_fetched = true;
+            }
+
+            let screen_rect = ctx.screen_rect();
+            let popup_width = 320.0;
+            let popup_max_height = 400.0;
+            let popup_x = screen_rect.right() - popup_width - 24.0;
+            let popup_y = screen_rect.bottom() - theme::PLAYBACK_BAR_HEIGHT - 8.0;
+
+            let mut close_popup = false;
+
+            egui::Area::new(egui::Id::new("device_popup"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(popup_x, popup_y))
+                .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    let frame = egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(17, 17, 17))
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(26, 26, 26)))
+                        .corner_radius(egui::CornerRadius::same(8))
+                        .inner_margin(egui::Margin::same(8));
+
+                    frame.show(ui, |ui| {
+                        ui.set_min_width(popup_width - 16.0);
+                        ui.set_max_height(popup_max_height);
+
+                        // Header
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Connect to a device")
+                                    .size(14.0)
+                                    .strong()
+                                    .color(theme::TEXT_PRIMARY),
+                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new("✕")
+                                                .size(14.0)
+                                                .color(theme::TEXT_DIM),
+                                        )
+                                        .fill(egui::Color32::TRANSPARENT),
+                                    )
+                                    .clicked()
+                                {
+                                    close_popup = true;
+                                }
+                            });
+                        });
+
+                        ui.add_space(8.0);
+
+                        // Divider
+                        let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
+                        ui.painter()
+                            .rect_filled(div_rect, 0.0, egui::Color32::from_rgb(26, 26, 26));
+
+                        ui.add_space(8.0);
+
+                        let player = self.state.player.read();
+                        let devices = &player.devices;
+
+                        if devices.is_empty() {
+                            ui.label(
+                                egui::RichText::new("No devices available")
+                                    .size(12.0)
+                                    .color(theme::TEXT_DIM),
+                            );
+                        } else {
+                            let active_device_id = player
+                                .playback
+                                .as_ref()
+                                .and_then(|p| p.device.id.clone());
+
+                            for device in devices.iter() {
+                                let is_active = device.is_active
+                                    || active_device_id
+                                        .as_ref()
+                                        .map(|id| id == &device.id)
+                                        .unwrap_or(false);
+
+                                let item_height = 52.0;
+                                let (item_rect, item_response) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width(), item_height),
+                                    egui::Sense::click(),
+                                );
+
+                                let bg = if item_response.hovered() && !is_active {
+                                    egui::Color32::from_rgb(26, 26, 26)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+
+                                ui.painter()
+                                    .rect_filled(item_rect, egui::CornerRadius::same(6), bg);
+
+                                // Device icon
+                                ui.painter().text(
+                                    item_rect.left_center() + egui::vec2(12.0, 0.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    device.device_icon(),
+                                    egui::FontId::proportional(18.0),
+                                    egui::Color32::from_rgb(100, 100, 100),
+                                );
+
+                                // Device name
+                                let name_color = if is_active {
+                                    theme::GREEN
+                                } else {
+                                    theme::TEXT_PRIMARY
+                                };
+                                ui.painter().text(
+                                    item_rect.left_center() + egui::vec2(44.0, -8.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    &device.name,
+                                    egui::FontId::proportional(13.0),
+                                    name_color,
+                                );
+
+                                // Device type + active indicator
+                                if is_active {
+                                    // Green dot
+                                    ui.painter().circle_filled(
+                                        item_rect.left_center() + egui::vec2(44.0, 12.0),
+                                        3.0,
+                                        theme::GREEN,
+                                    );
+                                    ui.painter().text(
+                                        item_rect.left_center() + egui::vec2(54.0, 12.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        format!("{} · Active", device.device_type),
+                                        egui::FontId::proportional(11.0),
+                                        theme::GREEN,
+                                    );
+                                } else {
+                                    ui.painter().text(
+                                        item_rect.left_center() + egui::vec2(44.0, 12.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        &device.device_type,
+                                        egui::FontId::proportional(11.0),
+                                        egui::Color32::from_rgb(136, 136, 136),
+                                    );
+                                }
+
+                                if item_response.clicked() && !is_active {
+                                    let _ = self.client_pub.send(ClientRequest::Player(
+                                        PlayerRequest::TransferPlayback(device.id.clone(), true),
+                                    ));
+                                    close_popup = true;
+                                }
+
+                                ui.add_space(2.0);
+                            }
+                        }
+                    });
+
+                    // Close on click outside
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        close_popup = true;
+                    }
+                });
+
+            // Close popup if clicking outside the popup area
+            if close_popup {
+                self.show_device_popup = false;
+            } else {
+                let popup_rect = ctx.screen_rect();
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer
+                            .latest_pos()
+                            .map(|pos| {
+                                // Check if click is outside popup area (approximate)
+                                pos.y < popup_rect.bottom() - theme::PLAYBACK_BAR_HEIGHT - 420.0
+                                    || pos.y > popup_rect.bottom() - theme::PLAYBACK_BAR_HEIGHT
+                                    || pos.x < popup_x - popup_width
+                                    || pos.x > popup_x
+                            })
+                            .unwrap_or(false)
+                });
+                if click_outside {
+                    self.show_device_popup = false;
+                }
+            }
+        }
 
         // Left panel — sidebar
         let mut action = Action::None;

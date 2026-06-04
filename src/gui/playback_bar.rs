@@ -7,13 +7,21 @@ use crate::gui::theme;
 use crate::gui::View;
 use crate::state::SharedState;
 
+pub struct PlaybackBarResponse {
+    pub navigate: Option<View>,
+    pub device_button_clicked: bool,
+}
+
 pub fn render(
     ui: &mut egui::Ui,
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
-) -> Option<View> {
-    let mut navigate_to = None;
+) -> PlaybackBarResponse {
+    let mut result = PlaybackBarResponse {
+        navigate: None,
+        device_button_clicked: false,
+    };
     let player = state.player.read();
     let playback = player.current_playback();
 
@@ -376,12 +384,19 @@ pub fn render(
 
                 // Lyrics button
                 if theme::icon_button(ui, "🎤", 28.0, false).clicked() {
-                    navigate_to = Some(View::Lyrics);
+                    result.navigate = Some(View::Lyrics);
+                }
+
+                ui.add_space(8.0);
+
+                // Device button
+                if theme::icon_button(ui, "🖥", 28.0, false).clicked() {
+                    result.device_button_clicked = true;
                 }
             }
         });
     });
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
-    navigate_to
+    result
 }
