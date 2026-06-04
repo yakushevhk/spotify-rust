@@ -142,7 +142,7 @@ impl AppClient {
 
                     if let Err(err) = client.retrieve_current_playback(&state, false).await {
                         tracing::error!("Failed to retrieve current playback: {err:#}");
-                        return;
+                        continue;
                     }
 
                     // if playback exists, don't connect to a new device
@@ -264,16 +264,21 @@ impl AppClient {
                 return Ok(None);
             }
             PlayerRequest::StartPlayback(p, shuffle) => {
-                // Set the playback's shuffle state if specified in the request
                 if let (Some(shuffle), Some(playback)) = (shuffle, playback.as_mut()) {
                     playback.shuffle_state = shuffle;
                 }
-                let device_id = playback.as_ref().and_then(|p| p.device_id.as_deref());
-                self.start_playback(p, device_id).await?;
-                // For some reasons, when starting a new playback, the integrated `spotify_player`
-                // client doesn't respect the initial shuffle state, so we need to manually update the state
+                let mut device_id: Option<String> = playback.as_ref().and_then(|p| p.device_id.clone());
+                #[cfg(feature = "streaming")]
+                {
+                    if device_id.is_none() && self.stream_conn.lock().is_some() {
+                        let session = self.spotify.session().await;
+                        device_id = Some(session.device_id().to_string());
+                    }
+                }
+                let device_id_ref = device_id.as_deref();
+                self.start_playback(p, device_id_ref).await?;
                 if let Some(ref playback) = playback {
-                    self.shuffle(playback.shuffle_state, device_id).await?;
+                    self.shuffle(playback.shuffle_state, device_id_ref).await?;
                 }
                 return Ok(None);
             }

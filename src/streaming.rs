@@ -1,6 +1,7 @@
 use crate::client::AppClient;
 use crate::config;
 use crate::state::SharedState;
+use crate::ui::streaming::VisualizationSink;
 use anyhow::Context;
 use librespot_connect::{ConnectConfig, Spirc};
 use librespot_core::authentication::Credentials;
@@ -57,11 +58,19 @@ pub async fn new_connection(
         session.device_id()
     );
 
+    let vis_bands = state.vis_bands.clone();
     let player = player::Player::new(
         player_config,
         session.clone(),
         mixer.get_soft_volume(),
-        move || -> Box<dyn audio_backend::Sink> { backend(None, AudioFormat::default()) },
+        move || -> Box<dyn audio_backend::Sink> {
+            let sink = backend(None, AudioFormat::S16);
+            if let Some(ref bands) = vis_bands {
+                Box::new(VisualizationSink::new(sink, bands.clone(), 44100.0))
+            } else {
+                sink
+            }
+        },
     );
 
     let player_event_task = tokio::task::spawn({
@@ -127,10 +136,7 @@ pub async fn new_connection(
         .context("initialize spirc")?;
 
     tokio::task::spawn(async move {
-        tokio::select! {
-            () = spirc_task => {},
-            _ = player_event_task => {}
-        }
+        let _ = tokio::join!(spirc_task, player_event_task);
     });
 
     tracing::info!("New streaming connection has been established!");

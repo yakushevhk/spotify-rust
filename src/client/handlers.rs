@@ -27,6 +27,7 @@ pub async fn start_client_handler(
     while let Ok(request) = client_sub.recv_async().await {
         if let Err(err) = client.check_valid_session(state).await {
             tracing::error!("{err:#}");
+            state.toast_queue.lock().push_back(format!("Session error: {err:#}"));
             continue;
         }
 
