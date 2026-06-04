@@ -197,11 +197,9 @@ pub fn render(
 
         // === CENTER: Controls + Progress ===
         let center_width = 480.0;
-        let _center_x = (ui.available_width() - center_width) / 2.0 + ui.next_widget_position().x;
-        let _ = ui.allocate_space(egui::vec2(
-            (ui.available_width() - center_width - 200.0).max(40.0),
-            0.0,
-        ));
+        let available = ui.available_width();
+        let left_pad = ((available - center_width) / 2.0).max(0.0);
+        ui.allocate_space(egui::vec2(left_pad, 0.0));
 
         ui.vertical(|ui| {
             // Playback controls row

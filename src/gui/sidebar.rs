@@ -38,6 +38,9 @@ pub fn render(
     );
 
     // Logo area
+    egui::ScrollArea::vertical()
+        .id_salt("sidebar_scroll")
+        .show(ui, |ui| {
     ui.allocate_space(egui::vec2(ui.available_width(), 16.0));
     ui.horizontal(|ui| {
         ui.add_space(20.0);
@@ -116,31 +119,28 @@ pub fn render(
     }
     ui.add_space(4.0);
 
-    egui::ScrollArea::vertical()
-        .id_salt("sidebar_playlists")
-        .max_height(ui.available_height() * 0.45)
-        .show(ui, |ui| {
-            let data = state.data.read();
-            for (i, item) in data.user_data.playlists.iter().enumerate() {
-                match item {
-                    state::PlaylistFolderItem::Playlist(playlist) => {
-                        if theme::list_item(ui, &playlist.name, &playlist.owner.0, false).clicked() {
-                            action = Action::OpenPlaylist(i);
-                        }
-                    }
-                    state::PlaylistFolderItem::Folder(folder) => {
-                        let rect = ui.allocate_space(egui::vec2(ui.available_width(), 28.0)).1;
-                        ui.painter().text(
-                            rect.left_center() + egui::vec2(16.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            format!("📁 {}", folder.name),
-                            egui::FontId::proportional(13.0),
-                            theme::text_dim(),
-                        );
+    {
+        let data = state.data.read();
+        for (i, item) in data.user_data.playlists.iter().enumerate() {
+            match item {
+                state::PlaylistFolderItem::Playlist(playlist) => {
+                    if theme::list_item(ui, &playlist.name, &playlist.owner.0, false).clicked() {
+                        action = Action::OpenPlaylist(i);
                     }
                 }
+                state::PlaylistFolderItem::Folder(folder) => {
+                    let rect = ui.allocate_space(egui::vec2(ui.available_width(), 28.0)).1;
+                    ui.painter().text(
+                        rect.left_center() + egui::vec2(16.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        format!("📁 {}", folder.name),
+                        egui::FontId::proportional(13.0),
+                        theme::text_dim(),
+                    );
+                }
             }
-        });
+        }
+    }
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
     theme::divider_line(ui);
@@ -148,27 +148,24 @@ pub fn render(
     // Albums
     theme::section_header(ui, "ALBUMS");
 
-    egui::ScrollArea::vertical()
-        .id_salt("sidebar_albums")
-        .max_height(ui.available_height() * 0.3)
-        .show(ui, |ui| {
-            let data = state.data.read();
-            for (i, album) in data.user_data.saved_albums.iter().enumerate() {
-                let sub = format!(
-                    "{} · {}",
-                    album
-                        .artists
-                        .iter()
-                        .map(|a| a.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    album.year()
-                );
-                if theme::list_item(ui, &album.name, &sub, false).clicked() {
-                    action = Action::OpenAlbum(i);
-                }
+    {
+        let data = state.data.read();
+        for (i, album) in data.user_data.saved_albums.iter().enumerate() {
+            let sub = format!(
+                "{} · {}",
+                album
+                    .artists
+                    .iter()
+                    .map(|a| a.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                album.year()
+            );
+            if theme::list_item(ui, &album.name, &sub, false).clicked() {
+                action = Action::OpenAlbum(i);
             }
-        });
+        }
+    }
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
     theme::divider_line(ui);
@@ -176,17 +173,14 @@ pub fn render(
     // Shows
     theme::section_header(ui, "SHOWS");
 
-    egui::ScrollArea::vertical()
-        .id_salt("sidebar_shows")
-        .max_height(ui.available_height() * 0.2)
-        .show(ui, |ui| {
-            let data = state.data.read();
-            for show in data.user_data.saved_shows.iter() {
-                if theme::list_item(ui, &show.name, &show.publisher, false).clicked() {
-                    action = Action::OpenShowDetail(show.clone());
-                }
+    {
+        let data = state.data.read();
+        for show in data.user_data.saved_shows.iter() {
+            if theme::list_item(ui, &show.name, &show.publisher, false).clicked() {
+                action = Action::OpenShowDetail(show.clone());
             }
-        });
+        }
+    }
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
     theme::divider_line(ui);
@@ -194,16 +188,14 @@ pub fn render(
     // Artists
     theme::section_header(ui, "ARTISTS");
 
-    egui::ScrollArea::vertical()
-        .id_salt("sidebar_artists")
-        .show(ui, |ui| {
-            let data = state.data.read();
-            for artist in data.user_data.followed_artists.iter() {
-                if theme::list_item(ui, &artist.name, "", false).clicked() {
-                    action = Action::OpenArtist(artist.clone());
-                }
+    {
+        let data = state.data.read();
+        for artist in data.user_data.followed_artists.iter() {
+            if theme::list_item(ui, &artist.name, "", false).clicked() {
+                action = Action::OpenArtist(artist.clone());
             }
-        });
+        }
+    }
 
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
     theme::divider_line(ui);
@@ -239,6 +231,7 @@ pub fn render(
             );
         });
     }
+        }); // end ScrollArea
 
     action
 }

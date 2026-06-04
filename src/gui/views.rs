@@ -30,7 +30,10 @@ pub fn render_library(
                 ui.add_space(24.0);
 
                 // Liked Tracks card
-                let card_width = (ui.available_width() - 24.0) / 3.0;
+                let gap = 12.0;
+                let total_gaps = gap * 2.0;
+                let padding = 24.0;
+                let card_width = (ui.available_width() - padding - total_gaps) / 3.0;
                 quick_card(ui, "♥", "Liked Tracks", "Your favorite songs", card_width, || {
                     action = Action::OpenLikedTracks;
                 });
@@ -85,6 +88,7 @@ pub fn render_library(
                 ui.add_space(24.0);
             });
 
+            let grid_card_width = ((ui.available_width() - 24.0 - 16.0 * 3.0) / 4.0).min(200.0).max(100.0);
             egui::Grid::new("playlists_grid")
                 .num_columns(4)
                 .spacing([16.0, 16.0])
@@ -104,6 +108,7 @@ pub fn render_library(
                                 &playlist.owner.0,
                                 cover_path.as_deref(),
                                 image_cache,
+                                grid_card_width,
                                 || {
                                     action = Action::OpenSearchResultPlaylist(playlist.clone());
                                 },
@@ -141,6 +146,7 @@ pub fn render_library(
             let albums: Vec<_> = data.user_data.saved_albums.clone();
             drop(data);
 
+            let grid_card_width = ((ui.available_width() - 24.0 - 16.0 * 3.0) / 4.0).min(200.0).max(100.0);
             egui::Grid::new("albums_grid")
                 .num_columns(4)
                 .spacing([16.0, 16.0])
@@ -164,7 +170,7 @@ pub fn render_library(
                                     image_cache.request_download(url, path);
                                 }
                             }
-                            let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
+                            let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, grid_card_width, || {
                                 action = Action::OpenSearchResultAlbum(album.clone());
                             });
                             if response.secondary_clicked() {
@@ -232,6 +238,7 @@ pub fn render_shows(
                     ui.add_space(24.0);
                 });
 
+                let grid_card_width = ((ui.available_width() - 24.0 - 16.0 * 3.0) / 4.0).min(200.0).max(100.0);
                 egui::Grid::new("shows_grid")
                     .num_columns(4)
                     .spacing([16.0, 16.0])
@@ -251,6 +258,7 @@ pub fn render_shows(
                                     &show.publisher,
                                     cover_path.as_deref(),
                                     image_cache,
+                                    grid_card_width,
                                     || {
                                         action = Action::OpenShowDetail(show.clone());
                                     },
@@ -561,7 +569,7 @@ pub fn render_show_detail(
                     // Duration
                     let dur_str = theme::format_duration_secs(episode.duration.as_secs());
                     ui.painter().text(
-                        row_rect.right_center() + egui::vec2(-52.0, -8.0),
+                        row_rect.right_center() + egui::vec2(-2.0, -8.0),
                         egui::Align2::RIGHT_CENTER,
                         &dur_str,
                         egui::FontId::monospace(12.0),
@@ -718,9 +726,10 @@ fn grid_card(
     subtitle: &str,
     cover_path: Option<&std::path::Path>,
     image_cache: &mut ImageCache,
+    width: f32,
     on_click: impl FnOnce(),
 ) -> egui::Response {
-    let width = 160.0;
+    let width = width.min(200.0).max(100.0);
     let height = 200.0;
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -1118,11 +1127,30 @@ pub fn render_tracks(
                 } else {
                     theme::text_primary()
                 };
+                let track_name_font = egui::FontId::proportional(14.0);
+                let max_track_width = (row_rect.width() * 0.5 - 180.0).max(80.0);
+                let truncated_name = {
+                    let galley = ui.fonts(|f| f.layout_no_wrap(track.name.clone(), track_name_font.clone(), title_color));
+                    if galley.rect.width() > max_track_width {
+                        let mut s = track.name.clone();
+                        while s.len() > 1 {
+                            s.pop();
+                            let test = format!("{}…", s);
+                            let g = ui.fonts(|f| f.layout_no_wrap(test.clone(), track_name_font.clone(), title_color));
+                            if g.rect.width() <= max_track_width {
+                                break;
+                            }
+                        }
+                        format!("{}…", s)
+                    } else {
+                        track.name.clone()
+                    }
+                };
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(92.0, -7.0),
                     egui::Align2::LEFT_CENTER,
-                    &track.name,
-                    egui::FontId::proportional(14.0),
+                    &truncated_name,
+                    track_name_font,
                     title_color,
                 );
                 ui.painter().text(
@@ -1136,12 +1164,32 @@ pub fn render_tracks(
                 // Album name (middle)
                 let album_name = track.album_info();
                 if !album_name.is_empty() {
+                    let album_font = egui::FontId::proportional(12.0);
+                    let album_color = theme::text_dim();
+                    let max_album_width = 180.0;
+                    let truncated_album = {
+                        let galley = ui.fonts(|f| f.layout_no_wrap(album_name.clone(), album_font.clone(), album_color));
+                        if galley.rect.width() > max_album_width {
+                            let mut s = album_name.clone();
+                            while s.len() > 1 {
+                                s.pop();
+                                let test = format!("{}…", s);
+                                let g = ui.fonts(|f| f.layout_no_wrap(test.clone(), album_font.clone(), album_color));
+                                if g.rect.width() <= max_album_width {
+                                    break;
+                                }
+                            }
+                            format!("{}…", s)
+                        } else {
+                            album_name
+                        }
+                    };
                     ui.painter().text(
                         row_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        &album_name,
-                        egui::FontId::proportional(12.0),
-                        theme::text_dim(),
+                        &truncated_album,
+                        album_font,
+                        album_color,
                     );
                 }
 
@@ -1149,7 +1197,7 @@ pub fn render_tracks(
                 let duration = track.duration;
                 let dur_str = theme::format_duration_secs(duration.as_secs());
                 ui.painter().text(
-                    row_rect.right_center() + egui::vec2(-52.0, 0.0),
+                    row_rect.right_center() + egui::vec2(-2.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
@@ -1418,7 +1466,7 @@ pub fn render_search(
                             theme::text_dim(),
                         );
                         ui.painter().text(
-                            row_rect.right_center() + egui::vec2(-52.0, 0.0),
+                            row_rect.right_center() + egui::vec2(-2.0, 0.0),
                             egui::Align2::RIGHT_CENTER,
                             theme::format_duration_secs(track.duration.as_secs()),
                             egui::FontId::monospace(12.0),
@@ -2047,6 +2095,7 @@ pub fn render_browse_category_playlists(
                     ui.add_space(24.0);
                 });
 
+                let grid_card_width = ((ui.available_width() - 24.0 - 16.0 * 3.0) / 4.0).min(200.0).max(100.0);
                 egui::Grid::new("category_playlists_grid")
                     .num_columns(4)
                     .spacing([16.0, 16.0])
@@ -2066,6 +2115,7 @@ pub fn render_browse_category_playlists(
                                     &playlist.owner.0,
                                     cover_path.as_deref(),
                                     image_cache,
+                                    grid_card_width,
                                     || {
                                         action = Action::OpenBrowsePlaylist(playlist.clone());
                                     },
@@ -3789,7 +3839,7 @@ pub fn render_artist(
                 // Duration
                 let dur_str = theme::format_duration_secs(track.duration.as_secs());
                 ui.painter().text(
-                    row_rect.right_center() + egui::vec2(-52.0, 0.0),
+                    row_rect.right_center() + egui::vec2(-2.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     egui::FontId::monospace(12.0),
