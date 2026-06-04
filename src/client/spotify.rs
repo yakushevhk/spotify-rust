@@ -88,14 +88,14 @@ impl BaseClient for Spotify {
         let old_token = self.token.lock().await.unwrap().clone();
 
         if session.is_invalid() {
-            tracing::error!("Failed to get a new token: invalid session");
+            tracing::warn!("Session invalid, keeping existing token");
             return Ok(old_token);
         }
 
         match token::get_token_rspotify(&session).await {
             Ok(token) => Ok(Some(token)),
             Err(err) => {
-                tracing::error!("Failed to get a new token: {err:#}");
+                tracing::warn!("Token refresh failed: {err:#}, keeping existing token");
                 Ok(old_token)
             }
         }

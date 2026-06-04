@@ -82,11 +82,12 @@ impl AppClient {
                 scopes,
                 ..Default::default()
             };
-            let config = rspotify::Config {
-                token_cached: true,
-                cache_path: configs.cache_folder.join("user_client_token.json"),
-                ..Default::default()
-            };
+        let config = rspotify::Config {
+            token_cached: true,
+            token_refreshing: true,
+            cache_path: configs.cache_folder.join("user_client_token.json"),
+            ..Default::default()
+        };
             rspotify::AuthCodePkceSpotify::with_config(creds, oauth, config)
         });
 
@@ -688,17 +689,11 @@ impl AppClient {
     }
 
     pub fn update_playback(&self, state: &SharedState) {
-        // After handling a request changing the player's playback,
-        // update the playback state by making multiple get-playback requests.
-        //
-        // Q: Why do we need more than one request to update the playback?
-        // A: It might take a while for Spotify server to reflect the new change,
-        // making additional requests can help ensure that the playback state is always up-to-date.
         let client = self.clone();
         let state = state.clone();
         tokio::task::spawn(async move {
             let delay = std::time::Duration::from_secs(1);
-            for _ in 0..5 {
+            for _ in 0..2 {
                 tokio::time::sleep(delay).await;
                 if let Err(err) = client.retrieve_current_playback(&state, false).await {
                     tracing::error!(

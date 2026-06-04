@@ -16,6 +16,8 @@ use super::ClientRequest;
 struct PlayerEventHandlerState {
     get_context_timer: Instant,
     last_playback_refresh_timer: Instant,
+    last_track_end_check: Instant,
+    last_queue_check: Instant,
 }
 
 /// starts the client's request handler
@@ -54,6 +56,7 @@ pub async fn start_client_handler(
 fn handle_playback_change_event(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
+    handler_state: &mut PlayerEventHandlerState,
 ) -> anyhow::Result<()> {
     let player = state.player.read();
     let (playback, id, duration) = match (
@@ -75,21 +78,27 @@ fn handle_playback_change_event(
         _ => return Ok(()),
     };
 
+    let now = Instant::now();
     if let Some(progress) = player.playback_progress() {
-        // update the playback when the current track ends
-        if progress >= duration && playback.is_playing {
+        if progress >= duration && playback.is_playing
+            && now.duration_since(handler_state.last_track_end_check) >= Duration::from_secs(3)
+        {
+            handler_state.last_track_end_check = now;
             client_pub.send(ClientRequest::GetCurrentPlayback)?;
         }
     }
 
     if let Some(queue) = player.queue.as_ref() {
-        // queue needs to be updated if its playing track is different from actual playback's playing track
         if let Some(queue_track) = queue.currently_playing.as_ref() {
             if let Some(qid) = queue_track.id() {
-                if qid != id {
+                if qid != id
+                    && now.duration_since(handler_state.last_queue_check) >= Duration::from_secs(5)
+                {
+                    handler_state.last_queue_check = now;
                     client_pub.send(ClientRequest::GetCurrentUserQueue)?;
                 }
-            } else {
+            } else if now.duration_since(handler_state.last_queue_check) >= Duration::from_secs(5) {
+                handler_state.last_queue_check = now;
                 client_pub.send(ClientRequest::GetCurrentUserQueue)?;
             }
         }
@@ -189,7 +198,8 @@ fn handle_player_event(
 ) -> anyhow::Result<()> {
     handle_page_change_event(state, client_pub, handler_state)
         .context("handle page change event")?;
-    handle_playback_change_event(state, client_pub).context("handle playback change event")?;
+    handle_playback_change_event(state, client_pub, handler_state)
+        .context("handle playback change event")?;
 
     Ok(())
 }
@@ -204,6 +214,8 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
     let mut handler_state = PlayerEventHandlerState {
         get_context_timer: Instant::now(),
         last_playback_refresh_timer: Instant::now(),
+        last_track_end_check: Instant::now(),
+        last_queue_check: Instant::now(),
     };
 
     loop {
