@@ -663,3 +663,169 @@ pub fn format_duration_secs(secs: u64) -> String {
     let s = secs % 60;
     format!("{mins}:{s:02}")
 }
+
+// === UI Polish utilities ===
+
+pub fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
+    let t = t.clamp(0.0, 1.0);
+    egui::Color32::from_rgba_premultiplied(
+        (a.r() as f32 + (b.r() as f32 - a.r() as f32) * t) as u8,
+        (a.g() as f32 + (b.g() as f32 - a.g() as f32) * t) as u8,
+        (a.b() as f32 + (b.b() as f32 - a.b() as f32) * t) as u8,
+        (a.a() as f32 + (b.a() as f32 - a.a() as f32) * t) as u8,
+    )
+}
+
+pub fn with_alpha(c: egui::Color32, alpha: u8) -> egui::Color32 {
+    egui::Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
+pub fn shimmer_color(base: egui::Color32, time: f32) -> egui::Color32 {
+    let phase = (time * 2.0).sin() * 0.5 + 0.5;
+    let bright = lerp_color(base, text_primary(), 0.15);
+    lerp_color(base, bright, phase as f32)
+}
+
+pub fn draw_shimmer_rect(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    corner_radius: impl Into<egui::CornerRadius>,
+    time: f32,
+) {
+    let base = bg_active();
+    let r: egui::CornerRadius = corner_radius.into();
+    let segments = 5;
+    let seg_w = rect.width() / segments as f32;
+    for i in 0..segments {
+        let seg_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + i as f32 * seg_w, rect.top()),
+            egui::vec2(seg_w + 1.0, rect.height()),
+        );
+        let offset = i as f32 / segments as f32;
+        let phase = (time * 1.5 + offset) % 1.0;
+        let brightness = if phase < 0.5 {
+            phase * 2.0
+        } else {
+            2.0 - phase * 2.0
+        };
+        let color = lerp_color(base, lerp_color(base, text_primary(), 0.12), brightness);
+        painter.rect_filled(seg_rect, r, color);
+    }
+}
+
+pub fn glass_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(with_alpha(bg_dark(), 200))
+        .stroke(egui::Stroke::new(1.0, with_alpha(border(), 80)))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(8))
+}
+
+pub fn draw_glass_rect(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    corner_radius: impl Into<egui::CornerRadius> + Copy,
+) {
+    let r = corner_radius;
+    painter.rect_filled(rect, r, with_alpha(bg_dark(), 180));
+    painter.rect_filled(rect, r, with_alpha(bg_elevated(), 40));
+    painter.rect_stroke(
+        rect,
+        r,
+        egui::Stroke::new(1.0, with_alpha(text_primary(), 15)),
+        egui::StrokeKind::Outside,
+    );
+}
+
+pub fn draw_gradient_rect_v(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    corner_radius: impl Into<egui::CornerRadius>,
+    top_color: egui::Color32,
+    bottom_color: egui::Color32,
+) {
+    let r: egui::CornerRadius = corner_radius.into();
+    let mesh = &mut egui::Mesh::default();
+    let uv = egui::pos2(0.0, 0.0);
+    let cr = r.sw as f32;
+    mesh.add_rect_with_uv(
+        egui::Rect::from_min_max(
+            rect.min + egui::vec2(0.0, cr),
+            rect.max - egui::vec2(0.0, cr),
+        ),
+        egui::Rect::from_min_max(uv, egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+    // Use a simple two-color gradient via mesh
+    let mut grad_mesh = egui::Mesh::default();
+    grad_mesh.add_colored_rect(rect, top_color);
+    painter.add(egui::Shape::mesh(grad_mesh));
+    // Overlay gradient
+    let steps = 8;
+    let step_h = rect.height() / steps as f32;
+    for i in 0..steps {
+        let t = i as f32 / steps as f32;
+        let color = lerp_color(top_color, bottom_color, t);
+        let step_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + i as f32 * step_h),
+            egui::vec2(rect.width(), step_h + 1.0),
+        );
+        painter.rect_filled(step_rect, 0.0, color);
+    }
+}
+
+pub fn draw_glow_border(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    corner_radius: impl Into<egui::CornerRadius> + Copy,
+    color: egui::Color32,
+) {
+    let glow = with_alpha(color, 20);
+    for i in 0..3 {
+        let expanded = rect.expand(i as f32 + 1.0);
+        painter.rect_stroke(
+            expanded,
+            corner_radius,
+            egui::Stroke::new(1.0, glow),
+            egui::StrokeKind::Outside,
+        );
+    }
+}
+
+pub fn breadcrumb(ui: &mut egui::Ui, segments: &[(&str, bool)]) {
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        for (i, (label, clickable)) in segments.iter().enumerate() {
+            if i > 0 {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("›")
+                        .size(12.0)
+                        .color(text_muted()),
+                );
+                ui.add_space(4.0);
+            }
+            let color = if *clickable {
+                accent()
+            } else {
+                text_secondary()
+            };
+            let resp = ui.label(
+                egui::RichText::new(*label)
+                    .size(12.0)
+                    .color(color),
+            );
+            if *clickable && resp.hovered() {
+                ui.painter().line_segment(
+                    [
+                        resp.rect.left_bottom() + egui::vec2(0.0, 1.0),
+                        resp.rect.right_bottom() + egui::vec2(0.0, 1.0),
+                    ],
+                    egui::Stroke::new(1.0, accent()),
+                );
+            }
+        }
+    });
+    ui.add_space(4.0);
+}

@@ -130,11 +130,7 @@ impl CommandPalette {
             .fixed_pos(egui::pos2(palette_x, palette_y))
             .interactable(true)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(theme::bg_dark())
-                    .stroke(egui::Stroke::new(1.0, theme::border()))
-                    .corner_radius(egui::CornerRadius::same(8))
-                    .inner_margin(egui::Margin::same(0));
+                let frame = theme::glass_frame();
 
                 frame.show(ui, |ui| {
                     ui.set_min_width(palette_width);

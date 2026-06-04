@@ -12,6 +12,19 @@ pub struct PlaybackBarResponse {
     pub device_button_clicked: bool,
 }
 
+fn generate_waveform_bars(width: usize, seed: u64) -> Vec<f32> {
+    let mut bars = Vec::with_capacity(width);
+    for i in 0..width {
+        let x = i as f32 / width as f32;
+        let base = 0.3
+            + 0.25 * (x * 6.28 + seed as f32 * 0.7).sin()
+            + 0.15 * (x * 12.56 + seed as f32 * 1.3).sin()
+            + 0.1 * (x * 18.84 + seed as f32 * 2.1).sin();
+        bars.push(base.clamp(0.1, 0.9));
+    }
+    bars
+}
+
 pub fn render(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -25,9 +38,38 @@ pub fn render(
     let player = state.player.read();
     let playback = player.current_playback();
 
+    // Glassmorphism background
+    let full_rect = ui.max_rect();
+
+    // Gradient background from dark to slightly lighter
+    let bg_top = theme::with_alpha(theme::bg_dark(), 220);
+    let bg_bottom = theme::with_alpha(theme::background(), 240);
+    let steps = 6;
+    let step_h = full_rect.height() / steps as f32;
+    for i in 0..steps {
+        let t = i as f32 / steps as f32;
+        let color = theme::lerp_color(bg_top, bg_bottom, t);
+        let step_rect = egui::Rect::from_min_size(
+            egui::pos2(full_rect.left(), full_rect.top() + i as f32 * step_h),
+            egui::vec2(full_rect.width(), step_h + 1.0),
+        );
+        ui.painter().rect_filled(step_rect, 0.0, color);
+    }
+
+    // Subtle top glow border
+    let glow_rect = egui::Rect::from_min_size(
+        full_rect.min,
+        egui::vec2(full_rect.width(), 2.0),
+    );
+    ui.painter().rect_filled(
+        glow_rect,
+        0.0,
+        theme::with_alpha(theme::accent(), 30),
+    );
+
     // Top border
     let rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
-    ui.painter().rect_filled(rect, 0.0, theme::divider());
+    ui.painter().rect_filled(rect, 0.0, theme::with_alpha(theme::divider(), 60));
 
     ui.allocate_space(egui::vec2(ui.available_width(), 9.0));
 
@@ -52,7 +94,6 @@ pub fn render(
 
         if let Some(ref playback) = playback {
             if let Some(ref item) = playback.item {
-                // Try to load cover image
                 let cover_path = match item {
                     rspotify::model::PlayableItem::Track(track) => {
                         let album = &track.album;
@@ -102,7 +143,7 @@ pub fn render(
                     );
                 }
 
-                // Track name
+                // Track name with subtle hover effect
                 ui.painter().text(
                     track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 20.0),
                     egui::Align2::LEFT_CENTER,
@@ -216,7 +257,7 @@ pub fn render(
 
             ui.add_space(6.0);
 
-            // Progress bar row
+            // Waveform seekbar row
             ui.horizontal(|ui| {
                 if let Some(ref playback) = playback {
                     let progress = playback.progress.unwrap_or(chrono::Duration::zero());
@@ -249,35 +290,77 @@ pub fn render(
 
                     ui.add_space(8.0);
 
-                    // Progress bar
+                    // Waveform seekbar
                     let bar_width = (ui.available_width() - 100.0).max(100.0);
-                    let bar_height = 4.0;
+                    let bar_height = 28.0;
                     let (bar_rect, bar_response) =
-                        ui.allocate_exact_size(egui::vec2(bar_width, bar_height + 8.0), egui::Sense::click());
+                        ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::click());
 
-                    let bar_y = bar_rect.center().y - bar_height / 2.0;
-                    let full_bar = egui::Rect::from_min_size(
-                        egui::pos2(bar_rect.left(), bar_y),
-                        egui::vec2(bar_rect.width(), bar_height),
-                    );
+                    // Generate waveform bars
+                    let num_bars = (bar_width / 3.0) as usize;
+                    let seed = d_secs.wrapping_add(p_secs / 5);
+                    let waveform = generate_waveform_bars(num_bars, seed);
 
-                    // Track background
-                    ui.painter().rect_filled(full_bar, 2.0, theme::bg_active());
+                    let bar_gap = 1.0;
+                    let bar_w = (bar_width / num_bars as f32) - bar_gap;
+                    let hover_pos = bar_response.hover_pos();
 
-                    // Progress fill
-                    let progress_rect = egui::Rect::from_min_size(
-                        full_bar.min,
-                        egui::vec2(full_bar.width() * ratio, full_bar.height()),
-                    );
-                    ui.painter().rect_filled(progress_rect, 2.0, theme::green());
+                    for (i, &amplitude) in waveform.iter().enumerate() {
+                        let x = bar_rect.left() + i as f32 * (bar_w + bar_gap);
+                        let h = amplitude * bar_height * 0.8;
+                        let y_center = bar_rect.center().y;
+                        let bar = egui::Rect::from_center_size(
+                            egui::pos2(x + bar_w / 2.0, y_center),
+                            egui::vec2(bar_w, h),
+                        );
 
-                    // Hover dot
-                    if bar_response.hovered() {
-                        let dot_x = full_bar.left() + full_bar.width() * ratio;
-                        ui.painter().circle_filled(
-                            egui::pos2(dot_x, bar_rect.center().y),
-                            4.0,
-                            theme::green(),
+                        let played = (i as f32 / num_bars as f32) < ratio;
+
+                        let is_hovered = hover_pos
+                            .map(|pos| (x..=x + bar_w).contains(&pos.x))
+                            .unwrap_or(false);
+
+                        let color = if played {
+                            if is_hovered {
+                                theme::accent_hover()
+                            } else {
+                                theme::accent()
+                            }
+                        } else if is_hovered {
+                            theme::lerp_color(theme::bg_active(), theme::text_dim(), 0.3)
+                        } else {
+                            theme::bg_active()
+                        };
+
+                        ui.painter().rect_filled(bar, 1.0, color);
+                    }
+
+                    // Hover time tooltip
+                    if let Some(pos) = hover_pos {
+                        let hover_ratio =
+                            ((pos.x - bar_rect.left()) / bar_rect.width()).clamp(0.0, 1.0);
+                        let hover_secs = (d_secs as f32 * hover_ratio) as u64;
+                        let tooltip_text = theme::format_duration_secs(hover_secs);
+
+                        let tooltip_pos = egui::pos2(pos.x, bar_rect.top() - 20.0);
+                        let galley = ui.painter().layout_no_wrap(
+                            tooltip_text,
+                            egui::FontId::monospace(10.0),
+                            theme::text_primary(),
+                        );
+                        let tooltip_rect = egui::Rect::from_center_size(
+                            tooltip_pos,
+                            galley.size() + egui::vec2(8.0, 4.0),
+                        );
+                        ui.painter().rect_filled(
+                            tooltip_rect,
+                            3.0,
+                            theme::with_alpha(theme::bg_dark(), 220),
+                        );
+                        ui.painter().galley(
+                            tooltip_rect.center() - galley.size() / 2.0,
+                            galley,
+                            theme::text_primary(),
                         );
                     }
 
@@ -285,7 +368,7 @@ pub fn render(
                     if bar_response.clicked() {
                         if let Some(click_pos) = bar_response.interact_pointer_pos() {
                             let click_ratio =
-                                ((click_pos.x - full_bar.left()) / full_bar.width()).clamp(0.0, 1.0);
+                                ((click_pos.x - bar_rect.left()) / bar_rect.width()).clamp(0.0, 1.0);
                             let seek_ms = (d_secs as f64 * click_ratio as f64 * 1000.0) as i64;
                             let _ = client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(
                                 chrono::Duration::milliseconds(seek_ms),
@@ -303,7 +386,7 @@ pub fn render(
                             .monospace(),
                     );
                 } else {
-                    // Empty progress bar
+                    // Empty waveform
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new("0:00")
@@ -312,17 +395,24 @@ pub fn render(
                             .monospace(),
                     );
                     let bar_width = (ui.available_width() - 100.0).max(100.0);
+                    let bar_height = 28.0;
                     let (bar_rect, _) =
-                        ui.allocate_exact_size(egui::vec2(bar_width, 12.0), egui::Sense::hover());
-                    let bar_y = bar_rect.center().y - 2.0;
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(
-                            egui::pos2(bar_rect.left(), bar_y),
-                            egui::vec2(bar_rect.width(), 4.0),
-                        ),
-                        2.0,
-                        theme::bg_active(),
-                    );
+                        ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
+
+                    // Static waveform placeholder
+                    let num_bars = (bar_width / 3.0) as usize;
+                    let bar_gap = 1.0;
+                    let bar_w = (bar_width / num_bars as f32) - bar_gap;
+                    for i in 0..num_bars {
+                        let x = bar_rect.left() + i as f32 * (bar_w + bar_gap);
+                        let h = (0.15 + 0.1 * (i as f32 * 0.3).sin()) * bar_height * 0.8;
+                        let bar = egui::Rect::from_center_size(
+                            egui::pos2(x + bar_w / 2.0, bar_rect.center().y),
+                            egui::vec2(bar_w, h),
+                        );
+                        ui.painter().rect_filled(bar, 1.0, theme::bg_active());
+                    }
+
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new("0:00")
@@ -354,10 +444,8 @@ pub fn render(
                     .unwrap_or(50) as f32;
 
                 let mut vol = volume;
-                let _vol_width = 100.0;
                 let vol_slider = egui::Slider::new(&mut vol, 0.0..=100.0)
-                    .show_value(false)
-                    ;
+                    .show_value(false);
                 if ui.add(vol_slider).changed() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(vol as u8)));
                 }

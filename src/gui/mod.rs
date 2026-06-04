@@ -953,11 +953,7 @@ impl eframe::App for SpotifyApp {
                 .fixed_pos(egui::pos2(popup_x, popup_y))
                 .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(0.0, 0.0))
                 .show(ctx, |ui| {
-                    let frame = egui::Frame::new()
-                        .fill(egui::Color32::from_rgb(17, 17, 17))
-                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(26, 26, 26)))
-                        .corner_radius(egui::CornerRadius::same(8))
-                        .inner_margin(egui::Margin::same(8));
+                    let frame = theme::glass_frame();
 
                     frame.show(ui, |ui| {
                         ui.set_min_width(popup_width - 16.0);
@@ -1538,17 +1534,25 @@ impl SpotifyApp {
         let mut close = false;
         let mut create = false;
 
+        // Overlay background
+        egui::Area::new(egui::Id::new("create_playlist_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    egui::Color32::from_black_alpha(120),
+                );
+            });
+
         egui::Area::new(egui::Id::new("create_playlist_popup"))
             .order(egui::Order::Foreground)
             .fixed_pos(popup_pos)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        egui::Color32::from_rgb(26, 26, 26),
-                    ))
-                    .corner_radius(egui::CornerRadius::same(6))
+                let frame = theme::glass_frame()
                     .inner_margin(egui::Margin::same(20));
 
                 frame.show(ui, |ui| {
@@ -1786,17 +1790,25 @@ impl SpotifyApp {
         let mut close = false;
         let mut selected_playlist_id: Option<state::PlaylistId<'static>> = None;
 
+        // Overlay background
+        egui::Area::new(egui::Id::new("add_to_playlist_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    egui::Color32::from_black_alpha(120),
+                );
+            });
+
         egui::Area::new(egui::Id::new("add_to_playlist_popup"))
             .order(egui::Order::Foreground)
             .fixed_pos(popup_pos)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        egui::Color32::from_rgb(26, 26, 26),
-                    ))
-                    .corner_radius(egui::CornerRadius::same(6))
+                let frame = theme::glass_frame()
                     .inner_margin(egui::Margin::same(16));
 
                 frame.show(ui, |ui| {
@@ -1984,14 +1996,25 @@ impl SpotifyApp {
         let config = crate::config::get_config();
         let custom_themes: Vec<_> = config.theme_config.themes.clone();
 
+        // Overlay background
+        egui::Area::new(egui::Id::new("theme_switcher_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    egui::Color32::from_black_alpha(120),
+                );
+            });
+
         egui::Area::new(egui::Id::new("theme_switcher"))
             .order(egui::Order::Foreground)
             .fixed_pos(popup_pos)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(theme::bg_dark())
-                    .stroke(egui::Stroke::new(1.0, theme::border()))
-                    .corner_radius(egui::CornerRadius::same(8))
+                let frame = theme::glass_frame()
                     .inner_margin(egui::Margin::same(16));
 
                 frame.show(ui, |ui| {
@@ -2306,9 +2329,9 @@ impl SpotifyApp {
             .interactable(false)
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 17))
-                    .stroke(egui::Stroke::new(1.0, theme::green()))
-                    .corner_radius(egui::CornerRadius::same(6))
+                    .fill(theme::with_alpha(theme::bg_dark(), 220))
+                    .stroke(egui::Stroke::new(1.0, theme::with_alpha(theme::accent(), 60)))
+                    .corner_radius(egui::CornerRadius::same(8))
                     .inner_margin(egui::Margin::symmetric(16, 10));
 
                 frame.show(ui, |ui| {
@@ -2348,9 +2371,9 @@ impl SpotifyApp {
             .interactable(false)
             .show(ctx, |ui| {
                 let frame = egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(20, 20, 20))
-                    .stroke(egui::Stroke::new(1.0, theme::green()))
-                    .corner_radius(egui::CornerRadius::same(4))
+                    .fill(theme::with_alpha(theme::bg_dark(), 220))
+                    .stroke(egui::Stroke::new(1.0, theme::with_alpha(theme::accent(), 40)))
+                    .corner_radius(egui::CornerRadius::same(6))
                     .inner_margin(egui::Margin::symmetric(12, 6));
 
                 frame.show(ui, |ui| {

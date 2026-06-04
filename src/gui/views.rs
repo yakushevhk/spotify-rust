@@ -335,14 +335,7 @@ pub fn render_show_detail(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-        ui.painter().text(
-            art_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "\u{1F399}",
-            egui::FontId::proportional(48.0),
-            theme::text_muted(),
-        );
+        skeleton_rect(ui, art_rect, theme::ART_CORNER_RADIUS);
     }
 
     // Show info
@@ -696,6 +689,11 @@ fn quick_card(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str, width: f32
     }
 }
 
+fn skeleton_rect(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl Into<egui::CornerRadius> + Copy) {
+    let time = ui.input(|i| i.time) as f32;
+    theme::draw_shimmer_rect(ui.painter(), rect, corner_radius, time);
+}
+
 fn grid_card(
     ui: &mut egui::Ui,
     title: &str,
@@ -706,6 +704,7 @@ fn grid_card(
 ) -> egui::Response {
     let width = 160.0;
     let height = 200.0;
+
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
     let bg = if response.hovered() {
@@ -715,6 +714,11 @@ fn grid_card(
     };
 
     ui.painter().rect_filled(rect, 8.0, bg);
+
+    // Subtle glow on hover
+    if response.hovered() {
+        theme::draw_glow_border(ui.painter(), rect, 8, theme::accent());
+    }
 
     // Album art
     let art_size = width - 24.0;
@@ -735,29 +739,8 @@ fn grid_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-        if response.hovered() {
-            let play_rect = egui::Rect::from_center_size(
-                art_rect.center() + egui::vec2(0.0, 10.0),
-                egui::vec2(40.0, 40.0),
-            );
-            ui.painter().rect_filled(play_rect, 20.0, theme::green());
-            ui.painter().text(
-                play_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{25B6}",
-                egui::FontId::proportional(16.0),
-                theme::bg_black(),
-            );
-        } else {
-            ui.painter().text(
-                art_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{266B}",
-                egui::FontId::proportional(28.0),
-                theme::text_muted(),
-            );
-        }
+        // Skeleton shimmer loading placeholder
+        skeleton_rect(ui, art_rect, theme::ART_CORNER_RADIUS);
     }
 
     // Play button overlay on hover (on top of cover art)
@@ -823,6 +806,17 @@ pub fn render_tracks(
     use rspotify::prelude::Id;
 
     let mut sort_action = SortAction::None;
+
+    // Breadcrumb navigation
+    let breadcrumb_segments = match context_id {
+        Some(state::ContextId::Playlist(_)) => vec![("Library", true), (title, false)],
+        Some(state::ContextId::Album(_)) => vec![("Library", true), (title, false)],
+        Some(state::ContextId::Artist(_)) => vec![("Artist", true), (title, false)],
+        Some(state::ContextId::Show(_)) => vec![("Shows", true), (title, false)],
+        Some(state::ContextId::Tracks(_)) => vec![("Library", true), (title, false)],
+        None => vec![("Library", true), (title, false)],
+    };
+    theme::breadcrumb(ui, &breadcrumb_segments);
 
     theme::page_title(ui, title);
 
@@ -1741,6 +1735,11 @@ fn search_grid_card(
     };
     ui.painter().rect_filled(rect, 8.0, bg);
 
+    // Hover glow
+    if response.hovered() {
+        theme::draw_glow_border(ui.painter(), rect, 8, theme::accent());
+    }
+
     let art_size = width - 24.0;
     let art_rect = egui::Rect::from_min_size(
         rect.min + egui::vec2(12.0, 12.0),
@@ -1759,29 +1758,7 @@ fn search_grid_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-        if response.hovered() {
-            let play_rect = egui::Rect::from_center_size(
-                art_rect.center() + egui::vec2(0.0, 10.0),
-                egui::vec2(40.0, 40.0),
-            );
-            ui.painter().rect_filled(play_rect, 20.0, theme::green());
-            ui.painter().text(
-                play_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{25B6}",
-                egui::FontId::proportional(16.0),
-                theme::bg_black(),
-            );
-        } else {
-            ui.painter().text(
-                art_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{266B}",
-                egui::FontId::proportional(28.0),
-                theme::text_muted(),
-            );
-        }
+        skeleton_rect(ui, art_rect, theme::ART_CORNER_RADIUS);
     }
 
     if art_drawn && response.hovered() {
@@ -1911,13 +1888,21 @@ fn category_card(
     let height = 180.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
 
-    let bg = if response.hovered() {
-        egui::Color32::from_rgb(26, 26, 26)
+    // Gradient background for category cards
+    let (bg_top, bg_bottom) = if response.hovered() {
+        (
+            theme::lerp_color(theme::bg_card(), theme::accent(), 0.08),
+            theme::lerp_color(theme::bg_dark(), theme::accent_dark(), 0.06),
+        )
     } else {
-        egui::Color32::from_rgb(17, 17, 17)
+        (theme::bg_card(), theme::bg_dark())
     };
+    theme::draw_gradient_rect_v(ui.painter(), rect, 8, bg_top, bg_bottom);
 
-    ui.painter().rect_filled(rect, 8.0, bg);
+    // Hover glow
+    if response.hovered() {
+        theme::draw_glow_border(ui.painter(), rect, 8, theme::accent());
+    }
 
     // Icon area
     let icon_size = width - 40.0;
@@ -3595,19 +3580,12 @@ pub fn render_artist(
                 img_drawn = true;
             }
         }
-        if !img_drawn {
-            ui.painter().rect_filled(img_rect, img_size / 2.0, theme::bg_active());
-            ui.painter().text(
-                img_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "🎤",
-                egui::FontId::proportional(40.0),
-                theme::text_muted(),
-            );
-        }
+    if !img_drawn {
+        skeleton_rect(ui, img_rect, img_size / 2.0);
+    }
 
-        // Artist info
-        let text_x = img_rect.right() + 24.0;
+    // Artist info
+    let text_x = img_rect.right() + 24.0;
         ui.painter().text(
             egui::pos2(text_x, header_rect.top() + 20.0),
             egui::Align2::LEFT_TOP,
@@ -4018,6 +3996,10 @@ fn artist_album_card(
     };
     ui.painter().rect_filled(rect, 4.0, bg);
 
+    if response.hovered() {
+        theme::draw_glow_border(ui.painter(), rect, 4, theme::accent());
+    }
+
     let art_size = width - 24.0;
     let art_rect = egui::Rect::from_min_size(
         rect.min + egui::vec2(12.0, 12.0),
@@ -4036,14 +4018,7 @@ fn artist_album_card(
     }
 
     if !art_drawn {
-        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-        ui.painter().text(
-            art_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "\u{266B}",
-            egui::FontId::proportional(28.0),
-            theme::text_muted(),
-        );
+        skeleton_rect(ui, art_rect, theme::ART_CORNER_RADIUS);
     }
 
     // Hover overlay with play button
@@ -4109,6 +4084,10 @@ fn artist_card(
         theme::bg_card()
     };
     ui.painter().rect_filled(rect, 8.0, bg);
+
+    if response.hovered() {
+        theme::draw_glow_border(ui.painter(), rect, 8, theme::accent());
+    }
 
     // Artist circle
     let circle_size = 100.0;

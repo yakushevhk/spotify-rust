@@ -370,16 +370,26 @@ impl ContextMenu {
         let mut action_to_execute: Option<MenuAction> = None;
         let mut should_close = false;
 
+        // Overlay background
+        egui::Area::new(egui::Id::new("context_menu_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    egui::Color32::from_black_alpha(80),
+                );
+            });
+
         egui::Area::new(egui::Id::new("context_menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
             .interactable(true)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(theme::bg_dark())
-                    .stroke(egui::Stroke::new(1.0, theme::border()))
-                    .corner_radius(egui::CornerRadius::same(6))
-                    .inner_margin(egui::Margin::same(6));
+                let frame = theme::glass_frame();
 
                 frame.show(ui, |ui| {
                     ui.set_min_width(menu_width - 12.0);
@@ -516,14 +526,25 @@ impl ContextMenu {
         let mut close = false;
         let mut execute = false;
 
+        // Overlay background
+        egui::Area::new(egui::Id::new("context_confirm_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    egui::Color32::from_black_alpha(120),
+                );
+            });
+
         egui::Area::new(egui::Id::new("context_confirm"))
             .order(egui::Order::Foreground)
             .fixed_pos(dialog_pos)
             .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(theme::bg_dark())
-                    .stroke(egui::Stroke::new(1.0, theme::border()))
-                    .corner_radius(egui::CornerRadius::same(6))
+                let frame = theme::glass_frame()
                     .inner_margin(egui::Margin::same(16));
 
                 frame.show(ui, |ui| {
