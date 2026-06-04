@@ -87,6 +87,13 @@ pub enum SortAction {
     None,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibrarySortOrder {
+    Default,
+    Alphabetical,
+    RecentlyAdded,
+}
+
 enum Action {
     Navigate(View),
     OpenPlaylist(usize),
@@ -155,6 +162,8 @@ pub struct SpotifyApp {
     settings_dirty: bool,
     settings_keybinding_search: String,
     settings_editing_keybinding: Option<usize>,
+    library_sort_order: LibrarySortOrder,
+    scroll_to_selected: bool,
 }
 
 impl SpotifyApp {
@@ -221,6 +230,8 @@ impl SpotifyApp {
             settings_dirty: false,
             settings_keybinding_search: String::new(),
             settings_editing_keybinding: None,
+            library_sort_order: LibrarySortOrder::Default,
+            scroll_to_selected: false,
         }
     }
 
@@ -403,7 +414,7 @@ impl SpotifyApp {
                 if shows.is_empty() {
                     let _ = self.client_pub.send(ClientRequest::GetUserSavedShows);
                 }
-                self.current_view = View::Shows;
+                self.navigate_to_view(View::Shows);
             }
             Action::OpenShowDetail(show) => {
                 let ctx_id = state::ContextId::Show(show.id.clone());
@@ -655,9 +666,11 @@ impl SpotifyApp {
                         self.toast("Reversed track order".to_string());
                     }
                     SortCommand::LibraryAlphabetical => {
+                        self.library_sort_order = LibrarySortOrder::Alphabetical;
                         self.toast("Library sorted alphabetically".to_string());
                     }
                     SortCommand::LibraryRecentlyAdded => {
+                        self.library_sort_order = LibrarySortOrder::RecentlyAdded;
                         self.toast("Library sorted by recently added".to_string());
                     }
                 }
@@ -795,7 +808,9 @@ impl SpotifyApp {
                     }
                 }
                 ActionCommand::JumpToHighlightedInContext => {
-                    // Already handled by selected_track, just a no-op toast
+                    if self.selected_track.is_some() {
+                        self.scroll_to_selected = true;
+                    }
                 }
             },
             Command::Theme(theme_cmd) => match theme_cmd {
@@ -1278,7 +1293,7 @@ impl eframe::App for SpotifyApp {
             )
             .show(ctx, |ui| match self.current_view {
                 View::Library => {
-                    action = views::render_library(ui, &self.state, &mut self.image_cache, &mut self.context_menu);
+                    action = views::render_library(ui, &self.state, &mut self.image_cache, &mut self.context_menu, self.library_sort_order);
                 }
                 View::Tracks => {
                     let sort_action = views::render_tracks(
@@ -1293,7 +1308,9 @@ impl eframe::App for SpotifyApp {
                         None,
                         self.sort_state,
                         self.current_context_id.as_ref(),
+                        self.scroll_to_selected,
                     );
+                    self.scroll_to_selected = false;
                     match sort_action {
                         SortAction::Sort(new_state) => {
                             if self.sort_state == Some(new_state) {

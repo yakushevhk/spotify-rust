@@ -611,14 +611,13 @@ impl AppClient {
                 collab,
                 desc,
             } => {
-                let user_id = state
-                    .data
-                    .read()
-                    .user_data
-                    .user
-                    .as_ref()
-                    .map(|u| u.id.clone())
-                    .unwrap();
+                let user_id = match state.data.read().user_data.user.as_ref() {
+                    Some(u) => u.id.clone(),
+                    None => {
+                        tracing::warn!("User data not loaded yet, cannot create playlist");
+                        return Ok(());
+                    }
+                };
                 self.create_new_playlist(
                     state,
                     user_id,

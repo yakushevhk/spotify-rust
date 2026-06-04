@@ -12,6 +12,7 @@ pub fn render_library(
     state: &SharedState,
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
+    library_sort_order: crate::gui::LibrarySortOrder,
 ) -> Action {
     let mut action = Action::None;
 
@@ -58,7 +59,7 @@ pub fn render_library(
             ui.add_space(12.0);
 
             let data = state.data.read();
-            let playlists: Vec<_> = data
+            let mut playlists: Vec<_> = data
                 .user_data
                 .playlists
                 .iter()
@@ -68,6 +69,17 @@ pub fn render_library(
                 })
                 .collect();
             drop(data);
+
+            match library_sort_order {
+                crate::gui::LibrarySortOrder::Alphabetical => {
+                    playlists.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                }
+                crate::gui::LibrarySortOrder::RecentlyAdded => {
+                    // Reverse to show most recently added first (assuming order from API)
+                    playlists.reverse();
+                }
+                crate::gui::LibrarySortOrder::Default => {}
+            }
 
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
@@ -359,8 +371,9 @@ pub fn render_show_detail(
     // Description (truncated)
     let desc_lines: Vec<&str> = show.description.lines().take(3).collect();
     let desc_text = desc_lines.join(" ");
-    let truncated = if desc_text.len() > 200 {
-        format!("{}...", &desc_text[..200])
+    let truncated = if desc_text.chars().count() > 200 {
+        let truncated: String = desc_text.chars().take(200).collect();
+        format!("{}...", truncated)
     } else {
         desc_text
     };
@@ -518,8 +531,9 @@ pub fn render_show_detail(
                     );
 
                     // Episode description (truncated)
-                    let desc = if episode.description.len() > 120 {
-                        format!("{}...", &episode.description[..120])
+                    let desc = if episode.description.chars().count() > 120 {
+                        let truncated: String = episode.description.chars().take(120).collect();
+                        format!("{}...", truncated)
                     } else {
                         episode.description.clone()
                     };
@@ -802,6 +816,7 @@ pub fn render_tracks(
     playlist_id: Option<&state::PlaylistId<'static>>,
     sort_state: Option<SortState>,
     context_id: Option<&state::ContextId>,
+    scroll_to_selected: bool,
 ) -> SortAction {
     use rspotify::prelude::Id;
 
@@ -1018,6 +1033,10 @@ pub fn render_tracks(
                         egui::vec2(ui.available_width(), row_height),
                         egui::Sense::click(),
                     );
+
+                if is_selected && scroll_to_selected {
+                    ui.scroll_to_rect(row_rect, Some(egui::Align::Center));
+                }
 
                 let bg = if is_selected {
                     theme::bg_selected()
