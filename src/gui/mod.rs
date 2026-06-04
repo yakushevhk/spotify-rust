@@ -26,6 +26,8 @@ pub enum View {
     Settings,
     Lyrics,
     Artist,
+    Shows,
+    ShowDetail,
     Help,
 }
 
@@ -100,7 +102,11 @@ enum Action {
     BackToBrowse,
     ContextMenuNavigateArtist(state::Artist),
     ContextMenuNavigateAlbum(state::Album),
+    ContextMenuNavigateShow(state::Show),
     OpenCreatePlaylist,
+    OpenShows,
+    OpenShowDetail(state::Show),
+    OpenShowFromSearch(state::Show),
     None,
 }
 
@@ -140,6 +146,10 @@ pub struct SpotifyApp {
     show_command_palette: bool,
     command_palette: command_palette::CommandPalette,
     settings_tab: views::SettingsTab,
+    show_detail_show: Option<state::Show>,
+    show_detail_episodes: Vec<state::Episode>,
+    show_detail_context_id: Option<state::ContextId>,
+    show_detail_selected_episode: Option<usize>,
     settings_editing: crate::config::AppConfig,
     settings_original: crate::config::AppConfig,
     settings_dirty: bool,
@@ -202,6 +212,10 @@ impl SpotifyApp {
             show_command_palette: false,
             command_palette: command_palette::CommandPalette::new(),
             settings_tab: views::SettingsTab::General,
+            show_detail_show: None,
+            show_detail_episodes: Vec::new(),
+            show_detail_context_id: None,
+            show_detail_selected_episode: None,
             settings_editing: crate::config::get_config().app_config.clone(),
             settings_original: crate::config::get_config().app_config.clone(),
             settings_dirty: false,
@@ -366,12 +380,48 @@ impl SpotifyApp {
                     .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
                 self.current_view = View::Tracks;
             }
+            Action::ContextMenuNavigateShow(show) => {
+                let ctx_id = state::ContextId::Show(show.id.clone());
+                self.show_detail_context_id = Some(ctx_id.clone());
+                self.show_detail_show = Some(show);
+                self.show_detail_episodes.clear();
+                self.show_detail_selected_episode = None;
+                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.current_view = View::ShowDetail;
+            }
             Action::OpenCreatePlaylist => {
                 self.show_create_playlist_popup = true;
                 self.create_playlist_name.clear();
                 self.create_playlist_desc.clear();
                 self.create_playlist_public = true;
                 self.create_playlist_collab = false;
+            }
+            Action::OpenShows => {
+                let data = self.state.data.read();
+                let shows = data.user_data.saved_shows.clone();
+                drop(data);
+                if shows.is_empty() {
+                    let _ = self.client_pub.send(ClientRequest::GetUserSavedShows);
+                }
+                self.current_view = View::Shows;
+            }
+            Action::OpenShowDetail(show) => {
+                let ctx_id = state::ContextId::Show(show.id.clone());
+                self.show_detail_context_id = Some(ctx_id.clone());
+                self.show_detail_show = Some(show);
+                self.show_detail_episodes.clear();
+                self.show_detail_selected_episode = None;
+                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.current_view = View::ShowDetail;
+            }
+            Action::OpenShowFromSearch(show) => {
+                let ctx_id = state::ContextId::Show(show.id.clone());
+                self.show_detail_context_id = Some(ctx_id.clone());
+                self.show_detail_show = Some(show);
+                self.show_detail_episodes.clear();
+                self.show_detail_selected_episode = None;
+                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.current_view = View::ShowDetail;
             }
             Action::None => {}
         }
@@ -474,7 +524,22 @@ impl SpotifyApp {
                     self.go_back();
                 }
                 NavCommand::Enter => {
-                    if let Some(idx) = self.selected_track {
+                    if self.current_view == View::ShowDetail {
+                        if let Some(idx) = self.show_detail_selected_episode {
+                            if idx < self.show_detail_episodes.len() {
+                                let episode = &self.show_detail_episodes[idx];
+                                if let Some(ref ctx_id) = self.show_detail_context_id {
+                                    let playback = state::Playback::Context(
+                                        ctx_id.clone(),
+                                        Some(rspotify::model::Offset::Uri(episode.id.uri())),
+                                    );
+                                    let _ = self.client_pub.send(ClientRequest::Player(
+                                        PlayerRequest::StartPlayback(playback, None),
+                                    ));
+                                }
+                            }
+                        }
+                    } else if let Some(idx) = self.selected_track {
                         if idx < self.context_tracks.len() {
                             let track = self.context_tracks[idx].clone();
                             self.play_track_from_context(&track);
@@ -826,6 +891,19 @@ impl eframe::App for SpotifyApp {
             self.update_context_tracks();
         }
 
+        // Update show detail episodes when viewing show detail page
+        if self.current_view == View::ShowDetail && self.show_detail_episodes.is_empty() {
+            if let Some(ref ctx_id) = self.show_detail_context_id {
+                let data = self.state.data.read();
+                if let Some(ctx) = data.caches.context.get(&ctx_id.uri()) {
+                    if let state::Context::Show { show, episodes } = ctx {
+                        self.show_detail_show = Some(show.clone());
+                        self.show_detail_episodes = episodes.clone();
+                    }
+                }
+            }
+        }
+
         // Update artist context when viewing artist page
         if self.current_view == View::Artist && self.artist_context.is_none() {
             if let Some(ref uri) = self.artist_id {
@@ -1108,6 +1186,7 @@ impl eframe::App for SpotifyApp {
                         | View::BrowseCategory { .. }
                         | View::Lyrics
                         | View::Queue
+                        | View::ShowDetail
                         | View::Help => {
                             self.go_back();
                         }
@@ -1299,6 +1378,28 @@ impl eframe::App for SpotifyApp {
                         &mut self.context_menu,
                     );
                 }
+                View::Shows => {
+                    action = views::render_shows(
+                        ui,
+                        &self.state,
+                        &self.client_pub,
+                        &mut self.image_cache,
+                        &mut self.context_menu,
+                    );
+                }
+                View::ShowDetail => {
+                    action = views::render_show_detail(
+                        ui,
+                        &self.state,
+                        &self.client_pub,
+                        &self.show_detail_show,
+                        &self.show_detail_episodes,
+                        &self.show_detail_context_id,
+                        &mut self.show_detail_selected_episode,
+                        &mut self.image_cache,
+                        &mut self.context_menu,
+                    );
+                }
                 View::Help => {
                     views::render_help(ui, &self.keybindings, &mut self.help_search);
                 }
@@ -1315,6 +1416,10 @@ impl eframe::App for SpotifyApp {
                 context_menu::Navigation::GoToAlbum(album) => {
                     self.context_menu.close();
                     self.handle_action(Action::ContextMenuNavigateAlbum(album));
+                }
+                context_menu::Navigation::GoToShow(show) => {
+                    self.context_menu.close();
+                    self.handle_action(Action::ContextMenuNavigateShow(show));
                 }
                 context_menu::Navigation::OpenAddToPlaylist(playable_id) => {
                     self.context_menu.close();

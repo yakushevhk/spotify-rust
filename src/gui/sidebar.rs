@@ -34,6 +34,7 @@ pub fn render(
         (View::Library, "🏠", "Library"),
         (View::Search, "🔍", "Search"),
         (View::Browse, "📂", "Browse"),
+        (View::Shows, "🎙", "Shows"),
         (View::Queue, "📋", "Queue"),
         (View::Lyrics, "🎤", "Lyrics"),
         (View::Settings, "⚙", "Settings"),
@@ -140,6 +141,24 @@ pub fn render(
                 );
                 if theme::list_item(ui, &album.name, &sub, false).clicked() {
                     action = Action::OpenAlbum(i);
+                }
+            }
+        });
+
+    ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
+    theme::divider_line(ui);
+
+    // Shows
+    theme::section_header(ui, "SHOWS");
+
+    egui::ScrollArea::vertical()
+        .id_salt("sidebar_shows")
+        .max_height(ui.available_height() * 0.2)
+        .show(ui, |ui| {
+            let data = state.data.read();
+            for show in data.user_data.saved_shows.iter() {
+                if theme::list_item(ui, &show.name, &show.publisher, false).clicked() {
+                    action = Action::OpenShowDetail(show.clone());
                 }
             }
         });

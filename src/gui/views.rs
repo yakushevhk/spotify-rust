@@ -4,7 +4,7 @@ use rspotify::prelude::Id;
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::gui::context_menu::{self, ContextTarget};
 use crate::gui::image_cache::{self, ImageCache};
-use crate::gui::{theme, Action, SortAction, SortColumn, SortDirection, SortState};
+use crate::gui::{theme, Action, SortAction, SortColumn, SortDirection, SortState, View};
 use crate::state::{self, PlayableId, SharedState};
 
 pub fn render_library(
@@ -172,6 +172,477 @@ pub fn render_library(
 
             ui.add_space(24.0);
         });
+
+    action
+}
+
+pub fn render_shows(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    client_pub: &flume::Sender<ClientRequest>,
+    image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
+) -> Action {
+    let mut action = Action::None;
+
+    theme::page_title(ui, "Your Shows");
+
+    let data = state.data.read();
+    let shows: Vec<_> = data.user_data.saved_shows.clone();
+    drop(data);
+
+    if shows.is_empty() {
+        // Request shows from API
+        let _ = client_pub.send(ClientRequest::GetUserSavedShows);
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            ui.label(
+                egui::RichText::new("Loading shows...")
+                    .size(16.0)
+                    .color(theme::text_dim()),
+            );
+        });
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("shows_scroll")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                });
+
+                egui::Grid::new("shows_grid")
+                    .num_columns(4)
+                    .spacing([16.0, 16.0])
+                    .show(ui, |ui| {
+                        for (i, show) in shows.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                let cover_path = image_cache::show_cover_path(show);
+                                if let (Some(path), Some(url)) = (&cover_path, &show.cover_url) {
+                                    if !path.exists() {
+                                        image_cache.request_download(url, path);
+                                    }
+                                }
+                                let response = grid_card(
+                                    ui,
+                                    &show.name,
+                                    &show.publisher,
+                                    cover_path.as_deref(),
+                                    image_cache,
+                                    || {
+                                        action = Action::OpenShowDetail(show.clone());
+                                    },
+                                );
+                                if response.secondary_clicked() {
+                                    if let Some(click_pos) = response.interact_pointer_pos() {
+                                        context_menu.open(
+                                            context_menu::ContextTarget::Show(show.clone()),
+                                            click_pos,
+                                        );
+                                    }
+                                }
+                            });
+                            if (i + 1) % 4 == 0 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+
+                ui.add_space(24.0);
+            });
+    }
+
+    action
+}
+
+pub fn render_show_detail(
+    ui: &mut egui::Ui,
+    state: &SharedState,
+    client_pub: &flume::Sender<ClientRequest>,
+    show: &Option<state::Show>,
+    episodes: &[state::Episode],
+    context_id: &Option<state::ContextId>,
+    selected_episode: &mut Option<usize>,
+    image_cache: &mut ImageCache,
+    context_menu: &mut context_menu::ContextMenu,
+) -> Action {
+    let mut action = Action::None;
+
+    // Back button
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let back_rect = ui.allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
+        let bg = if back_rect.1.hovered() {
+            theme::bg_hover()
+        } else {
+            theme::bg_card()
+        };
+        ui.painter().rect_filled(back_rect.0, 6.0, bg);
+        ui.painter().text(
+            back_rect.0.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{2190} Back",
+            egui::FontId::proportional(13.0),
+            theme::text_primary(),
+        );
+        if back_rect.1.clicked() {
+            action = Action::Navigate(View::Shows);
+        }
+    });
+
+    let Some(show) = show else {
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        return action;
+    };
+
+    // Show header with cover art
+    let header_height = 220.0;
+    let (header_rect, _) = ui
+        .allocate_exact_size(egui::vec2(ui.available_width(), header_height), egui::Sense::hover());
+
+    // Cover art
+    let art_size = 160.0;
+    let art_rect = egui::Rect::from_min_size(
+        header_rect.min + egui::vec2(24.0, 20.0),
+        egui::vec2(art_size, art_size),
+    );
+
+    let mut art_drawn = false;
+    if let Some(path) = image_cache::show_cover_path(show) {
+        if let (Some(path_ref), Some(url)) = (Some(&path), &show.cover_url) {
+            if !path_ref.exists() {
+                image_cache.request_download(url, path_ref);
+            }
+        }
+        if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
+            egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS)
+                .paint_at(ui, art_rect);
+            art_drawn = true;
+        }
+    }
+
+    if !art_drawn {
+        ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
+        ui.painter().text(
+            art_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{1F399}",
+            egui::FontId::proportional(48.0),
+            theme::text_muted(),
+        );
+    }
+
+    // Show info
+    let info_x = art_rect.right() + 24.0;
+    ui.painter().text(
+        egui::pos2(info_x, header_rect.top() + 30.0),
+        egui::Align2::LEFT_TOP,
+        &show.name,
+        egui::FontId::proportional(28.0),
+        theme::text_primary(),
+    );
+
+    ui.painter().text(
+        egui::pos2(info_x, header_rect.top() + 68.0),
+        egui::Align2::LEFT_TOP,
+        &show.publisher,
+        egui::FontId::proportional(14.0),
+        theme::text_dim(),
+    );
+
+    // Description (truncated)
+    let desc_lines: Vec<&str> = show.description.lines().take(3).collect();
+    let desc_text = desc_lines.join(" ");
+    let truncated = if desc_text.len() > 200 {
+        format!("{}...", &desc_text[..200])
+    } else {
+        desc_text
+    };
+    ui.painter().text(
+        egui::pos2(info_x, header_rect.top() + 92.0),
+        egui::Align2::LEFT_TOP,
+        &truncated,
+        egui::FontId::proportional(12.0),
+        theme::text_secondary(),
+    );
+
+    // Follow/Unfollow button
+    let is_followed = {
+        let data = state.data.read();
+        data.user_data.saved_shows.iter().any(|s| s.id == show.id)
+    };
+
+    let btn_text = if is_followed { "Following" } else { "Follow" };
+    let btn_width = 100.0;
+    let btn_rect = egui::Rect::from_min_size(
+        egui::pos2(info_x, header_rect.bottom() - 50.0),
+        egui::vec2(btn_width, 32.0),
+    );
+    let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
+    let btn_bg = if is_followed {
+        if btn_resp.hovered() {
+            theme::bg_hover()
+        } else {
+            egui::Color32::TRANSPARENT
+        }
+    } else {
+        if btn_resp.hovered() {
+            theme::green_hover()
+        } else {
+            theme::green()
+        }
+    };
+    ui.painter().rect_filled(btn_rect, 16.0, btn_bg);
+    if is_followed {
+        ui.painter().rect_stroke(
+            btn_rect,
+            16.0,
+            egui::Stroke::new(1.0, theme::text_muted()),
+            egui::StrokeKind::Outside,
+        );
+    }
+    let btn_text_color = if is_followed {
+        theme::text_primary()
+    } else {
+        egui::Color32::BLACK
+    };
+    ui.painter().text(
+        btn_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        btn_text,
+        egui::FontId::proportional(13.0),
+        btn_text_color,
+    );
+    if btn_resp.clicked() {
+        if is_followed {
+            let _ = client_pub.send(ClientRequest::DeleteFromLibrary(state::ItemId::Show(
+                show.id.clone(),
+            )));
+        } else {
+            let _ = client_pub.send(ClientRequest::AddToLibrary(state::Item::Show(show.clone())));
+        }
+    }
+
+    ui.add_space(8.0);
+
+    // Episodes list
+    let player = state.player.read();
+    let current_track_uri: Option<String> = player.playback.as_ref().and_then(|p| {
+        p.item.as_ref().map(|item| match item {
+            rspotify::model::PlayableItem::Episode(e) => e.id.uri(),
+            _ => String::new(),
+        })
+    });
+    drop(player);
+
+    if episodes.is_empty() {
+        ui.add_space(40.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+    } else {
+        theme::page_title(ui, &format!("Episodes ({})", episodes.len()));
+
+        egui::ScrollArea::vertical()
+            .id_salt("show_episodes_scroll")
+            .show(ui, |ui| {
+                for (i, episode) in episodes.iter().enumerate() {
+                    let is_playing = current_track_uri
+                        .as_ref()
+                        .map_or(false, |uri| uri == &episode.id.uri());
+                    let is_selected = *selected_episode == Some(i);
+
+                    let row_height = 64.0;
+                    let (row_rect, response) = ui
+                        .allocate_exact_size(
+                            egui::vec2(ui.available_width(), row_height),
+                            egui::Sense::click(),
+                        );
+
+                    let bg = if is_selected {
+                        theme::bg_selected()
+                    } else if response.hovered() {
+                        theme::bg_card()
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(row_rect, 4.0, bg);
+
+                    // Green left accent for playing episode
+                    if is_playing {
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(row_rect.min, egui::vec2(3.0, row_rect.height())),
+                            1.5,
+                            theme::green(),
+                        );
+                    }
+
+                    // Episode number / play indicator
+                    let num_color = if is_playing {
+                        theme::green()
+                    } else {
+                        theme::text_muted()
+                    };
+                    let num_str = if is_playing {
+                        "\u{25B6}".to_string()
+                    } else {
+                        format!("{}", i + 1)
+                    };
+                    ui.painter().text(
+                        row_rect.left_center() + egui::vec2(28.0, 0.0),
+                        egui::Align2::CENTER_CENTER,
+                        &num_str,
+                        egui::FontId::monospace(12.0),
+                        num_color,
+                    );
+
+                    // Episode name
+                    let title_color = if is_playing {
+                        theme::green()
+                    } else {
+                        theme::text_primary()
+                    };
+                    ui.painter().text(
+                        row_rect.left_center() + egui::vec2(60.0, -12.0),
+                        egui::Align2::LEFT_CENTER,
+                        &episode.name,
+                        egui::FontId::proportional(14.0),
+                        title_color,
+                    );
+
+                    // Episode description (truncated)
+                    let desc = if episode.description.len() > 120 {
+                        format!("{}...", &episode.description[..120])
+                    } else {
+                        episode.description.clone()
+                    };
+                    ui.painter().text(
+                        row_rect.left_center() + egui::vec2(60.0, 8.0),
+                        egui::Align2::LEFT_CENTER,
+                        &desc,
+                        egui::FontId::proportional(11.0),
+                        theme::text_dim(),
+                    );
+
+                    // Release date
+                    ui.painter().text(
+                        row_rect.right_center() + egui::vec2(-140.0, -8.0),
+                        egui::Align2::RIGHT_CENTER,
+                        &episode.release_date,
+                        egui::FontId::proportional(11.0),
+                        theme::text_dim(),
+                    );
+
+                    // Duration
+                    let dur_str = theme::format_duration_secs(episode.duration.as_secs());
+                    ui.painter().text(
+                        row_rect.right_center() + egui::vec2(-52.0, -8.0),
+                        egui::Align2::RIGHT_CENTER,
+                        &dur_str,
+                        egui::FontId::monospace(12.0),
+                        theme::text_dim(),
+                    );
+
+                    // "..." button on hover
+                    let more_btn_rect = egui::Rect::from_center_size(
+                        row_rect.right_center() + egui::vec2(-16.0, -8.0),
+                        egui::vec2(24.0, 24.0),
+                    );
+                    if response.hovered() {
+                        let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
+                        let more_bg = if more_resp.hovered() {
+                            egui::Color32::from_rgb(40, 40, 40)
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        };
+                        ui.painter().rect_filled(more_btn_rect, 12.0, more_bg);
+                        ui.painter().text(
+                            more_btn_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "\u{22EF}",
+                            egui::FontId::proportional(14.0),
+                            theme::text_dim(),
+                        );
+                        if more_resp.clicked() {
+                            context_menu.open(
+                                context_menu::ContextTarget::Episode {
+                                    episode: episode.clone(),
+                                    show: show.clone().into(),
+                                },
+                                more_btn_rect.left_bottom(),
+                            );
+                        }
+                    }
+
+                    // Play button on hover
+                    if response.hovered() && !is_playing {
+                        let play_btn_rect = egui::Rect::from_center_size(
+                            row_rect.left_center() + egui::vec2(28.0, 0.0),
+                            egui::vec2(24.0, 24.0),
+                        );
+                        ui.painter()
+                            .rect_filled(play_btn_rect, 12.0, theme::green());
+                        ui.painter().text(
+                            play_btn_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "\u{25B6}",
+                            egui::FontId::proportional(10.0),
+                            theme::bg_black(),
+                        );
+                    }
+
+                    // Play on click
+                    if response.double_clicked() {
+                        *selected_episode = Some(i);
+                        if let Some(ref ctx_id) = context_id {
+                            let playback = state::Playback::Context(
+                                ctx_id.clone(),
+                                Some(rspotify::model::Offset::Uri(episode.id.uri())),
+                            );
+                            let _ = client_pub.send(ClientRequest::Player(
+                                PlayerRequest::StartPlayback(playback, None),
+                            ));
+                        }
+                    } else if response.clicked() {
+                        *selected_episode = Some(i);
+                    }
+
+                    // Right-click context menu
+                    if response.secondary_clicked() {
+                        if let Some(click_pos) = response.interact_pointer_pos() {
+                            context_menu.open(
+                                context_menu::ContextTarget::Episode {
+                                    episode: episode.clone(),
+                                    show: Some(show.clone()),
+                                },
+                                click_pos,
+                            );
+                        }
+                    }
+
+                    // Row divider
+                    let div = egui::Rect::from_min_size(
+                        row_rect.left_bottom() + egui::vec2(24.0, 0.0),
+                        egui::vec2(row_rect.width() - 48.0, 1.0),
+                    );
+                    ui.painter().rect_filled(div, 0.0, theme::divider());
+                }
+            });
+    }
 
     action
 }
@@ -781,7 +1252,7 @@ pub fn render_search(
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
-    let action = Action::None;
+    let mut action = Action::None;
 
     theme::page_title(ui, "Search");
 
@@ -1174,6 +1645,49 @@ pub fn render_search(
                                         click_pos,
                                     );
                                 }
+                            }
+                            ui.add_space(12.0);
+                        }
+                    });
+                });
+        }
+
+        if !results.shows.is_empty() {
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(
+                    egui::RichText::new("Shows")
+                        .size(20.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(8.0);
+
+            egui::ScrollArea::horizontal()
+                .id_salt("search_shows_h")
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add_space(24.0);
+                        for show in results.shows.iter() {
+                            let cover_path = image_cache::show_cover_path(show);
+                            if let (Some(path), Some(url)) = (&cover_path, &show.cover_url) {
+                                if !path.exists() {
+                                    image_cache.request_download(url, path);
+                                }
+                            }
+                            let response = search_grid_card(ui, &show.name, &show.publisher, cover_path.as_deref(), image_cache);
+                            if response.secondary_clicked() {
+                                if let Some(click_pos) = response.interact_pointer_pos() {
+                                    context_menu.open(
+                                        ContextTarget::Show(show.clone()),
+                                        click_pos,
+                                    );
+                                }
+                            }
+                            if response.clicked() {
+                                action = Action::OpenShowFromSearch(show.clone());
                             }
                             ui.add_space(12.0);
                         }

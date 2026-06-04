@@ -3,12 +3,13 @@ use rspotify::prelude::Id;
 
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::gui::theme;
-use crate::state::{self, Album, Artist, Item, ItemId, PlayableId, Playback, Playlist, SharedState, Track};
+use crate::state::{self, Album, Artist, Episode, Item, ItemId, PlayableId, Playback, Playlist, SharedState, Show, Track};
 
 #[derive(Clone, Debug)]
 pub enum Navigation {
     GoToArtist(Artist),
     GoToAlbum(Album),
+    GoToShow(Show),
     OpenAddToPlaylist(PlayableId<'static>),
 }
 
@@ -22,6 +23,11 @@ pub enum ContextTarget {
     Album(Album),
     Artist(Artist),
     Playlist(Playlist),
+    Show(Show),
+    Episode {
+        episode: Episode,
+        show: Option<Show>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -44,8 +50,11 @@ pub enum MenuAction {
     PlayContext(Playback),
     GoToArtist(Artist),
     GoToAlbum(Album),
+    GoToShow(Show),
     FollowArtist(Artist),
     UnfollowArtist(state::ArtistId<'static>),
+    AddShowToLibrary(Show),
+    RemoveShowFromLibrary(state::ShowId<'static>),
     CopyLink(String),
     DeleteFromPlaylist(state::PlaylistId<'static>, state::TrackId<'static>),
     None,
@@ -245,6 +254,76 @@ impl ContextMenu {
         items
     }
 
+    fn show_items(show: &Show) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+
+        items.push(MenuItem {
+            icon: "\u{1F50D}",
+            label: "Go to Show",
+            destructive: false,
+            action: MenuAction::GoToShow(show.clone()),
+        });
+
+        items.push(MenuItem {
+            icon: "\u{1F5D1}",
+            label: "Unfollow",
+            destructive: true,
+            action: MenuAction::RemoveShowFromLibrary(show.id.clone()),
+        });
+
+        let uri = format!("https://open.spotify.com/show/{}", show.id.id());
+        items.push(MenuItem {
+            icon: "\u{1F517}",
+            label: "Copy Link",
+            destructive: false,
+            action: MenuAction::CopyLink(uri),
+        });
+
+        items
+    }
+
+    fn episode_items(episode: &Episode, show: &Option<Show>) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+
+        if let Some(show) = show {
+            items.push(MenuItem {
+                icon: "\u{25B6}",
+                label: "Play",
+                destructive: false,
+                action: MenuAction::PlayContext(Playback::Context(
+                    state::ContextId::Show(show.id.clone()),
+                    Some(rspotify::model::Offset::Uri(episode.id.uri())),
+                )),
+            });
+        }
+
+        items.push(MenuItem {
+            icon: "\u{2795}",
+            label: "Add to Queue",
+            destructive: false,
+            action: MenuAction::AddToQueue(PlayableId::Episode(episode.id.clone())),
+        });
+
+        if let Some(show) = show {
+            items.push(MenuItem {
+                icon: "\u{1F399}",
+                label: "Go to Show",
+                destructive: false,
+                action: MenuAction::GoToShow(show.clone()),
+            });
+        }
+
+        let uri = format!("https://open.spotify.com/episode/{}", episode.id.id());
+        items.push(MenuItem {
+            icon: "\u{1F517}",
+            label: "Copy Link",
+            destructive: false,
+            action: MenuAction::CopyLink(uri),
+        });
+
+        items
+    }
+
     pub fn render(
         &mut self,
         ctx: &egui::Context,
@@ -263,6 +342,8 @@ impl ContextMenu {
             ContextTarget::Album(album) => Self::album_items(album),
             ContextTarget::Artist(artist) => Self::artist_items(artist),
             ContextTarget::Playlist(playlist) => Self::playlist_items(playlist),
+            ContextTarget::Show(show) => Self::show_items(show),
+            ContextTarget::Episode { episode, show } => Self::episode_items(episode, show),
         };
 
         let menu_width = 220.0;
@@ -412,6 +493,10 @@ impl ContextMenu {
             MenuAction::UnfollowArtist(_) => (
                 "Unfollow Artist?",
                 "You will no longer follow this artist.",
+            ),
+            MenuAction::RemoveShowFromLibrary(_) => (
+                "Unfollow Show?",
+                "This show will be removed from your library.",
             ),
             MenuAction::DeleteFromPlaylist(_, _) => (
                 "Remove from Playlist?",
@@ -595,6 +680,9 @@ impl ContextMenu {
             MenuAction::GoToAlbum(album) => {
                 Some(Navigation::GoToAlbum(album))
             }
+            MenuAction::GoToShow(show) => {
+                Some(Navigation::GoToShow(show))
+            }
             MenuAction::FollowArtist(artist) => {
                 let data = state.data.read();
                 let is_followed = data
@@ -617,6 +705,14 @@ impl ContextMenu {
                 let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Artist(
                     artist_id,
                 )));
+                None
+            }
+            MenuAction::AddShowToLibrary(show) => {
+                let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Show(show)));
+                None
+            }
+            MenuAction::RemoveShowFromLibrary(show_id) => {
+                let _ = client_pub.send(ClientRequest::DeleteFromLibrary(ItemId::Show(show_id)));
                 None
             }
             MenuAction::CopyLink(link) => {

@@ -148,6 +148,18 @@ pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
     )
 }
 
+pub fn show_cover_path(show: &state::Show) -> Option<PathBuf> {
+    let id_str = show.id.id();
+    let id_prefix = &id_str[..id_str.len().min(6)];
+    let filename = format!("show-{}-cover.jpg", id_prefix).replace('/', "");
+    Some(
+        crate::config::get_config()
+            .cache_folder
+            .join("image")
+            .join(filename),
+    )
+}
+
 pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
     if category.icon_url.is_none() {
         return None;

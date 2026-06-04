@@ -193,6 +193,12 @@ pub struct Playlist {
 pub struct Show {
     pub id: ShowId<'static>,
     pub name: String,
+    #[serde(default)]
+    pub publisher: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -630,6 +636,9 @@ impl From<rspotify::model::SimplifiedShow> for Show {
         Self {
             id: show.id,
             name: show.name,
+            publisher: show.publisher,
+            description: show.description,
+            cover_url: show.images.first().map(|img| img.url.clone()),
         }
     }
 }
@@ -639,6 +648,9 @@ impl From<rspotify::model::FullShow> for Show {
         Self {
             id: show.id,
             name: show.name,
+            publisher: show.publisher,
+            description: show.description,
+            cover_url: show.images.first().map(|img| img.url.clone()),
         }
     }
 }
