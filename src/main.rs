@@ -12,6 +12,8 @@ mod ui;
 mod utils;
 
 mod gui;
+#[cfg(feature = "media-control")]
+mod media_control;
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
@@ -117,6 +119,25 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
                 client::start_player_event_watcher(&state, &client_pub);
             }
         })?;
+
+    // media control task (MPRIS on Linux, native on macOS/Windows)
+    #[cfg(feature = "media-control")]
+    {
+        let configs = config::get_config();
+        if configs.app_config.enable_media_control {
+            let media_client_pub = client_pub.clone();
+            std::thread::Builder::new()
+                .name("media-control".to_string())
+                .spawn({
+                    let state = state.clone();
+                    move || {
+                        if let Err(err) = media_control::start_event_watcher(&state, media_client_pub) {
+                            tracing::error!("Media control event watcher failed: {err:#}");
+                        }
+                    }
+                })?;
+        }
+    }
 
     // Launch the GUI
     let gui_state = state.clone();
