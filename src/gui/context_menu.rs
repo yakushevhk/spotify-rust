@@ -258,6 +258,23 @@ impl ContextMenu {
         let mut items = Vec::new();
 
         items.push(MenuItem {
+            icon: "\u{25B6}",
+            label: "Play",
+            destructive: false,
+            action: MenuAction::PlayContext(Playback::Context(
+                state::ContextId::Show(show.id.clone()),
+                None,
+            )),
+        });
+
+        items.push(MenuItem {
+            icon: "\u{2795}",
+            label: "Add to Library",
+            destructive: false,
+            action: MenuAction::AddShowToLibrary(show.clone()),
+        });
+
+        items.push(MenuItem {
             icon: "\u{1F50D}",
             label: "Go to Show",
             destructive: false,
@@ -603,7 +620,7 @@ impl ContextMenu {
                             .0;
                         let confirm_resp = ui.allocate_rect(confirm_rect, egui::Sense::click());
                         let confirm_bg = if confirm_resp.hovered() {
-                            egui::Color32::from_rgb(200, 40, 40)
+                            theme::error_color()
                         } else {
                             theme::error_color()
                         };
@@ -612,12 +629,12 @@ impl ContextMenu {
                             egui::CornerRadius::same(4),
                             confirm_bg,
                         );
-                        ui.painter().text(
+                         ui.painter().text(
                             confirm_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             "Remove",
                             egui::FontId::proportional(13.0),
-                            egui::Color32::WHITE,
+                            theme::text_primary(),
                         );
                         if confirm_resp.clicked() {
                             execute = true;

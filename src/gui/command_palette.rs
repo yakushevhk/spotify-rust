@@ -207,14 +207,14 @@ impl CommandPalette {
 
                                 // Text color
                                 let text_color = if is_selected {
-                                    egui::Color32::BLACK
+                                    theme::bg_black()
                                 } else if item_resp.hovered() {
                                     theme::text_primary()
                                 } else {
                                     theme::text_secondary()
                                 };
                                 let dim_color = if is_selected {
-                                    egui::Color32::from_rgba_premultiplied(0, 0, 0, 160)
+                                    theme::with_alpha(theme::bg_black(), 160)
                                 } else {
                                     theme::text_dim()
                                 };

@@ -423,7 +423,7 @@ pub fn render_show_detail(
     let btn_text_color = if is_followed {
         theme::text_primary()
     } else {
-        egui::Color32::BLACK
+        theme::bg_black()
     };
     ui.painter().text(
         btn_rect.center(),
@@ -572,7 +572,7 @@ pub fn render_show_detail(
                     if response.hovered() {
                         let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
                         let more_bg = if more_resp.hovered() {
-                            egui::Color32::from_rgb(40, 40, 40)
+                            theme::bg_hover()
                         } else {
                             egui::Color32::TRANSPARENT
                         };
@@ -767,7 +767,7 @@ fn grid_card(
         ui.painter().rect_filled(
             art_rect,
             theme::ART_CORNER_RADIUS,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+            theme::with_alpha(theme::bg_black(), 100),
         );
         ui.painter().rect_filled(play_rect, 20.0, theme::green());
         ui.painter().text(
@@ -848,8 +848,8 @@ pub fn render_tracks(
     drop(player);
 
     // Table header — clickable columns
-    let header_color_default = egui::Color32::from_rgb(136, 136, 136); // #888888
-    let header_color_hover = egui::Color32::from_rgb(204, 204, 204); // #CCCCCC
+    let header_color_default = theme::text_dim();
+    let header_color_hover = theme::text_secondary();
     let header_color_active = theme::green(); // #1DB954
 
     ui.horizontal(|ui| {
@@ -1160,7 +1160,7 @@ pub fn render_tracks(
                 if response.hovered() {
                     let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
                     let more_bg = if more_resp.hovered() {
-                        egui::Color32::from_rgb(40, 40, 40)
+                        theme::bg_hover()
                     } else {
                         egui::Color32::TRANSPARENT
                     };
@@ -1426,10 +1426,10 @@ pub fn render_search(
                             row_rect.right_center() + egui::vec2(-16.0, 0.0),
                             egui::vec2(24.0, 24.0),
                         );
-                        if response.hovered() {
+                         if response.hovered() {
                             let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
                             let more_bg = if more_resp.hovered() {
-                                egui::Color32::from_rgb(40, 40, 40)
+                                theme::bg_hover()
                             } else {
                                 egui::Color32::TRANSPARENT
                             };
@@ -1784,7 +1784,7 @@ fn search_grid_card(
         ui.painter().rect_filled(
             art_rect,
             theme::ART_CORNER_RADIUS,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+            theme::with_alpha(theme::bg_black(), 100),
         );
         let play_rect = egui::Rect::from_center_size(
             art_rect.center(),
@@ -2327,7 +2327,7 @@ fn settings_toggle(ui: &mut egui::Ui, label: &str, value: &mut bool) -> bool {
     ui.painter().circle_filled(
         egui::pos2(knob_x, toggle_rect.center().y),
         7.0,
-        egui::Color32::from_rgb(255, 255, 255),
+        theme::foreground(),
     );
     ui.add_space(8.0);
     ui.label(
@@ -3706,9 +3706,9 @@ pub fn render_artist(
                     );
 
                 let bg = if response.hovered() {
-                    egui::Color32::from_rgb(10, 10, 10)
+                    theme::bg_input()
                 } else if i % 2 == 0 {
-                    egui::Color32::from_rgb(10, 10, 10)
+                    theme::bg_input()
                 } else {
                     theme::bg_black()
                 };
@@ -3797,7 +3797,7 @@ pub fn render_artist(
                 if response.hovered() {
                     let more_resp = ui.allocate_rect(more_btn_rect, egui::Sense::click());
                     let more_bg = if more_resp.hovered() {
-                        egui::Color32::from_rgb(40, 40, 40)
+                        theme::bg_hover()
                     } else {
                         egui::Color32::TRANSPARENT
                     };
@@ -4011,7 +4011,7 @@ fn artist_album_card(
     let bg = if response.hovered() {
         theme::bg_hover()
     } else {
-        egui::Color32::from_rgb(17, 17, 17)
+        theme::bg_card()
     };
     ui.painter().rect_filled(rect, 4.0, bg);
 
@@ -4045,7 +4045,7 @@ fn artist_album_card(
         ui.painter().rect_filled(
             art_rect,
             theme::ART_CORNER_RADIUS,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+            theme::with_alpha(theme::bg_black(), 100),
         );
         let play_rect = egui::Rect::from_center_size(
             art_rect.center(),
@@ -4315,12 +4315,12 @@ pub fn render_help(
                         ui.painter().rect_filled(
                             badge_rect,
                             4.0,
-                            egui::Color32::from_rgb(30, 30, 30),
+                            theme::bg_dark(),
                         );
                         ui.painter().rect_stroke(
                             badge_rect,
                             4.0,
-                            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50)),
+                            egui::Stroke::new(1.0, theme::bg_active()),
                             egui::StrokeKind::Outside,
                         );
                         ui.painter().text(

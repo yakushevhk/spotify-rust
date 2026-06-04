@@ -219,10 +219,10 @@ pub fn render(
         ("Enter", "Play selected"),
         ("?  ", "Help"),
         ("Esc", "Back"),
-        ("Ctrl+↑↓", "Volume"),
+        ("Ctrl+i/d", "Volume"),
         ("l  ", "Lyrics"),
         ("z  ", "Queue"),
-        ("/  ", "Search"),
+        ("gs ", "Search"),
     ];
     for (key, desc) in hints {
         ui.horizontal(|ui| {

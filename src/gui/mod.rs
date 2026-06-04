@@ -518,14 +518,14 @@ impl SpotifyApp {
                     }
                 }
                 NavCommand::FocusNext => {
-                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics];
+                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics, View::Shows, View::Settings];
                     if let Some(idx) = views.iter().position(|v| *v == self.current_view) {
                         let next = (idx + 1) % views.len();
                         self.navigate_to_view(views[next].clone());
                     }
                 }
                 NavCommand::FocusPrev => {
-                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics];
+                    let views = [View::Library, View::Search, View::Browse, View::Queue, View::Lyrics, View::Shows, View::Settings];
                     if let Some(idx) = views.iter().position(|v| *v == self.current_view) {
                         let prev = if idx == 0 { views.len() - 1 } else { idx - 1 };
                         self.navigate_to_view(views[prev].clone());
@@ -1004,7 +1004,7 @@ impl eframe::App for SpotifyApp {
                         // Divider
                         let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
                         ui.painter()
-                            .rect_filled(div_rect, 0.0, egui::Color32::from_rgb(26, 26, 26));
+                            .rect_filled(div_rect, 0.0, theme::divider());
 
                         ui.add_space(8.0);
 
@@ -1037,7 +1037,7 @@ impl eframe::App for SpotifyApp {
                                 );
 
                                 let bg = if item_response.hovered() && !is_active {
-                                    egui::Color32::from_rgb(26, 26, 26)
+                                    theme::bg_hover()
                                 } else {
                                     egui::Color32::TRANSPARENT
                                 };
@@ -1051,7 +1051,7 @@ impl eframe::App for SpotifyApp {
                                     egui::Align2::LEFT_CENTER,
                                     device.device_icon(),
                                     egui::FontId::proportional(18.0),
-                                    egui::Color32::from_rgb(100, 100, 100),
+                                    theme::text_dim(),
                                 );
 
                                 // Device name
@@ -1089,7 +1089,7 @@ impl eframe::App for SpotifyApp {
                                         egui::Align2::LEFT_CENTER,
                                         &device.device_type,
                                         egui::FontId::proportional(11.0),
-                                        egui::Color32::from_rgb(136, 136, 136),
+                                        theme::text_dim(),
                                     );
                                 }
 
@@ -1198,7 +1198,8 @@ impl eframe::App for SpotifyApp {
                         | View::Lyrics
                         | View::Queue
                         | View::ShowDetail
-                        | View::Help => {
+                        | View::Help
+                        | View::Settings => {
                             self.go_back();
                         }
                         _ => {}
@@ -1595,7 +1596,7 @@ impl SpotifyApp {
                         .hint_text("Playlist name")
                         .font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8))
-                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                        .background_color(theme::bg_input());
                     ui.add(name_input);
                     ui.add_space(10.0);
 
@@ -1611,7 +1612,7 @@ impl SpotifyApp {
                         .hint_text("Optional description")
                         .font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8))
-                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                        .background_color(theme::bg_input());
                     ui.add(desc_input);
                     ui.add_space(12.0);
 
@@ -1624,7 +1625,7 @@ impl SpotifyApp {
                         let toggle_bg = if self.create_playlist_public {
                             theme::green()
                         } else {
-                            egui::Color32::from_rgb(50, 50, 50)
+                            theme::bg_active()
                         };
                         ui.painter().rect_filled(
                             toggle_rect,
@@ -1639,7 +1640,7 @@ impl SpotifyApp {
                         ui.painter().circle_filled(
                             egui::pos2(knob_x, toggle_rect.center().y),
                             7.0,
-                            egui::Color32::from_rgb(255, 255, 255),
+                            theme::foreground(),
                         );
                         if toggle_resp.clicked() {
                             self.create_playlist_public = !self.create_playlist_public;
@@ -1659,7 +1660,7 @@ impl SpotifyApp {
                         let toggle_bg2 = if self.create_playlist_collab {
                             theme::green()
                         } else {
-                            egui::Color32::from_rgb(50, 50, 50)
+                            theme::bg_active()
                         };
                         ui.painter().rect_filled(
                             toggle_rect2,
@@ -1674,7 +1675,7 @@ impl SpotifyApp {
                         ui.painter().circle_filled(
                             egui::pos2(knob_x2, toggle_rect2.center().y),
                             7.0,
-                            egui::Color32::from_rgb(255, 255, 255),
+                            theme::foreground(),
                         );
                         if toggle_resp2.clicked() {
                             self.create_playlist_collab = !self.create_playlist_collab;
@@ -1697,9 +1698,9 @@ impl SpotifyApp {
                             .0;
                         let cancel_resp = ui.allocate_rect(cancel_rect, egui::Sense::click());
                         let cancel_bg = if cancel_resp.hovered() {
-                            egui::Color32::from_rgb(40, 40, 40)
+                            theme::bg_hover()
                         } else {
-                            egui::Color32::from_rgb(51, 51, 51)
+                            theme::bg_card()
                         };
                         ui.painter().rect_filled(
                             cancel_rect,
@@ -1726,7 +1727,7 @@ impl SpotifyApp {
                             .0;
                         let create_resp = ui.allocate_rect(create_rect, egui::Sense::click());
                         let create_bg = if !can_create {
-                            egui::Color32::from_rgb(30, 30, 30)
+                            theme::bg_dark()
                         } else if create_resp.hovered() {
                             theme::green_hover()
                         } else {
@@ -1738,7 +1739,7 @@ impl SpotifyApp {
                             create_bg,
                         );
                         let create_text_color = if can_create {
-                            egui::Color32::from_rgb(0, 0, 0)
+                            theme::bg_black()
                         } else {
                             theme::text_muted()
                         };
@@ -1866,7 +1867,7 @@ impl SpotifyApp {
                         .hint_text("Search playlists...")
                         .font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8))
-                        .background_color(egui::Color32::from_rgb(10, 10, 10));
+                        .background_color(theme::bg_input());
                     ui.add(filter_input);
                     ui.add_space(8.0);
 
@@ -1916,7 +1917,7 @@ impl SpotifyApp {
                                     ui.allocate_rect(item_rect, egui::Sense::click());
 
                                 let bg = if item_resp.hovered() {
-                                    egui::Color32::from_rgb(26, 26, 26)
+                                    theme::bg_hover()
                                 } else {
                                     egui::Color32::TRANSPARENT
                                 };
