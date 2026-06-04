@@ -82,10 +82,8 @@ pub fn render(
 
     // New Playlist button
     ui.add_space(4.0);
-    let btn_rect = ui
-        .allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click())
-        .0;
-    let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
+    let (btn_rect, btn_resp) = ui
+        .allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click());
     let btn_bg = if btn_resp.hovered() {
         theme::bg_hover()
     } else {

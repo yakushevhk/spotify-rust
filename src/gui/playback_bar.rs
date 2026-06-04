@@ -247,7 +247,7 @@ pub fn render(
                     .map_or(rspotify::model::RepeatState::Off, |p| p.repeat_state);
                 let repeat_active = repeat_state != rspotify::model::RepeatState::Off;
                 let repeat_icon = match repeat_state {
-                    rspotify::model::RepeatState::Track => "⟳",
+                    rspotify::model::RepeatState::Track => "⟳¹",
                     _ => "⟳",
                 };
                 if theme::icon_button(ui, repeat_icon, 30.0, repeat_active).clicked() {
@@ -428,20 +428,39 @@ pub fn render(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(16.0);
 
-            // Device name
+            // Device button (always visible)
+            if theme::icon_button(ui, "🖥", 28.0, false).clicked() {
+                result.device_button_clicked = true;
+            }
+
+            ui.add_space(8.0);
+
+            // Lyrics button
+            if theme::icon_button(ui, "🎤", 28.0, false).clicked() {
+                result.navigate = Some(View::Lyrics);
+            }
+
             if let Some(ref playback) = playback {
+                // Device name
+                ui.add_space(16.0);
                 ui.label(
-                    egui::RichText::new(&playback.device.name)
+                    egui::RichText::new(format!("{}%", playback.device.volume_percent.unwrap_or(50) as u32))
                         .size(11.0)
-                        .color(theme::text_dim()),
+                        .color(theme::text_dim())
+                        .monospace(),
                 );
-                ui.add_space(12.0);
 
                 // Volume
                 let volume = playback
                     .device
                     .volume_percent
                     .unwrap_or(50) as f32;
+
+                // Volume icon
+                let vol_icon = if volume == 0.0 { "🔇" } else if volume < 30.0 { "🔈" } else if volume < 70.0 { "🔉" } else { "🔊" };
+                ui.label(
+                    egui::RichText::new(vol_icon).size(14.0).color(theme::text_dim()),
+                );
 
                 let mut vol = volume;
                 let vol_slider = egui::Slider::new(&mut vol, 0.0..=100.0)
@@ -450,32 +469,14 @@ pub fn render(
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(vol as u8)));
                 }
 
-                // Volume icon
-                let vol_icon = if volume == 0.0 { "🔇" } else if volume < 30.0 { "🔈" } else if volume < 70.0 { "🔉" } else { "🔊" };
-                ui.label(
-                    egui::RichText::new(vol_icon).size(14.0).color(theme::text_dim()),
-                );
+                ui.add_space(12.0);
 
+                // Device name label
                 ui.label(
-                    egui::RichText::new(format!("{}%", volume as u32))
+                    egui::RichText::new(&playback.device.name)
                         .size(11.0)
-                        .color(theme::text_dim())
-                        .monospace(),
+                        .color(theme::text_dim()),
                 );
-
-                ui.add_space(16.0);
-
-                // Lyrics button
-                if theme::icon_button(ui, "🎤", 28.0, false).clicked() {
-                    result.navigate = Some(View::Lyrics);
-                }
-
-                ui.add_space(8.0);
-
-                // Device button
-                if theme::icon_button(ui, "🖥", 28.0, false).clicked() {
-                    result.device_button_clicked = true;
-                }
             }
         });
     });

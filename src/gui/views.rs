@@ -1579,6 +1579,10 @@ pub fn render_search(
                                 }
                             }
 
+                            if response.clicked() {
+                                action = Action::OpenArtist(artist.clone());
+                            }
+
                             ui.add_space(12.0);
                         }
                     });
@@ -2505,10 +2509,8 @@ pub fn render_settings(
             } else {
                 theme::text_secondary()
             };
-            let btn_rect = ui
-                .allocate_exact_size(egui::vec2(label.len() as f32 * 9.0 + 24.0, 32.0), egui::Sense::click())
-                .0;
-            let resp = ui.allocate_rect(btn_rect, egui::Sense::click());
+            let (btn_rect, resp) = ui
+                .allocate_exact_size(egui::vec2(label.len() as f32 * 9.0 + 24.0, 32.0), egui::Sense::click());
             let bg = if is_selected {
                 theme::green()
             } else if resp.hovered() {
@@ -2536,10 +2538,8 @@ pub fn render_settings(
             ui.add_space(24.0);
             if *dirty {
                 // Reset button
-                let reset_rect = ui
-                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click())
-                    .0;
-                let reset_resp = ui.allocate_rect(reset_rect, egui::Sense::click());
+                let (reset_rect, reset_resp) = ui
+                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click());
                 let reset_bg = if reset_resp.hovered() {
                     theme::bg_hover()
                 } else {
@@ -2566,10 +2566,8 @@ pub fn render_settings(
                 ui.add_space(8.0);
 
                 // Save button
-                let save_rect = ui
-                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click())
-                    .0;
-                let save_resp = ui.allocate_rect(save_rect, egui::Sense::click());
+                let (save_rect, save_resp) = ui
+                    .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click());
                 let save_bg = if save_resp.hovered() {
                     theme::green_hover()
                 } else {

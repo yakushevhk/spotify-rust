@@ -839,21 +839,151 @@ impl SpotifyApp {
     }
 
     fn open_spotify_link_from_clipboard(&mut self) {
-        // Try to read clipboard and open a spotify link
-        // On macOS we can use pbpaste
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            if let Ok(output) = Command::new("pbpaste").output() {
-                if let Ok(text) = String::from_utf8(output.stdout) {
-                    let text = text.trim();
-                    if text.contains("open.spotify.com") {
-                        self.toast(format!("Opening: {}", text));
-                        // TODO: Parse and navigate to the link
-                    } else {
-                        self.toast("No Spotify link in clipboard".to_string());
-                    }
+        let text = {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("pbpaste")
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.trim().to_string())
+            }
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("xclip")
+                    .args(["-selection", "clipboard", "-o"])
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.trim().to_string())
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("powershell")
+                    .args(["-command", "Get-Clipboard"])
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.trim().to_string())
+            }
+        };
+
+        let Some(text) = text else {
+            self.toast("Could not read clipboard".to_string());
+            return;
+        };
+
+        if !text.contains("open.spotify.com") {
+            self.toast("No Spotify link in clipboard".to_string());
+            return;
+        }
+
+        // Parse: https://open.spotify.com/{type}/{id}  or  spotify:{type}:{id}
+        let (link_type, id_str) = if text.contains("open.spotify.com") {
+            // URL format: https://open.spotify.com/track/abc123?si=...
+            let after_domain = text.split("open.spotify.com/").nth(1).unwrap_or("");
+            let parts: Vec<&str> = after_domain.split('/').collect();
+            if parts.len() >= 2 {
+                let id = parts[1].split('?').next().unwrap_or("");
+                (parts[0], id.to_string())
+            } else {
+                self.toast("Invalid Spotify link format".to_string());
+                return;
+            }
+        } else if text.starts_with("spotify:") {
+            // URI format: spotify:track:abc123
+            let parts: Vec<&str> = text.split(':').collect();
+            if parts.len() >= 3 {
+                (parts[1], parts[2].to_string())
+            } else {
+                self.toast("Invalid Spotify URI format".to_string());
+                return;
+            }
+        } else {
+            self.toast("Unrecognized Spotify link".to_string());
+            return;
+        };
+
+        match link_type {
+            "track" => {
+                if let Ok(track_id) = rspotify::model::TrackId::from_id(&id_str) {
+                    let playback = state::Playback::URIs(
+                        vec![PlayableId::Track(track_id.into_static())],
+                        None,
+                    );
+                    let _ = self.client_pub.send(ClientRequest::Player(
+                        PlayerRequest::StartPlayback(playback, None),
+                    ));
+                    self.toast("Playing track".to_string());
+                } else {
+                    self.toast("Invalid track ID".to_string());
                 }
+            }
+            "album" => {
+                if let Ok(album_id) = rspotify::model::AlbumId::from_id(&id_str) {
+                    let album_id_static = album_id.into_static();
+                    self.context_title = String::new();
+                    self.context_tracks.clear();
+                    self.sort_state = None;
+                    self.selected_track = None;
+                    self.current_context_id = Some(state::ContextId::Album(album_id_static.clone()));
+                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                        state::ContextId::Album(album_id_static),
+                    ));
+                    self.current_view = View::Tracks;
+                    self.toast("Opening album".to_string());
+                } else {
+                    self.toast("Invalid album ID".to_string());
+                }
+            }
+            "artist" => {
+                if let Ok(artist_id) = rspotify::model::ArtistId::from_id(&id_str) {
+                    let artist_id_static = artist_id.into_static();
+                    self.artist_id = Some(artist_id_static.uri());
+                    self.artist_context = None;
+                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                        state::ContextId::Artist(artist_id_static),
+                    ));
+                    self.current_view = View::Artist;
+                    self.toast("Opening artist".to_string());
+                } else {
+                    self.toast("Invalid artist ID".to_string());
+                }
+            }
+            "playlist" => {
+                if let Ok(playlist_id) = rspotify::model::PlaylistId::from_id(&id_str) {
+                    let playlist_id_static = playlist_id.into_static();
+                    self.context_title = String::new();
+                    self.context_tracks.clear();
+                    self.sort_state = None;
+                    self.selected_track = None;
+                    self.current_context_id = Some(state::ContextId::Playlist(playlist_id_static.clone()));
+                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                        state::ContextId::Playlist(playlist_id_static),
+                    ));
+                    self.current_view = View::Tracks;
+                    self.toast("Opening playlist".to_string());
+                } else {
+                    self.toast("Invalid playlist ID".to_string());
+                }
+            }
+            "show" => {
+                if let Ok(show_id) = rspotify::model::ShowId::from_id(&id_str) {
+                    let show_id_static = show_id.into_static();
+                    let ctx_id = state::ContextId::Show(show_id_static.clone());
+                    self.show_detail_context_id = Some(ctx_id.clone());
+                    self.show_detail_show = None;
+                    self.show_detail_episodes.clear();
+                    self.show_detail_selected_episode = None;
+                    let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                    self.current_view = View::ShowDetail;
+                    self.toast("Opening show".to_string());
+                } else {
+                    self.toast("Invalid show ID".to_string());
+                }
+            }
+            _ => {
+                self.toast(format!("Unsupported link type: {}", link_type));
             }
         }
     }
@@ -1314,13 +1444,9 @@ impl eframe::App for SpotifyApp {
                     self.scroll_to_selected = false;
                     match sort_action {
                         SortAction::Sort(new_state) => {
-                            if self.sort_state == Some(new_state) {
-                                // Already sorted this way, do nothing
-                            } else {
-                                self.sort_state = Some(new_state);
-                                self.context_tracks.sort_by(|a, b| new_state.compare(a, b));
-                                self.selected_track = None;
-                            }
+                            self.sort_state = Some(new_state);
+                            self.context_tracks.sort_by(|a, b| new_state.compare(a, b));
+                            self.selected_track = None;
                         }
                         SortAction::None => {}
                     }
@@ -1693,10 +1819,8 @@ impl SpotifyApp {
                     // Buttons
                     ui.horizontal(|ui| {
                         // Cancel button
-                        let cancel_rect = ui
-                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click())
-                            .0;
-                        let cancel_resp = ui.allocate_rect(cancel_rect, egui::Sense::click());
+                        let (cancel_rect, cancel_resp) = ui
+                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click());
                         let cancel_bg = if cancel_resp.hovered() {
                             theme::bg_hover()
                         } else {
@@ -1722,10 +1846,8 @@ impl SpotifyApp {
 
                         // Create button
                         let can_create = !self.create_playlist_name.trim().is_empty();
-                        let create_rect = ui
-                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click())
-                            .0;
-                        let create_resp = ui.allocate_rect(create_rect, egui::Sense::click());
+                        let (create_rect, create_resp) = ui
+                            .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click());
                         let create_bg = if !can_create {
                             theme::bg_dark()
                         } else if create_resp.hovered() {
@@ -1907,14 +2029,11 @@ impl SpotifyApp {
                                 );
                             }
                             for playlist in &playlists {
-                                let item_rect = ui
+                                let (item_rect, item_resp) = ui
                                     .allocate_exact_size(
                                         egui::vec2(ui.available_width(), 44.0),
                                         egui::Sense::click(),
-                                    )
-                                    .0;
-                                let item_resp =
-                                    ui.allocate_rect(item_rect, egui::Sense::click());
+                                    );
 
                                 let bg = if item_resp.hovered() {
                                     theme::bg_hover()
@@ -2110,13 +2229,11 @@ impl SpotifyApp {
                                     continue;
                                 }
                                 let is_current = self.current_theme_name.eq_ignore_ascii_case(builtin.name);
-                                let item_rect = ui
+                                let (item_rect, item_resp) = ui
                                     .allocate_exact_size(
                                         egui::vec2(ui.available_width(), 36.0),
                                         egui::Sense::click(),
-                                    )
-                                    .0;
-                                let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+                                    );
 
                                 let bg = if is_current {
                                     theme::bg_active()
@@ -2197,13 +2314,11 @@ impl SpotifyApp {
                                         continue;
                                     }
                                     let is_current = self.current_theme_name.eq_ignore_ascii_case(&custom_theme.name);
-                                    let item_rect = ui
+                                    let (item_rect, item_resp) = ui
                                         .allocate_exact_size(
                                             egui::vec2(ui.available_width(), 36.0),
                                             egui::Sense::click(),
-                                        )
-                                        .0;
-                                    let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+                                        );
 
                                     let bg = if is_current {
                                         theme::bg_active()

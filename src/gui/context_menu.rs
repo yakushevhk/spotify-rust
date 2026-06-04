@@ -155,7 +155,7 @@ impl ContextMenu {
         items
     }
 
-    fn album_items(album: &Album) -> Vec<MenuItem> {
+    fn album_items(album: &Album, state: &SharedState) -> Vec<MenuItem> {
         let mut items = Vec::new();
 
         items.push(MenuItem {
@@ -168,19 +168,23 @@ impl ContextMenu {
             )),
         });
 
-        items.push(MenuItem {
-            icon: "\u{2795}",
-            label: "Add to Library",
-            destructive: false,
-            action: MenuAction::AddAlbumToLibrary(album.clone()),
-        });
+        let is_saved = state.data.read().user_data.saved_albums.iter().any(|a| a.id == album.id);
 
-        items.push(MenuItem {
-            icon: "\u{1F5D1}",
-            label: "Remove from Library",
-            destructive: true,
-            action: MenuAction::RemoveAlbumFromLibrary(album.id.clone()),
-        });
+        if is_saved {
+            items.push(MenuItem {
+                icon: "\u{1F5D1}",
+                label: "Remove from Library",
+                destructive: true,
+                action: MenuAction::RemoveAlbumFromLibrary(album.id.clone()),
+            });
+        } else {
+            items.push(MenuItem {
+                icon: "\u{2795}",
+                label: "Add to Library",
+                destructive: false,
+                action: MenuAction::AddAlbumToLibrary(album.clone()),
+            });
+        }
 
         if let Some(artist) = album.artists.first() {
             items.push(MenuItem {
@@ -356,7 +360,7 @@ impl ContextMenu {
             ContextTarget::Track { track, playlist_id, .. } => {
                 Self::track_items(track, playlist_id)
             }
-            ContextTarget::Album(album) => Self::album_items(album),
+            ContextTarget::Album(album) => Self::album_items(album, state),
             ContextTarget::Artist(artist) => Self::artist_items(artist),
             ContextTarget::Playlist(playlist) => Self::playlist_items(playlist),
             ContextTarget::Show(show) => Self::show_items(show),
@@ -412,14 +416,11 @@ impl ContextMenu {
                     ui.set_min_width(menu_width - 12.0);
 
                     for item in &items {
-                        let item_rect = ui
+                        let (item_rect, response) = ui
                             .allocate_exact_size(
                                 egui::vec2(ui.available_width(), item_height),
                                 egui::Sense::click(),
-                            )
-                            .0;
-
-                        let response = ui.allocate_rect(item_rect, egui::Sense::click());
+                            );
 
                         let bg = if response.hovered() {
                             theme::bg_hover()
@@ -582,10 +583,8 @@ impl ContextMenu {
                     ui.add_space(16.0);
 
                     ui.horizontal(|ui| {
-                        let cancel_rect = ui
-                            .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click())
-                            .0;
-                        let cancel_resp = ui.allocate_rect(cancel_rect, egui::Sense::click());
+                        let (cancel_rect, cancel_resp) = ui
+                            .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
                         let cancel_bg = if cancel_resp.hovered() {
                             theme::bg_hover()
                         } else {
@@ -615,10 +614,8 @@ impl ContextMenu {
 
                         ui.add_space(12.0);
 
-                        let confirm_rect = ui
-                            .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click())
-                            .0;
-                        let confirm_resp = ui.allocate_rect(confirm_rect, egui::Sense::click());
+                        let (confirm_rect, confirm_resp) = ui
+                            .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click());
                         let confirm_bg = if confirm_resp.hovered() {
                             theme::error_color()
                         } else {
