@@ -459,6 +459,24 @@ pub fn responsive_sidebar_width(window_width: f32) -> (f32, bool) {
     (if collapsed { 56.0 } else { width }, collapsed)
 }
 
+// === Spacing Constants ===
+/// Extra small spacing (4.0)
+pub const SPACING_XS: f32 = 4.0;
+/// Small spacing (8.0)
+pub const SPACING_SM: f32 = 8.0;
+/// Medium spacing (16.0)
+pub const SPACING_MD: f32 = 16.0;
+/// Large spacing (24.0)
+pub const SPACING_LG: f32 = 24.0;
+/// Extra large spacing (32.0)
+pub const SPACING_XL: f32 = 32.0;
+
+// === Card Dimensions ===
+/// Standard card width (200.0)
+pub const CARD_WIDTH: f32 = 200.0;
+/// Standard card height (240.0)
+pub const CARD_HEIGHT: f32 = 240.0;
+
 // === Color accessor functions ===
 // These replace the old constants. Every call reads from the global palette.
 

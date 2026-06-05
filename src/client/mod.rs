@@ -14,8 +14,6 @@ use crate::{
     },
 };
 
-use std::io;
-
 use anyhow::Context as _;
 use anyhow::Result;
 
@@ -621,26 +619,27 @@ impl AppClient {
                     .filter_map(Device::try_from_device)
                     .collect();
 
-                // Include the local streaming device when the streaming feature is enabled.
-                // This ensures the device list is never empty when using integrated playback,
-                // even if the user hasn't configured a custom client_id or if the Spotify API
-                // hasn't registered the device yet.
-                #[cfg(feature = "streaming")]
-                {
-                    let configs = config::get_config();
-                    let session = self.spotify.session().await;
-                    let local_device = Device {
-                        id: session.device_id().to_string(),
-                        name: configs.app_config.device.name.clone(),
-                        is_active: true,
-                        device_type: "Computer".to_string(),
-                    };
+                    // Include the local streaming device when the streaming feature is enabled.
+                    // This ensures the device list is never empty when using integrated playback,
+                    // even if the user hasn't configured a custom client_id or if the Spotify API
+                    // hasn't registered the device yet.
+                    #[cfg(feature = "streaming")]
+                    {
+                        use crate::state::DeviceType;
+                        let configs = config::get_config();
+                        let session = self.spotify.session().await;
+                        let local_device = Device {
+                            id: session.device_id().to_string(),
+                            name: configs.app_config.device.name.clone(),
+                            is_active: true,
+                            device_type: DeviceType::Computer,
+                        };
 
-                    // Only add if not already in the list (avoid duplicates)
-                    if !devices.iter().any(|d| d.id == local_device.id) {
-                        devices.push(local_device);
+                        // Only add if not already in the list (avoid duplicates)
+                        if !devices.iter().any(|d| d.id == local_device.id) {
+                            devices.push(local_device);
+                        }
                     }
-                }
 
                 state.player.write().devices = devices;
             }
@@ -1057,23 +1056,10 @@ impl AppClient {
     }
 
     /// Get Spotify's available browse playlists of a given category
+    /// 
+    /// Note: This uses a custom HTTP implementation instead of `rspotify::category_playlists_manual`
+    /// as a workaround for https://github.com/ramsayleung/rspotify/issues/535
     pub async fn browse_category_playlists(&self, category_id: &str) -> Result<Vec<Playlist>> {
-        // TODO: this should use `rspotify::category_playlists_manual` API instead of `http_get`
-        // The current implementation is a workaround for https://github.com/ramsayleung/rspotify/issues/535
-
-        // Ok(self
-        //     .category_playlists_manual(
-        //         category_id,
-        //         Some(rspotify::model::Market::FromToken),
-        //         Some(50),
-        //         None,
-        //     )
-        //     .await?
-        //     .items
-        //     .into_iter()
-        //     .map(Into::into)
-        //     .collect())
-
         #[derive(Deserialize, Debug)]
         struct BrowseCategoryPlaylistsResponse {
             playlists: rspotify::model::Page<serde_json::Value>,
@@ -1167,15 +1153,16 @@ impl AppClient {
 
         let play_histories = self.all_cursor_based_paging_items(first_page).await?;
 
-        // de-duplicate the tracks returned from the recently-played API
-        let mut tracks = Vec::<Track>::new();
-        for history in play_histories {
-            if let Some(track) = Track::try_from_full_track(history.track) {
-                if !tracks.iter().any(|t| t.id == track.id) {
-                    tracks.push(track);
+        // de-duplicate the tracks returned from the recently-played API using iterator methods
+        let tracks: Vec<Track> = play_histories
+            .into_iter()
+            .filter_map(|history| Track::try_from_full_track(history.track))
+            .fold(Vec::new(), |mut acc, track| {
+                if !acc.iter().any(|t| t.id == track.id) {
+                    acc.push(track);
                 }
-            }
-        }
+                acc
+            });
         Ok(tracks)
     }
 

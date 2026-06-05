@@ -116,13 +116,60 @@ pub struct PlaybackMetadata {
     pub mute_state: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The type of a Spotify device
+pub enum DeviceType {
+    Computer,
+    Smartphone,
+    Tablet,
+    Speaker,
+    TV,
+    Automobile,
+    GameConsole,
+    Smartwatch,
+    Unknown,
+}
+
+impl std::fmt::Display for DeviceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeviceType::Computer => write!(f, "Computer"),
+            DeviceType::Smartphone => write!(f, "Smartphone"),
+            DeviceType::Tablet => write!(f, "Tablet"),
+            DeviceType::Speaker => write!(f, "Speaker"),
+            DeviceType::TV => write!(f, "TV"),
+            DeviceType::Automobile => write!(f, "Automobile"),
+            DeviceType::GameConsole => write!(f, "GameConsole"),
+            DeviceType::Smartwatch => write!(f, "Smartwatch"),
+            DeviceType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+impl DeviceType {
+    /// Get the icon for this device type
+    pub fn icon(&self) -> &'static str {
+        match self {
+            DeviceType::Computer => "\u{1F4BB}",
+            DeviceType::Smartphone => "\u{1F4F1}",
+            DeviceType::Tablet => "\u{1F4F1}",
+            DeviceType::Speaker => "\u{1F50A}",
+            DeviceType::TV => "\u{1F4FA}",
+            DeviceType::Automobile => "\u{1F697}",
+            DeviceType::GameConsole => "\u{1F3AE}",
+            DeviceType::Smartwatch => "\u{231A}",
+            DeviceType::Unknown => "\u{1F5A5}",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 /// A Spotify device
 pub struct Device {
     pub id: String,
     pub name: String,
     pub is_active: bool,
-    pub device_type: String,
+    pub device_type: DeviceType,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -285,26 +332,28 @@ impl ContextId {
 impl Device {
     /// tries to convert from a `rspotify::model::Device` into `Device`
     pub fn try_from_device(device: rspotify::model::Device) -> Option<Self> {
+        let device_type = match device._type {
+            rspotify::model::DeviceType::Computer => DeviceType::Computer,
+            rspotify::model::DeviceType::Smartphone => DeviceType::Smartphone,
+            rspotify::model::DeviceType::Tablet => DeviceType::Tablet,
+            rspotify::model::DeviceType::Speaker => DeviceType::Speaker,
+            rspotify::model::DeviceType::Tv => DeviceType::TV,
+            rspotify::model::DeviceType::Automobile => DeviceType::Automobile,
+            rspotify::model::DeviceType::GameConsole => DeviceType::GameConsole,
+            rspotify::model::DeviceType::Smartwatch => DeviceType::Smartwatch,
+            _ => DeviceType::Unknown,
+        };
         Some(Self {
             id: device.id?,
             name: device.name,
             is_active: device.is_active,
-            device_type: format!("{:?}", device._type),
+            device_type,
         })
     }
 
-    pub fn device_icon(&self) -> &str {
-        match self.device_type.as_str() {
-            "Computer" => "\u{1F4BB}",
-            "Smartphone" => "\u{1F4F1}",
-            "Tablet" => "\u{1F4F1}",
-            "Speaker" => "\u{1F50A}",
-            "Tv" => "\u{1F4FA}",
-            "Automobile" => "\u{1F697}",
-            "GameConsole" => "\u{1F3AE}",
-            "Smartwatch" => "\u{231A}",
-            _ => "\u{1F5A5}",
-        }
+    /// Get the icon for this device
+    pub fn device_icon(&self) -> &'static str {
+        self.device_type.icon()
     }
 }
 

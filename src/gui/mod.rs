@@ -151,6 +151,92 @@ enum Action {
     None,
 }
 
+/// Navigation state management (extracted from SpotifyApp)
+pub struct NavigationState {
+    pub view_history: Vec<View>,
+    pub forward_history: Vec<View>,
+    pub current_view: View,
+}
+
+impl NavigationState {
+    pub fn new() -> Self {
+        Self {
+            view_history: Vec::new(),
+            forward_history: Vec::new(),
+            current_view: View::Library,
+        }
+    }
+}
+
+/// Popup visibility state management (extracted from SpotifyApp)
+pub struct PopupManager {
+    pub show_device_popup: bool,
+    pub show_create_playlist_popup: bool,
+    pub show_add_to_playlist_popup: bool,
+    pub show_theme_switcher: bool,
+    pub show_command_palette: bool,
+    pub show_onboarding: bool,
+    pub show_auth_modal: bool,
+    pub show_browse_playlists_popup: bool,
+    pub show_browse_artists_popup: bool,
+    pub show_browse_albums_popup: bool,
+    pub show_in_page_search: bool,
+    pub show_settings_confirm_dialog: bool,
+}
+
+impl PopupManager {
+    pub fn new() -> Self {
+        Self {
+            show_device_popup: false,
+            show_create_playlist_popup: false,
+            show_add_to_playlist_popup: false,
+            show_theme_switcher: false,
+            show_command_palette: false,
+            show_onboarding: false,
+            show_auth_modal: false,
+            show_browse_playlists_popup: false,
+            show_browse_artists_popup: false,
+            show_browse_albums_popup: false,
+            show_in_page_search: false,
+            show_settings_confirm_dialog: false,
+        }
+    }
+}
+
+/// Settings editor state management (extracted from SpotifyApp)
+pub struct SettingsEditor {
+    pub settings_editing: crate::config::AppConfig,
+    pub settings_original: crate::config::AppConfig,
+    pub settings_dirty: bool,
+}
+
+impl SettingsEditor {
+    pub fn new(config: &crate::config::AppConfig) -> Self {
+        Self {
+            settings_editing: config.clone(),
+            settings_original: config.clone(),
+            settings_dirty: false,
+        }
+    }
+}
+
+/// View state management (extracted from SpotifyApp)
+pub struct ViewState {
+    pub selected_track: Option<usize>,
+    pub context_tracks: Vec<crate::state::Track>,
+    pub scroll_states: std::collections::HashMap<String, usize>,
+}
+
+impl ViewState {
+    pub fn new() -> Self {
+        Self {
+            selected_track: None,
+            context_tracks: Vec::new(),
+            scroll_states: std::collections::HashMap::new(),
+        }
+    }
+}
+
 pub struct SpotifyApp {
     state: SharedState,
     client_pub: flume::Sender<ClientRequest>,
@@ -189,10 +275,10 @@ pub struct SpotifyApp {
     show_command_palette: bool,
     command_palette: command_palette::CommandPalette,
     settings_tab: views::SettingsTab,
-    show_detail_show: Option<state::Show>,
-    show_detail_episodes: Vec<state::Episode>,
-    show_detail_context_id: Option<state::ContextId>,
-    show_detail_selected_episode: Option<usize>,
+    podcast_detail_show: Option<state::Show>,
+    podcast_episodes: Vec<state::Episode>,
+    podcast_context_id: Option<state::ContextId>,
+    selected_podcast_episode: Option<usize>,
     settings_editing: crate::config::AppConfig,
     settings_original: crate::config::AppConfig,
     settings_dirty: bool,
@@ -251,6 +337,12 @@ impl SpotifyApp {
         }
         theme::setup_theme(&cc.egui_ctx);
 
+        let keybindings = {
+            let mut bindings = default_keybindings();
+            crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
+            bindings
+        };
+        
         Self {
             state,
             client_pub,
@@ -279,11 +371,7 @@ impl SpotifyApp {
             toast_show_all: false,
             current_context_id: None,
             key_seq_state: KeySequenceState::new(),
-            keybindings: {
-                let mut bindings = default_keybindings();
-                crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
-                bindings
-            },
+            keybindings,
             help_search: String::new(),
             view_history: Vec::new(),
             forward_history: Vec::new(),
@@ -293,10 +381,10 @@ impl SpotifyApp {
             show_command_palette: false,
             command_palette: command_palette::CommandPalette::new(),
             settings_tab: views::SettingsTab::General,
-            show_detail_show: None,
-            show_detail_episodes: Vec::new(),
-            show_detail_context_id: None,
-            show_detail_selected_episode: None,
+            podcast_detail_show: None,
+            podcast_episodes: Vec::new(),
+            podcast_context_id: None,
+            selected_podcast_episode: None,
             settings_editing: crate::config::get_config().app_config.clone(),
             settings_original: crate::config::get_config().app_config.clone(),
             settings_dirty: false,
@@ -542,10 +630,10 @@ impl SpotifyApp {
                     self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
-                self.show_detail_context_id = Some(ctx_id.clone());
-                self.show_detail_show = Some(show);
-                self.show_detail_episodes.clear();
-                self.show_detail_selected_episode = None;
+                self.podcast_context_id = Some(ctx_id.clone());
+                self.podcast_detail_show = Some(show);
+                self.podcast_episodes.clear();
+                self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
@@ -577,10 +665,10 @@ impl SpotifyApp {
                     self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
-                self.show_detail_context_id = Some(ctx_id.clone());
-                self.show_detail_show = Some(show);
-                self.show_detail_episodes.clear();
-                self.show_detail_selected_episode = None;
+                self.podcast_context_id = Some(ctx_id.clone());
+                self.podcast_detail_show = Some(show);
+                self.podcast_episodes.clear();
+                self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
@@ -590,10 +678,10 @@ impl SpotifyApp {
                     self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
-                self.show_detail_context_id = Some(ctx_id.clone());
-                self.show_detail_show = Some(show);
-                self.show_detail_episodes.clear();
-                self.show_detail_selected_episode = None;
+                self.podcast_context_id = Some(ctx_id.clone());
+                self.podcast_detail_show = Some(show);
+                self.podcast_episodes.clear();
+                self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
@@ -792,10 +880,10 @@ impl SpotifyApp {
                 }
                 NavCommand::Enter => {
                     if self.current_view == View::ShowDetail {
-                        if let Some(idx) = self.show_detail_selected_episode {
-                            if idx < self.show_detail_episodes.len() {
-                                let episode = &self.show_detail_episodes[idx];
-                                if let Some(ref ctx_id) = self.show_detail_context_id {
+                        if let Some(idx) = self.selected_podcast_episode {
+                            if idx < self.podcast_episodes.len() {
+                                let episode = &self.podcast_episodes[idx];
+                                if let Some(ref ctx_id) = self.podcast_context_id {
                                     let playback = state::Playback::Context(
                                         ctx_id.clone(),
                                         Some(rspotify::model::Offset::Uri(episode.id.uri())),
@@ -1301,10 +1389,10 @@ impl SpotifyApp {
                 if let Ok(show_id) = rspotify::model::ShowId::from_id(&id_str) {
                     let show_id_static = show_id.into_static();
                     let ctx_id = state::ContextId::Show(show_id_static.clone());
-                    self.show_detail_context_id = Some(ctx_id.clone());
-                    self.show_detail_show = None;
-                    self.show_detail_episodes.clear();
-                    self.show_detail_selected_episode = None;
+                    self.podcast_context_id = Some(ctx_id.clone());
+                    self.podcast_detail_show = None;
+                    self.podcast_episodes.clear();
+                    self.selected_podcast_episode = None;
                     self.send_request(ClientRequest::GetContext(ctx_id));
                     self.current_view = View::ShowDetail;
                     self.toast("Opening show".to_string());
@@ -1392,13 +1480,13 @@ impl eframe::App for SpotifyApp {
         }
 
         // Update show detail episodes when viewing show detail page
-        if self.current_view == View::ShowDetail && self.show_detail_episodes.is_empty() {
-            if let Some(ref ctx_id) = self.show_detail_context_id {
+        if self.current_view == View::ShowDetail && self.podcast_episodes.is_empty() {
+            if let Some(ref ctx_id) = self.podcast_context_id {
                 let data = self.state.data.read();
                 if let Some(ctx) = data.caches.context.get(&ctx_id.uri()) {
                     if let state::Context::Show { show, episodes } = ctx {
-                        self.show_detail_show = Some(show.clone());
-                        self.show_detail_episodes = episodes.clone();
+                        self.podcast_detail_show = Some(show.clone());
+                        self.podcast_episodes = episodes.clone();
                     }
                 }
             }
@@ -1573,7 +1661,7 @@ impl eframe::App for SpotifyApp {
                                     ui.painter().text(
                                         item_rect.left_center() + egui::vec2(44.0, 12.0),
                                         egui::Align2::LEFT_CENTER,
-                                        &device.device_type,
+                                        device.device_type.to_string(),
                                         egui::FontId::proportional(11.0),
                                         theme::text_dim(),
                                     );
@@ -1963,10 +2051,10 @@ impl eframe::App for SpotifyApp {
                         ui,
                         &self.state,
                         &self.client_pub,
-                        &self.show_detail_show,
-                        &self.show_detail_episodes,
-                        &self.show_detail_context_id,
-                        &mut self.show_detail_selected_episode,
+                        &self.podcast_detail_show,
+                        &self.podcast_episodes,
+                        &self.podcast_context_id,
+                        &mut self.selected_podcast_episode,
                         &mut self.image_cache,
                         &mut self.context_menu,
                     );
