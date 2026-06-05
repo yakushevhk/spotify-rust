@@ -186,7 +186,7 @@ impl SpotifyApp {
         // Initialize theme from config
         let config = crate::config::get_config();
         let theme_name = &config.app_config.theme;
-        let mut current_theme_name = String::new();
+        let current_theme_name;
         if let Some(t) = config.theme_config.find_theme(theme_name) {
             theme::set_palette_from_config(&t.palette);
             current_theme_name = t.name.clone();

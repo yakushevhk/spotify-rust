@@ -17,11 +17,10 @@ use std::{
     sync::OnceLock,
 };
 
-use anyhow::Context;
 use keymap::KeymapConfig;
 use theme::ThemeConfig;
 
-pub use theme::{Theme, Palette};
+pub use theme::Theme;
 
 use crate::auth::{NCSPOT_CLIENT_ID, SPOTIFY_CLIENT_ID};
 
@@ -48,22 +47,31 @@ impl Configs {
 
 #[derive(Debug, Deserialize, Serialize, Clone, ConfigParse)]
 #[allow(clippy::struct_excessive_bools)]
-/// Application configurations
+/// Application configurations loaded from `~/.config/spotify-player/app.toml`.
 pub struct AppConfig {
+    /// Name of the color theme (built-in or custom).
     pub theme: String,
+    /// Spotify application client ID used for OAuth PKCE flow.
+    /// Falls back to ncspot's client ID when not set.
     pub client_id: Option<String>,
+    /// External command whose stdout is used as the client ID.
     pub client_id_command: Option<Command>,
 
+    /// Local HTTP server port for the OAuth redirect callback.
     // Unused in GUI
     #[allow(dead_code)]
     pub client_port: u16,
 
+    /// OAuth redirect URI registered with Spotify.
     pub login_redirect_uri: String,
 
+    /// Directory for log files. Defaults to `~/.cache/spotify-player`.
     pub log_folder: Option<PathBuf>,
 
+    /// External command run on each player event (play, pause, skip, etc.).
     pub player_event_hook_command: Option<Command>,
 
+    /// Format string for the playback status line in the TUI (unused in GUI).
     pub playback_format: String,
     // Unused in GUI
     #[allow(dead_code)]
@@ -76,16 +84,20 @@ pub struct AppConfig {
     #[cfg(all(unix, not(target_os = "macos")))]
     pub notify_transient: bool,
 
+    /// Maximum number of tracks fetched in a single API call.
     pub tracks_playback_limit: usize,
 
-    // session configs
+    /// HTTP proxy URL for Spotify API requests.
     pub proxy: Option<String>,
+    /// librespot access point port override.
     pub ap_port: Option<u16>,
 
-    // duration configs
+    /// How often the GUI redraws (in milliseconds).
     pub app_refresh_duration_in_ms: u64,
+    /// How often to poll the Spotify API for playback state updates.
     pub playback_refresh_duration_in_ms: u64,
 
+    /// Number of rows per page in track tables.
     pub page_size_in_rows: usize,
 
     // icon configs
@@ -129,27 +141,37 @@ pub struct AppConfig {
     #[cfg(feature = "media-control")]
     pub enable_media_control: bool,
 
+    /// Streaming backend: Always, DaemonOnly, or Never.
     pub enable_streaming: StreamingType,
 
+    /// Show an FFT audio visualization when streaming locally.
     #[cfg(feature = "streaming")]
     pub enable_audio_visualization: bool,
 
+    /// Enable desktop notifications on track change.
     #[cfg(feature = "notify")]
     pub enable_notify: bool,
 
+    /// Cache downloaded cover images to the disk cache.
     pub enable_cover_image_cache: bool,
 
+    /// Name of the default Spotify Connect device.
     pub default_device: String,
 
+    /// Integrated librespot device configuration.
     pub device: DeviceConfig,
 
+    /// Only send notifications when streaming locally (not via Spotify Connect).
     #[cfg(all(feature = "streaming", feature = "notify"))]
     pub notify_streaming_only: bool,
 
+    /// Seconds to seek forward/backward on seek commands.
     pub seek_duration_secs: u16,
 
+    /// Sort artist albums by type (album, single, compilation).
     pub sort_artist_albums_by_type: bool,
 
+    /// Volume change per scroll tick (0-100 scale).
     pub volume_scroll_step: u8,
     // Unused in GUI
     #[allow(dead_code)]
@@ -200,6 +222,17 @@ pub struct Command {
 }
 
 impl Command {
+    pub fn new<C, A>(command: C, args: &[A]) -> Self
+    where
+        C: std::fmt::Display,
+        A: std::fmt::Display,
+    {
+        Self {
+            command: command.to_string(),
+            args: args.iter().map(std::string::ToString::to_string).collect(),
+        }
+    }
+
     /// Execute a command, returning stdout if succeeded or stderr if failed
     pub fn execute(&self, extra_args: Option<Vec<String>>) -> anyhow::Result<String> {
         let mut args = self.args.clone();
@@ -293,19 +326,6 @@ impl From<StreamingTypeOrBool> for StreamingType {
             StreamingTypeOrBool::Bool(false)
             | StreamingTypeOrBool::Type(RawStreamingType::Never) => StreamingType::Never,
             StreamingTypeOrBool::Type(RawStreamingType::DaemonOnly) => StreamingType::DaemonOnly,
-        }
-    }
-}
-
-impl Command {
-    pub fn new<C, A>(command: C, args: &[A]) -> Self
-    where
-        C: std::fmt::Display,
-        A: std::fmt::Display,
-    {
-        Self {
-            command: command.to_string(),
-            args: args.iter().map(std::string::ToString::to_string).collect(),
         }
     }
 }
@@ -558,35 +578,4 @@ pub fn reload_config() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Apply a CLI config override to the application config.
-// Serializes the config to TOML, navigates to the key via dot-notation,
-// overrides the value, and deserializes back into AppConfig.
-// Returns an error if the key path is invalid or the value type mismatches.
-pub fn apply_config_override(config: &mut AppConfig, key: &str, value: &str) -> anyhow::Result<()> {
-    let mut config_value = toml::Value::try_from(&*config)?;
 
-    let parts: Vec<&str> = key.split('.').collect();
-    let mut current = &mut config_value;
-
-    for (i, part) in parts.iter().enumerate() {
-        if i == parts.len() - 1 {
-            let table = current
-                .as_table_mut()
-                .context(format!("'{key}' is not a valid config path"))?;
-
-            let parsed_value: toml::Value = value
-                .parse()
-                .unwrap_or_else(|_| toml::Value::String(value.to_string()));
-
-            table.insert(part.to_string(), parsed_value);
-        } else {
-            current = current
-                .get_mut(part)
-                .context(format!("Config key '{part}' not found in path '{key}'"))?;
-        }
-    }
-
-    *config = config_value.try_into()?;
-
-    Ok(())
-}

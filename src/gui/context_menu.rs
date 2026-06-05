@@ -59,7 +59,6 @@ pub enum MenuAction {
     RemoveShowFromLibrary(state::ShowId<'static>),
     CopyLink(String),
     DeleteFromPlaylist(state::PlaylistId<'static>, state::TrackId<'static>),
-    None,
 }
 
 pub struct ContextMenu {
@@ -777,6 +776,11 @@ impl ContextMenu {
                 None
             }
             MenuAction::CopyLink(link) => {
+                // Platform-specific clipboard via shell commands.
+                // This is a known limitation: we shell out to pbcopy (macOS),
+                // xclip (Linux), or clip (Windows) instead of using a
+                // cross-platform clipboard crate, to avoid an extra dependency.
+                // On Linux, xclip must be installed separately.
                 #[cfg(target_os = "macos")]
                 {
                     use std::process::Command;
@@ -830,7 +834,6 @@ impl ContextMenu {
                 state.push_toast("Removed from playlist".to_string());
                 None
             }
-            MenuAction::None => None,
         }
     }
 }

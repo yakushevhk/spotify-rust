@@ -27,6 +27,10 @@ pub struct PlayerState {
     /// Monotonically increasing generation counter incremented each time a new
     /// streaming connection is established. Used by player_event_task to detect
     /// and ignore stale writes after a connection restart.
+    ///
+    /// Each time a librespot session reconnects, this counter is bumped so that
+    /// any in-flight player event handlers from the previous session can
+    /// recognise they are stale and bail out instead of writing outdated data.
     pub streaming_generation: u64,
 
     /// Deadline after which progress estimation resumes after a seek.

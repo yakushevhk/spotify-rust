@@ -37,6 +37,11 @@ pub enum Context {
     },
 }
 
+// Note: Context::Show intentionally does not expose a flat `context_tracks`
+// list because episodes are not `Track` items — they live in a separate
+// `episodes: Vec<Episode>` field.  Callers that need playable items should
+// match on Show and handle episodes separately.
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TracksId {
     pub uri: String,
@@ -73,6 +78,9 @@ pub struct SearchResults {
     pub albums: Vec<Album>,
     pub playlists: Vec<Playlist>,
     pub shows: Vec<Show>,
+    /// Note: The Spotify search API does not return episodes as a separate
+    /// category in most configurations, so this field is typically empty.
+    /// Episodes may appear in search results in future API versions.
     pub episodes: Vec<Episode>,
 }
 
@@ -194,6 +202,10 @@ pub struct Episode {
     pub duration: std::time::Duration,
     pub show: Option<Show>,
     pub release_date: String,
+    /// Resume point within the episode, if reported by the Spotify API.
+    /// Not always populated; defaults to `None` for episodes converted
+    /// from `SimplifiedEpisode` which omits this field.
+    pub resume_point: Option<chrono::Duration>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -586,6 +598,7 @@ impl TryFrom<rspotify::model::SimplifiedEpisode> for Episode {
             duration: episode.duration.to_std().map_err(|_| ())?,
             show: None,
             release_date: episode.release_date,
+            resume_point: None,
         })
     }
 }
@@ -593,6 +606,9 @@ impl TryFrom<rspotify::model::SimplifiedEpisode> for Episode {
 impl TryFrom<rspotify::model::FullEpisode> for Episode {
     type Error = ();
     fn try_from(episode: rspotify::model::FullEpisode) -> Result<Self, Self::Error> {
+        let resume_point = episode
+            .resume_point
+            .map(|rp| rp.resume_position);
         Ok(Self {
             id: episode.id,
             name: episode.name,
@@ -600,6 +616,7 @@ impl TryFrom<rspotify::model::FullEpisode> for Episode {
             duration: episode.duration.to_std().map_err(|_| ())?,
             show: Some(episode.show.into()),
             release_date: episode.release_date,
+            resume_point,
         })
     }
 }

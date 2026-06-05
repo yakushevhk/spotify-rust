@@ -81,6 +81,8 @@ impl CommandCategory {
     }
 }
 
+/// Timeout for multi-key sequences (e.g. "gg", "gt").
+/// After this duration with no keypress, a pending sequence is discarded.
 const KEY_SEQUENCE_TIMEOUT: Duration = Duration::from_millis(500);
 
 pub struct KeySequenceState {
@@ -251,7 +253,7 @@ impl KeySequenceState {
                 && keybindings.iter().any(|b| {
                     b.keybindings.iter().any(|kb| match kb {
                         KeyBinding::Sequence(parts) => {
-                            parts.first().map_or(false, |p| *p == self.pending_keys)
+                            parts.first().is_some_and(|p| *p == self.pending_keys)
                         }
                         _ => false,
                     })
@@ -290,6 +292,11 @@ impl KeySequenceState {
     }
 }
 
+// Note: The shift mappings below (e.g. Shift+1 = '!') assume a US QWERTY
+// keyboard layout.  On other layouts (AZERTY, QWERTZ, etc.) the physical
+// key positions differ and the resulting characters will be wrong.  This is
+// a known limitation of egui's key event model which reports physical key
+// codes, not logical characters.
 pub fn key_to_char(key: egui::Key, modifiers: egui::Modifiers) -> Option<char> {
     match key {
         egui::Key::A => Some(if modifiers.shift { 'A' } else { 'a' }),

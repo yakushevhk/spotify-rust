@@ -502,7 +502,7 @@ pub fn render_show_detail(
                 for (i, episode) in episodes.iter().enumerate() {
                     let is_playing = current_track_uri
                         .as_ref()
-                        .map_or(false, |uri| uri == &episode.id.uri());
+                        .is_some_and(|uri| uri == &episode.id.uri());
                     let is_selected = *selected_episode == Some(i);
 
                     let row_height = 64.0;
@@ -953,7 +953,7 @@ pub fn render_tracks(
 
         // TITLE column
         let title_x = 92.0;
-        let title_active = sort_state.map_or(false, |s| s.column == SortColumn::Title);
+        let title_active = sort_state.is_some_and(|s| s.column == SortColumn::Title);
         let title_label = if title_active {
             format!("TITLE {}", sort_state.unwrap().direction.arrow())
         } else {
@@ -988,7 +988,7 @@ pub fn render_tracks(
 
         // ARTIST column
         let artist_x = 300.0;
-        let artist_active = sort_state.map_or(false, |s| s.column == SortColumn::Artist);
+        let artist_active = sort_state.is_some_and(|s| s.column == SortColumn::Artist);
         let artist_label = if artist_active {
             format!("ARTIST {}", sort_state.unwrap().direction.arrow())
         } else {
@@ -1022,7 +1022,7 @@ pub fn render_tracks(
         }
 
         // ALBUM column (centered)
-        let album_active = sort_state.map_or(false, |s| s.column == SortColumn::Album);
+        let album_active = sort_state.is_some_and(|s| s.column == SortColumn::Album);
         let album_label = if album_active {
             format!("ALBUM {}", sort_state.unwrap().direction.arrow())
         } else {
@@ -1056,7 +1056,7 @@ pub fn render_tracks(
         }
 
         // TIME column (right-aligned)
-        let time_active = sort_state.map_or(false, |s| s.column == SortColumn::Duration);
+        let time_active = sort_state.is_some_and(|s| s.column == SortColumn::Duration);
         let time_label = if time_active {
             format!("TIME {}", sort_state.unwrap().direction.arrow())
         } else {
@@ -1110,7 +1110,7 @@ pub fn render_tracks(
             for (i, track) in tracks.iter().enumerate() {
                 let is_playing = current_track_uri
                     .as_ref()
-                    .map_or(false, |uri| uri == &track.id.uri());
+                    .is_some_and(|uri| *uri == track.id.uri());
                 let is_selected = *selected_track == Some(i);
 
                 let row_height = 48.0;
@@ -3397,7 +3397,7 @@ fn render_settings_about(ui: &mut egui::Ui) {
                     );
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("Version 0.1.0")
+                        egui::RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
                             .size(13.0)
                             .color(theme::text_dim()),
                     );
@@ -3874,7 +3874,7 @@ pub fn render_artist(
             for (i, track) in top_tracks.iter().enumerate() {
                 let is_playing = current_track_uri
                     .as_ref()
-                    .map_or(false, |uri| uri == &track.id.uri());
+                    .is_some_and(|uri| *uri == track.id.uri());
 
                 let row_height = 48.0;
                 let (row_rect, response) = ui

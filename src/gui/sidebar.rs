@@ -3,13 +3,13 @@ use eframe::egui;
 use crate::gui::{theme, Action, View};
 use crate::state::{self, SharedState};
 
-fn parent_view(view: &View) -> View {
+fn parent_view(view: &View) -> &View {
     match view {
-        View::Tracks => View::Library,
-        View::ShowDetail => View::Shows,
-        View::BrowseCategory { .. } => View::Browse,
-        View::Artist => View::Library,
-        other => other.clone(),
+        View::Tracks => &View::Library,
+        View::ShowDetail => &View::Shows,
+        View::BrowseCategory { .. } => &View::Browse,
+        View::Artist => &View::Library,
+        other => other,
     }
 }
 
@@ -70,7 +70,7 @@ pub fn render(
     ];
 
     for (view, icon, label) in &nav {
-        if theme::nav_item(ui, icon, label, parent_view(current_view) == *view).clicked() {
+        if theme::nav_item(ui, icon, label, *parent_view(current_view) == *view).clicked() {
             action = Action::Navigate(view.clone());
         }
     }

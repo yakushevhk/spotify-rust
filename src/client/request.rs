@@ -3,6 +3,7 @@ use crate::state::{
 };
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 /// A request that modifies the player's playback
 pub enum PlayerRequest {
     NextTrack,
@@ -14,12 +15,19 @@ pub enum PlayerRequest {
     Repeat,
     Shuffle,
     Volume(u8),
+    /// Toggle mute on/off.
+    ///
+    /// Note: When the current volume is 0, toggling mute will restore the
+    /// volume to 50% (the default). This is because there is no "previous
+    /// volume" stored — mute state is tracked separately from volume level
+    /// in `PlaybackMetadata::mute_state`.
     ToggleMute,
     TransferPlayback(String, bool),
     StartPlayback(Playback, Option<bool>),
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 /// A request to the client
 pub enum ClientRequest {
     GetCurrentUser,

@@ -252,10 +252,10 @@ pub fn render(
                 let pad = ((ui.available_width() - controls_width) / 2.0).max(0.0);
                 ui.add_space(pad);
 
-                let is_playing = playback.as_ref().map_or(false, |p| p.is_playing);
+                let is_playing = playback.as_ref().is_some_and(|p| p.is_playing);
 
                 // Shuffle
-                let shuffle_on = playback.as_ref().map_or(false, |p| p.shuffle_state);
+                let shuffle_on = playback.as_ref().is_some_and(|p| p.shuffle_state);
                 if theme::icon_button(ui, "⇄", 30.0, shuffle_on).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle));
                 }

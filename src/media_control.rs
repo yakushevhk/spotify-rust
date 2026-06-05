@@ -70,6 +70,10 @@ pub fn start_event_watcher(
 ) -> Result<(), souvlaki::Error> {
     tracing::info!("Initializing media control event watcher...");
 
+    // On Windows, hwnd must be provided for SMTC integration.  souvlaki
+    // currently requires an HWND for Windows media transport controls.
+    // Passing None means media keys will only work on Linux (MPRIS) and
+    // macOS (MPNowPlayingInfoCenter).
     let config = PlatformConfig {
         dbus_name: "spotify_player_gui",
         display_name: "Spotify Player",
@@ -117,6 +121,14 @@ pub fn start_event_watcher(
                     (volume * 100.0) as u8,
                 ))) {
                     tracing::warn!("Failed to send media control SetVolume request: {e:#}");
+                }
+            }
+            MediaControlEvent::Stop => {
+                // Map Stop to Pause — most media controllers send Stop when
+                // the user presses the stop button, but our player model only
+                // has Play/Pause.  Treating Stop as Pause is the safe default.
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Pause)) {
+                    tracing::warn!("Failed to send media control Stop->Pause request: {e:#}");
                 }
             }
             _ => {}
