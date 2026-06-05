@@ -541,6 +541,10 @@ impl SpotifyApp {
     fn go_back(&mut self) {
         if let Some(prev) = self.view_history.pop() {
             self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
+            // B2: clear stale track selection and context when navigating back
+            self.selected_track = None;
+            self.context_tracks.clear();
+            self.sort_state = None;
         }
     }
 
@@ -1275,7 +1279,8 @@ impl eframe::App for SpotifyApp {
             .show(ctx, |ui| {
                 let bar_response = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache, &mut self.waveform_cache);
                 if let Some(view) = bar_response.navigate {
-                    self.current_view = view;
+                    // L11: push to history when navigating from playback bar
+                    self.navigate_to_view(view);
                 }
                 if bar_response.device_button_clicked {
                     if self.show_device_popup {
@@ -3065,7 +3070,7 @@ impl SpotifyApp {
             });
     }
 
-    fn render_key_hint(&self, ctx: &egui::Context) {
+    fn render_key_hint(&mut self, ctx: &egui::Context) {
         if !self.key_seq_state.is_pending() {
             return;
         }
@@ -3137,6 +3142,10 @@ impl SpotifyApp {
                                         if let Err(err) = crate::config::reload_config() {
                                             tracing::error!("Failed to reload config: {err:#}");
                                         }
+                                        // C5: reload keybindings after settings save
+                                        let mut bindings = default_keybindings();
+                                        crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
+                                        self.keybindings = bindings;
                                         self.settings_dirty = false;
                                         self.settings_original = self.settings_editing.clone();
                                         if needs_restart {

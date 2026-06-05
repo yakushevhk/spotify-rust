@@ -102,12 +102,22 @@ impl KeySequenceState {
         let mut s = String::new();
         if let Some(count) = self.count_prefix {
             s.push_str(&count.to_string());
+            if !self.pending_keys.is_empty() {
+                s.push(' ');
+            }
         }
         s.push_str(&self.pending_keys);
         s
     }
 
-    pub fn is_pending(&self) -> bool {
+    pub fn is_pending(&mut self) -> bool {
+        // KY2: auto-reset if timeout has elapsed
+        if self.last_key_time.elapsed() > KEY_SEQUENCE_TIMEOUT
+            && (!self.pending_keys.is_empty() || self.count_prefix.is_some())
+        {
+            self.reset();
+            return false;
+        }
         !self.pending_keys.is_empty() || self.count_prefix.is_some()
     }
 

@@ -269,8 +269,11 @@ config_parser_impl!(StreamingType);
 // For backward compatibility, to accept booleans for enable_streaming
 #[derive(Deserialize)]
 enum RawStreamingType {
+    #[serde(alias = "always")]
     Always,
+    #[serde(alias = "daemononly", alias = "daemon_only", alias = "daemon-only")]
     DaemonOnly,
+    #[serde(alias = "never")]
     Never,
 }
 

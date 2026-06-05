@@ -63,6 +63,21 @@ pub struct BrowseData {
     pub categories_loading: bool,
 }
 
+/// Maximum number of category playlists to cache before evicting oldest entries.
+const MAX_CATEGORY_PLAYLISTS: usize = 64;
+
+impl BrowseData {
+    /// Insert a category playlist and evict the oldest entry if over limit (M4).
+    pub fn insert_category_playlists(&mut self, category_id: String, playlists: Vec<Playlist>) {
+        self.category_playlists.insert(category_id, playlists);
+        if self.category_playlists.len() > MAX_CATEGORY_PLAYLISTS {
+            if let Some(oldest_key) = self.category_playlists.keys().next().cloned() {
+                self.category_playlists.remove(&oldest_key);
+            }
+        }
+    }
+}
+
 impl MemoryCaches {
     pub fn new() -> Self {
         Self {

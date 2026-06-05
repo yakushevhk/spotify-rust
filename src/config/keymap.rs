@@ -6,20 +6,12 @@ use crate::key::{CommandBinding, CommandCategory, CommandId, KeyBinding};
 pub struct KeymapConfig {
     #[serde(default)]
     pub keymaps: Vec<Keymap>,
-    #[serde(default)]
-    pub actions: Vec<ActionMap>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Keymap {
     pub key_sequence: String,
     pub command: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct ActionMap {
-    pub key_sequence: String,
-    pub action: String,
 }
 
 impl KeymapConfig {
@@ -40,7 +32,8 @@ impl KeymapConfig {
     /// replace the keybindings of that binding.
     pub fn apply_overrides(&self, defaults: &mut Vec<CommandBinding>) {
         for km in &self.keymaps {
-            if let Some(binding) = defaults.iter_mut().find(|b| b.command.0 == km.command) {
+            // K4: find all matching bindings, not just the first
+            for binding in defaults.iter_mut().filter(|b| b.command.0 == km.command) {
                 let parsed = parse_key_sequence(&km.key_sequence);
                 if !parsed.is_empty() {
                     binding.keybindings = parsed;
@@ -56,16 +49,19 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         return vec![];
     }
 
+    // K7: normalize to lowercase for case-insensitive matching
+    let sl = s.to_ascii_lowercase();
+
     // Check for modifier format: "C-x", "C-S-x", etc.
-    if s.starts_with("C-") || s.starts_with("S-") {
+    if sl.starts_with("c-") || sl.starts_with("s-") {
         let mut ctrl = false;
         let mut shift = false;
-        let mut rest = s;
-        if rest.starts_with("C-") {
+        let mut rest = sl.as_str();
+        if rest.starts_with("c-") {
             ctrl = true;
             rest = &rest[2..];
         }
-        if rest.starts_with("S-") {
+        if rest.starts_with("s-") {
             shift = true;
             rest = &rest[2..];
         }
@@ -82,7 +78,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
     ];
     for sk in &special_keys {
-        if s.eq_ignore_ascii_case(sk) {
+        if sl.eq_ignore_ascii_case(&sk.to_ascii_lowercase()) {
             return vec![KeyBinding::Special(sk.to_string())];
         }
     }

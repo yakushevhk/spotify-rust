@@ -36,11 +36,13 @@ impl<S: Subscriber> Layer<S> for BufferLayer {
 
         let level = event.metadata().level();
         let target = event.metadata().target();
+        // L_M1: truncate module path to last segment for readability
+        let short_target = target.rsplit("::").next().unwrap_or(target);
         let line = format!(
             "{} {:>5} {}: {}",
             chrono::Local::now().format("%H:%M:%S"),
             level,
-            target,
+            short_target,
             visitor.message
         );
 

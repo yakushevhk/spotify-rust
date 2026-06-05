@@ -100,8 +100,8 @@ pub fn render_library(
                     playlists.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
                 }
                 crate::gui::LibrarySortOrder::RecentlyAdded => {
-                    // Reverse to show most recently added first (assuming order from API)
-                    playlists.reverse();
+                    // C7: API order is already reverse-chronological (most recently added first).
+                    // No additional sorting needed.
                 }
                 crate::gui::LibrarySortOrder::Default => {}
             }

@@ -4,16 +4,9 @@ pub fn map_join<T, F>(v: &[T], f: F, sep: &str) -> String
 where
     F: Fn(&T) -> &str,
 {
-    v.iter().map(f).fold(String::new(), |x, y| {
-        if x.is_empty() {
-            x + y
-        } else {
-            x + sep + y
-        }
-    })
+    v.iter().map(f).collect::<Vec<_>>().join(sep)
 }
 
-#[allow(dead_code)]
 pub fn get_track_album_image_url(track: &rspotify::model::FullTrack) -> Option<&str> {
     if track.album.images.is_empty() {
         None
@@ -22,7 +15,6 @@ pub fn get_track_album_image_url(track: &rspotify::model::FullTrack) -> Option<&
     }
 }
 
-#[allow(dead_code)]
 pub fn get_episode_show_image_url(episode: &rspotify::model::FullEpisode) -> Option<&str> {
     if episode.show.images.is_empty() {
         None

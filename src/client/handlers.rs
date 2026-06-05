@@ -89,7 +89,8 @@ fn handle_playback_change_event(
     };
 
     let now = Instant::now();
-    if let Some(progress) = player.playback_progress() {
+    // M3: use server's reported progress (not estimated) for track end detection
+    if let Some(progress) = player.playback.as_ref().and_then(|p| p.progress) {
         if progress >= duration && playback.is_playing
             && now.duration_since(handler_state.last_track_end_check) >= Duration::from_secs(3)
         {

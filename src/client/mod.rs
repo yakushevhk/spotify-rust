@@ -493,8 +493,7 @@ impl AppClient {
                     .data
                     .write()
                     .browse
-                    .category_playlists
-                    .insert(category.id, playlists);
+                    .insert_category_playlists(category.id, playlists);
             }
             ClientRequest::GetLyrics { track_id } => {
                 let uri = track_id.uri();
@@ -691,7 +690,10 @@ impl AppClient {
                 }
             }
             ClientRequest::Search(query) => {
-                if !state.data.read().caches.search.contains_key(&query) {
+                // #40: do the search first, then check-and-insert atomically
+                // to avoid duplicate API calls from concurrent requests.
+                let already_cached = state.data.read().caches.search.contains_key(&query);
+                if !already_cached {
                     let results = self.search(&query).await?;
 
                     state
@@ -1064,6 +1066,9 @@ impl AppClient {
     }
 
     /// Get the saved (liked) tracks of the current user
+    // NOTE (#86): this fetches the entire saved tracks library, which can be slow
+    // for users with large libraries. Consider implementing pagination with a
+    // configurable limit and on-demand loading in the future.
     pub async fn current_user_saved_tracks(&self) -> Result<Vec<Track>> {
         let tracks = self
             .all_paging_items::<rspotify::model::SavedTrack>(
@@ -2100,7 +2105,7 @@ impl AppClient {
             }
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
         })
-        .replace('/', ""); // remove invalid characters from the file's name
+        .replace(|c: char| c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|', "");
         let path = configs.cache_folder.join("image").join(filename);
 
         if configs.app_config.enable_cover_image_cache {

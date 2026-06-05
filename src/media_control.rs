@@ -1,4 +1,5 @@
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig};
+use rspotify::prelude::Id;
 use std::sync::atomic::Ordering;
 
 use crate::client::{ClientRequest, PlayerRequest};
@@ -8,7 +9,7 @@ use crate::utils::map_join;
 fn update_control_metadata(
     state: &SharedState,
     controls: &mut MediaControls,
-    prev_info: &mut String,
+    prev_info: &mut Option<String>,
 ) -> Result<(), souvlaki::Error> {
     let player = state.player.read();
 
@@ -29,8 +30,9 @@ fn update_control_metadata(
             match item {
                 rspotify::model::PlayableItem::Unknown(_) => {}
                 rspotify::model::PlayableItem::Track(track) => {
-                    let track_info = format!("{}/{}", track.name, track.album.name);
-                    if track_info != *prev_info {
+                    // MC8: use track.id for dedup instead of name
+                    let track_id = track.id.as_ref().map(|id| id.uri()).unwrap_or_default();
+                    if Some(&track_id) != prev_info.as_ref() {
                         controls.set_metadata(MediaMetadata {
                             title: Some(&track.name),
                             album: Some(&track.album.name),
@@ -38,12 +40,13 @@ fn update_control_metadata(
                             duration: track.duration.to_std().ok(),
                             cover_url: crate::utils::get_track_album_image_url(track),
                         })?;
-                        *prev_info = track_info;
+                        *prev_info = Some(track_id);
                     }
                 }
                 rspotify::model::PlayableItem::Episode(episode) => {
-                    let episode_info = format!("{}/{}", episode.name, episode.show.name);
-                    if episode_info != *prev_info {
+                    // MC8: use episode.id for dedup instead of name
+                    let episode_id = episode.id.uri();
+                    if Some(&episode_id) != prev_info.as_ref() {
                         controls.set_metadata(MediaMetadata {
                             title: Some(&episode.name),
                             album: Some(&episode.show.name),
@@ -51,7 +54,7 @@ fn update_control_metadata(
                             duration: episode.duration.to_std().ok(),
                             cover_url: crate::utils::get_episode_show_image_url(episode),
                         })?;
-                        *prev_info = episode_info;
+                        *prev_info = Some(episode_id);
                     }
                 }
             }
@@ -120,16 +123,23 @@ pub fn start_event_watcher(
         }
     })?;
 
-    controls.set_playback(MediaPlayback::Playing { progress: None })?;
+    // MC11: start with Stopped instead of Playing to avoid incorrect initial state
+    controls.set_playback(MediaPlayback::Stopped)?;
 
     let running = state.running.clone();
-    let refresh_duration = std::time::Duration::from_secs(1);
-    let mut info = String::new();
+    // MC5: reduce polling interval from 1s to 500ms
+    let refresh_duration = std::time::Duration::from_millis(500);
+    let mut info: Option<String> = None;
+    // MC6: use short sleep intervals and check running flag to reduce shutdown latency
     while running.load(Ordering::Acquire) {
         if let Err(e) = update_control_metadata(state, &mut controls, &mut info) {
             tracing::warn!("Media control update error: {e}");
         }
-        std::thread::sleep(refresh_duration);
+        // Sleep in small increments to check for shutdown more frequently
+        let deadline = std::time::Instant::now() + refresh_duration;
+        while running.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
     Ok(())
 }
