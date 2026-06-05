@@ -46,6 +46,14 @@ pub enum SortDirection {
     Descending,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthStep {
+    Idle,
+    Step1, // Getting Client ID
+    Step2, // OAuth in progress
+    Complete,
+}
+
 impl SortDirection {
     pub fn toggle(self) -> Self {
         match self {
@@ -95,6 +103,23 @@ pub enum LibrarySortOrder {
     RecentlyAdded,
 }
 
+#[derive(Debug, Clone)]
+pub struct ToastMessage {
+    pub message: String,
+    pub expires: std::time::Instant,
+    pub is_error: bool,
+}
+
+impl ToastMessage {
+    pub fn new(message: String, is_error: bool) -> Self {
+        Self {
+            message,
+            expires: std::time::Instant::now() + std::time::Duration::from_secs(5),
+            is_error,
+        }
+    }
+}
+
 enum Action {
     Navigate(View),
     OpenPlaylist(usize),
@@ -112,6 +137,7 @@ enum Action {
     ContextMenuNavigateAlbum(state::Album),
     ContextMenuNavigateShow(state::Show),
     OpenCreatePlaylist,
+    OpenAuthModal,
     OpenShows,
     OpenShowDetail(state::Show),
     OpenShowFromSearch(state::Show),
@@ -138,11 +164,12 @@ pub struct SpotifyApp {
     create_playlist_desc: String,
     create_playlist_public: bool,
     create_playlist_collab: bool,
+    create_playlist_name_error: Option<String>,
     show_add_to_playlist_popup: bool,
     add_to_playlist_track: Option<state::PlayableId<'static>>,
     add_to_playlist_filter: String,
-    toast_message: Option<String>,
-    toast_expires: Option<std::time::Instant>,
+    toast_messages: Vec<ToastMessage>,
+    toast_show_all: bool,
     current_context_id: Option<state::ContextId>,
     key_seq_state: KeySequenceState,
     keybindings: Vec<CommandBinding>,
@@ -167,6 +194,15 @@ pub struct SpotifyApp {
     settings_editing_keybindings: Vec<crate::key::CommandBinding>,
     library_sort_order: LibrarySortOrder,
     scroll_to_selected: bool,
+    
+    // Onboarding
+    show_onboarding: bool,
+    onboarding_completed: bool,
+    
+    // Authentication
+    show_auth_modal: bool,
+    auth_client_id_input: String,
+    auth_step: AuthStep,
     show_browse_playlists_popup: bool,
     show_browse_artists_popup: bool,
     show_browse_albums_popup: bool,
@@ -175,6 +211,7 @@ pub struct SpotifyApp {
     in_page_search_query: String,
     waveform_cache: Option<(String, usize, Vec<f32>)>,
     selected_artist_track: Option<usize>,
+    search_debounce_state: crate::gui::views::SearchDebounceState,
 }
 
 impl SpotifyApp {
@@ -216,11 +253,12 @@ impl SpotifyApp {
             create_playlist_desc: String::new(),
             create_playlist_public: true,
             create_playlist_collab: false,
+            create_playlist_name_error: None,
             show_add_to_playlist_popup: false,
             add_to_playlist_track: None,
             add_to_playlist_filter: String::new(),
-            toast_message: None,
-            toast_expires: None,
+            toast_messages: Vec::new(),
+            toast_show_all: false,
             current_context_id: None,
             key_seq_state: KeySequenceState::new(),
             keybindings: {
@@ -253,6 +291,11 @@ impl SpotifyApp {
             },
             library_sort_order: LibrarySortOrder::Default,
             scroll_to_selected: false,
+            show_onboarding: false,
+            onboarding_completed: false,
+            show_auth_modal: false,
+            auth_client_id_input: String::new(),
+            auth_step: AuthStep::Idle,
             show_browse_playlists_popup: false,
             show_browse_artists_popup: false,
             show_browse_albums_popup: false,
@@ -261,6 +304,7 @@ impl SpotifyApp {
             in_page_search_query: String::new(),
             waveform_cache: None,
             selected_artist_track: None,
+            search_debounce_state: crate::gui::views::SearchDebounceState::default(),
         }
     }
 
@@ -489,6 +533,10 @@ impl SpotifyApp {
                 self.create_playlist_public = true;
                 self.create_playlist_collab = false;
             }
+            Action::OpenAuthModal => {
+                self.show_auth_modal = true;
+                self.auth_step = AuthStep::Step1;
+            }
             Action::OpenShows => {
                 let data = self.state.data.read();
                 let shows_empty = data.user_data.saved_shows.is_empty();
@@ -561,15 +609,22 @@ impl SpotifyApp {
         if let Err(e) = self.client_pub.try_send(req) {
             match e {
                 flume::TrySendError::Full(_) => {
-                    tracing::warn!("Client request channel full, dropping request");
-                    // Don't push to toast_queue here — it would re-enter a lock
-                    // that may already be held.
+                    let msg = "Client request channel full, dropping request".to_string();
+                    tracing::warn!("{}", msg);
+                    // Push to toast_queue for display on next frame
+                    self.state.push_toast(format!("⚠️ {} (Click to retry)", msg));
                 }
                 flume::TrySendError::Disconnected(_) => {
-                    tracing::warn!("Failed to send request: client channel closed");
+                    let msg = "Failed to send request: client channel closed".to_string();
+                    tracing::warn!("{}", msg);
+                    self.state.push_toast(format!("❌ {}", msg));
                 }
             }
         }
+    }
+
+    fn send_request_with_retry(&self, req: ClientRequest) -> Result<(), flume::TrySendError<ClientRequest>> {
+        self.client_pub.try_send(req)
     }
 
     fn execute_command(&mut self, cmd: &Command, count: usize, ctx: &egui::Context) {
@@ -1239,6 +1294,17 @@ impl eframe::App for SpotifyApp {
         let repaint_ms = if is_playing { 100 } else { 1000 };
         ctx.request_repaint_after(std::time::Duration::from_millis(repaint_ms));
 
+        // Check if this is first launch (no auth token)
+        if !self.onboarding_completed && !self.show_onboarding {
+            let data = self.state.data.read();
+            let is_empty = data.user_data.playlists.is_empty() && data.user_data.saved_albums.is_empty();
+            // Show onboarding if library is empty and we haven't completed onboarding
+            if is_empty {
+                self.show_onboarding = true;
+            }
+            drop(data);
+        }
+
         // Drain toast messages from background tasks
         let toasts: Vec<String> = self.state.toast_queue.lock().drain(..).collect();
         for msg in toasts {
@@ -1479,12 +1545,16 @@ impl eframe::App for SpotifyApp {
 
         // Left panel — sidebar
         let mut action = Action::None;
+        let is_authenticated = {
+            let data = self.state.data.read();
+            !data.user_data.playlists.is_empty() || !data.user_data.saved_albums.is_empty()
+        };
         egui::SidePanel::left("sidebar")
             .resizable(false)
             .exact_width(theme::SIDEBAR_WIDTH)
             .frame(egui::Frame::new().fill(theme::bg_black()).inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
-                action = sidebar::render(ui, &self.current_view, &self.state);
+                action = sidebar::render(ui, &self.current_view, &self.state, is_authenticated);
             });
         self.handle_action(action);
 
@@ -1681,6 +1751,7 @@ impl eframe::App for SpotifyApp {
                         &mut self.selected_track,
                         &mut self.image_cache,
                         &mut self.context_menu,
+                        &mut self.search_debounce_state,
                     );
                 }
                 View::Browse => {
@@ -1838,6 +1909,16 @@ impl eframe::App for SpotifyApp {
             self.render_in_page_search(ctx);
         }
 
+        // Render Onboarding modal
+        if self.show_onboarding {
+            self.render_onboarding(ctx);
+        }
+
+        // Render Auth modal
+        if self.show_auth_modal {
+            self.render_auth_modal(ctx);
+        }
+
         // Render toast message
         self.render_toast(ctx);
 
@@ -1963,20 +2044,47 @@ impl SpotifyApp {
                     );
                     ui.add_space(16.0);
 
-                    // Name input
+                    // Name input with validation
                     ui.label(
                         egui::RichText::new("Name")
                             .size(12.0)
                             .color(theme::text_dim()),
                     );
                     ui.add_space(4.0);
+                    
+                    // Real-time validation
+                    let name_trimmed = self.create_playlist_name.trim();
+                    if name_trimmed.is_empty() {
+                        self.create_playlist_name_error = Some("Playlist name is required".to_string());
+                    } else if name_trimmed.len() > 100 {
+                        self.create_playlist_name_error = Some("Name must be 100 characters or less".to_string());
+                    } else if name_trimmed.chars().any(|c| c.is_control()) {
+                        self.create_playlist_name_error = Some("Name contains invalid characters".to_string());
+                    } else {
+                        self.create_playlist_name_error = None;
+                    }
+                    
                     let name_input = egui::TextEdit::singleline(&mut self.create_playlist_name)
                         .desired_width(f32::INFINITY)
                         .hint_text("Playlist name")
                         .font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8))
-                        .background_color(theme::bg_input());
-                    ui.add(name_input);
+                        .background_color(if self.create_playlist_name_error.is_some() {
+                            theme::with_alpha(theme::error_color(), 30)
+                        } else {
+                            theme::bg_input()
+                        });
+                    let _name_response = ui.add(name_input);
+                    
+                    // Show validation error
+                    if let Some(ref error) = self.create_playlist_name_error {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(format!("⚠️ {}", error))
+                                .size(11.0)
+                                .color(theme::error_color()),
+                        );
+                    }
                     ui.add_space(10.0);
 
                     // Description input
@@ -2098,7 +2206,7 @@ impl SpotifyApp {
                         ui.add_space(12.0);
 
                         // Create button
-                        let can_create = !self.create_playlist_name.trim().is_empty();
+                        let can_create = self.create_playlist_name_error.is_none() && !self.create_playlist_name.trim().is_empty();
                         let (create_rect, create_resp) = ui
                             .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click());
                         let create_bg = if !can_create {
@@ -2168,6 +2276,7 @@ impl SpotifyApp {
 
         if close {
             self.show_create_playlist_popup = false;
+            self.create_playlist_name_error = None;
         }
     }
 
@@ -3013,62 +3122,147 @@ impl SpotifyApp {
     }
 
     fn toast(&mut self, message: String) {
-        self.toast_message = Some(message);
-        self.toast_expires = Some(
-            std::time::Instant::now() + std::time::Duration::from_secs(2),
-        );
+        self.toast_messages.push(ToastMessage::new(message, false));
+        // Keep only last 10 messages
+        if self.toast_messages.len() > 10 {
+            self.toast_messages.remove(0);
+        }
+    }
+
+    fn toast_error(&mut self, message: String) {
+        self.toast_messages.push(ToastMessage::new(message, true));
+        if self.toast_messages.len() > 10 {
+            self.toast_messages.remove(0);
+        }
     }
 
     fn render_toast(&mut self, ctx: &egui::Context) {
         let now = std::time::Instant::now();
-        if let Some(expires) = self.toast_expires {
-            if now >= expires {
-                self.toast_message = None;
-                self.toast_expires = None;
-                return;
-            }
+        
+        // Remove expired toasts
+        self.toast_messages.retain(|t| t.expires > now);
+        
+        if self.toast_messages.is_empty() {
+            self.toast_show_all = false;
+            return;
         }
-        let message = match &self.toast_message {
-            Some(m) => m.clone(),
-            None => return,
-        };
 
-        let toast_width = 260.0;
+        let toast_width = 320.0;
+        let toast_height = 44.0;
         let screen = ctx.screen_rect();
-        let toast_pos = egui::pos2(
-            screen.center().x - toast_width / 2.0,
-            screen.bottom() - 160.0,
-        );
+        
+        // Determine how many toasts to show
+        let max_visible = if self.toast_show_all { self.toast_messages.len() } else { self.toast_messages.len().min(3) };
+        let total_height = max_visible as f32 * (toast_height + 8.0);
+        
+        let start_y = screen.bottom() - 160.0 - total_height + toast_height;
+        
+        // Track which toasts to dismiss
+        let mut dismiss_indices: Vec<usize> = Vec::new();
+        
+        for i in 0..max_visible {
+            if i >= self.toast_messages.len() {
+                break;
+            }
+            let toast = &self.toast_messages[i];
+            let y_pos = start_y + i as f32 * (toast_height + 8.0);
+            let toast_pos = egui::pos2(
+                screen.center().x - toast_width / 2.0,
+                y_pos,
+            );
 
-        egui::Area::new(egui::Id::new("toast"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(toast_pos)
-            .interactable(false)
-            .show(ctx, |ui| {
-                let frame = egui::Frame::new()
-                    .fill(theme::with_alpha(theme::bg_dark(), 220))
-                    .stroke(egui::Stroke::new(1.0, theme::with_alpha(theme::accent(), 60)))
-                    .corner_radius(egui::CornerRadius::same(theme::RADIUS_MEDIUM))
-                    .inner_margin(egui::Margin::symmetric(16, 10));
+            let mut dismissed = false;
+            egui::Area::new(egui::Id::new(format!("toast_{}", i)))
+                .order(egui::Order::Foreground)
+                .fixed_pos(toast_pos)
+                .interactable(true)
+                .show(ctx, |ui| {
+                    let frame = egui::Frame::new()
+                        .fill(theme::with_alpha(theme::bg_dark(), 240))
+                        .stroke(egui::Stroke::new(1.0, 
+                            if toast.is_error { 
+                                theme::with_alpha(theme::error_color(), 80)
+                            } else {
+                                theme::with_alpha(theme::accent(), 60)
+                            }))
+                        .corner_radius(egui::CornerRadius::same(theme::RADIUS_MEDIUM))
+                        .inner_margin(egui::Margin::symmetric(12, 8));
 
-                frame.show(ui, |ui| {
-                    ui.set_min_width(toast_width - 32.0);
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("\u{2713}")
-                                .size(14.0)
-                                .color(theme::green()),
-                        );
-                        ui.add_space(6.0);
-                        ui.label(
-                            egui::RichText::new(message)
-                                .size(13.0)
-                                .color(theme::text_primary()),
-                        );
+                    frame.show(ui, |ui| {
+                        ui.set_min_width(toast_width - 24.0);
+                        ui.horizontal(|ui| {
+                            // Icon
+                            let icon = if toast.is_error { "⚠️" } else { "✓" };
+                            let icon_color = if toast.is_error { theme::error_color() } else { theme::green() };
+                            ui.label(
+                                egui::RichText::new(icon)
+                                    .size(14.0)
+                                    .color(icon_color),
+                            );
+                            ui.add_space(6.0);
+                            
+                            // Message
+                            ui.label(
+                                egui::RichText::new(&toast.message)
+                                    .size(13.0)
+                                    .color(theme::text_primary()),
+                            );
+                            
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                // Dismiss button
+                                if ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new("✕")
+                                            .size(12.0)
+                                            .color(theme::text_dim())
+                                    )
+                                    .fill(egui::Color32::TRANSPARENT)
+                                    .frame(false)
+                                ).clicked() {
+                                    dismissed = true;
+                                }
+                            });
+                        });
                     });
                 });
-            });
+            
+            if dismissed {
+                dismiss_indices.push(i);
+            }
+        }
+        
+        // Remove dismissed toasts (in reverse order to maintain indices)
+        for &idx in dismiss_indices.iter().rev() {
+            if idx < self.toast_messages.len() {
+                self.toast_messages.remove(idx);
+            }
+        }
+        
+        // Show "Show All" button if there are more than 3 toasts
+        if self.toast_messages.len() > 3 && !self.toast_show_all {
+            let show_all_pos = egui::pos2(
+                screen.center().x + toast_width / 2.0 + 8.0,
+                screen.bottom() - 160.0 - total_height + toast_height / 2.0,
+            );
+            
+            egui::Area::new(egui::Id::new("toast_show_all"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(show_all_pos)
+                .show(ctx, |ui| {
+                    if ui.add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("+{}", self.toast_messages.len() - 3))
+                                .size(11.0)
+                                .color(theme::text_secondary())
+                        )
+                        .fill(theme::with_alpha(theme::bg_dark(), 200))
+                    ).clicked() {
+                        self.toast_show_all = true;
+                    }
+                });
+        }
     }
+
 
     fn render_key_hint(&mut self, ctx: &egui::Context) {
         if !self.key_seq_state.is_pending() {
@@ -3172,6 +3366,452 @@ impl SpotifyApp {
             Err(e) => {
                 self.toast(format!("Config folder not found: {}", e));
             }
+        }
+    }
+
+    fn render_onboarding(&mut self, ctx: &egui::Context) {
+        let popup_width = 480.0;
+        let popup_height = 520.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut start_auth = false;
+
+        // Overlay background
+        egui::Area::new(egui::Id::new("onboarding_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    theme::with_alpha(theme::bg_black(), 180),
+                );
+            });
+
+        egui::Area::new(egui::Id::new("onboarding_modal"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame()
+                    .inner_margin(egui::Margin::same(32));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 64.0);
+
+                    // Welcome header
+                    ui.horizontal_centered(|ui| {
+                        ui.add_space((popup_width - 64.0) / 2.0 - 30.0);
+                        ui.label(
+                            egui::RichText::new("🎵")
+                                .size(48.0)
+                        );
+                    });
+                    ui.add_space(8.0);
+                    
+                    ui.label(
+                        egui::RichText::new("Welcome to Spotify Rust!")
+                            .size(22.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(8.0);
+                    
+                    ui.label(
+                        egui::RichText::new("A native Spotify client with a beautiful GUI")
+                            .size(13.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(24.0);
+
+                    // Step 1
+                    ui.label(
+                        egui::RichText::new("1. Authentication")
+                            .size(15.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("To use this app, you need to authenticate with Spotify. You'll need a Spotify Client ID from the Spotify Developer Dashboard.")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(12.0);
+
+                    // Step 2
+                    ui.label(
+                        egui::RichText::new("2. Keyboard Shortcuts")
+                            .size(15.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("• Space: Play/Pause\n• N: Next track\n• P: Previous track\n• S: Search\n• L: Library\n• ?: Help\n• : Command palette")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(12.0);
+
+                    // Step 3
+                    ui.label(
+                        egui::RichText::new("3. Getting Started")
+                            .size(15.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Click 'Get Started' to set up your Spotify authentication, or 'Skip' to browse in limited mode.")
+                            .size(12.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(32.0);
+
+                    // Buttons
+                    ui.horizontal(|ui| {
+                        // Skip button
+                        let (skip_rect, skip_resp) = ui
+                            .allocate_exact_size(egui::vec2(100.0, 40.0), egui::Sense::click());
+                        let skip_bg = if skip_resp.hovered() {
+                            theme::bg_hover()
+                        } else {
+                            theme::bg_card()
+                        };
+                        ui.painter().rect_filled(
+                            skip_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            skip_bg,
+                        );
+                        ui.painter().rect_stroke(
+                            skip_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            egui::Stroke::new(1.0, theme::text_muted()),
+                            egui::StrokeKind::Outside,
+                        );
+                        ui.painter().text(
+                            skip_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Skip",
+                            egui::FontId::proportional(14.0),
+                            theme::text_primary(),
+                        );
+                        if skip_resp.clicked() {
+                            close = true;
+                        }
+
+                        ui.add_space(16.0);
+
+                        // Get Started button
+                        let (start_rect, start_resp) = ui
+                            .allocate_exact_size(egui::vec2(140.0, 40.0), egui::Sense::click());
+                        let start_bg = if start_resp.hovered() {
+                            theme::green_hover()
+                        } else {
+                            theme::green()
+                        };
+                        ui.painter().rect_filled(
+                            start_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            start_bg,
+                        );
+                        ui.painter().text(
+                            start_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Get Started",
+                            egui::FontId::proportional(14.0),
+                            theme::bg_black(),
+                        );
+                        if start_resp.clicked() {
+                            start_auth = true;
+                            close = true;
+                        }
+                    });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        if close {
+            self.show_onboarding = false;
+            self.onboarding_completed = true;
+        }
+        
+        if start_auth {
+            self.show_auth_modal = true;
+        }
+    }
+
+    fn render_auth_modal(&mut self, ctx: &egui::Context) {
+        let popup_width = 420.0;
+        let popup_height = 400.0;
+        let screen = ctx.screen_rect();
+        let popup_pos = egui::pos2(
+            screen.center().x - popup_width / 2.0,
+            screen.center().y - popup_height / 2.0,
+        );
+
+        let mut close = false;
+
+        // Overlay background
+        egui::Area::new(egui::Id::new("auth_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    theme::with_alpha(theme::bg_black(), 180),
+                );
+            });
+
+        egui::Area::new(egui::Id::new("auth_modal"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(popup_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame()
+                    .inner_margin(egui::Margin::same(24));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(popup_width - 48.0);
+
+                    // Header
+                    ui.label(
+                        egui::RichText::new("Spotify Authentication")
+                            .size(18.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(16.0);
+
+                    // Step indicator
+                    let step_text = match self.auth_step {
+                        AuthStep::Idle | AuthStep::Step1 => "Step 1 of 2: Get Client ID",
+                        AuthStep::Step2 => "Step 2 of 2: Authenticate",
+                        AuthStep::Complete => "Authentication Complete",
+                    };
+                    ui.label(
+                        egui::RichText::new(step_text)
+                            .size(12.0)
+                            .color(theme::green()),
+                    );
+                    ui.add_space(16.0);
+
+                    match self.auth_step {
+                        AuthStep::Idle | AuthStep::Step1 => {
+                            ui.label(
+                                egui::RichText::new("To use this app, you need a Spotify Client ID:")
+                                    .size(13.0)
+                                    .color(theme::text_secondary()),
+                            );
+                            ui.add_space(8.0);
+                            
+                            ui.label(
+                                egui::RichText::new("1. Go to developer.spotify.com\n2. Create an app\n3. Add http://localhost:8888/callback as a redirect URI\n4. Copy your Client ID below")
+                                    .size(12.0)
+                                    .color(theme::text_dim()),
+                            );
+                            ui.add_space(16.0);
+
+                            // Client ID input
+                            ui.label(
+                                egui::RichText::new("Client ID")
+                                    .size(12.0)
+                                    .color(theme::text_dim()),
+                            );
+                            ui.add_space(4.0);
+                            let input = egui::TextEdit::singleline(&mut self.auth_client_id_input)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Paste your Client ID here...")
+                                .font(egui::FontId::proportional(13.0))
+                                .margin(egui::Margin::symmetric(10, 8))
+                                .background_color(theme::bg_input());
+                            ui.add(input);
+                            ui.add_space(20.0);
+
+                            // Buttons
+                            ui.horizontal(|ui| {
+                                // Cancel button
+                                let (cancel_rect, cancel_resp) = ui
+                                    .allocate_exact_size(egui::vec2(90.0, 36.0), egui::Sense::click());
+                                let cancel_bg = if cancel_resp.hovered() {
+                                    theme::bg_hover()
+                                } else {
+                                    theme::bg_card()
+                                };
+                                ui.painter().rect_filled(
+                                    cancel_rect,
+                                    egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                    cancel_bg,
+                                );
+                                ui.painter().rect_stroke(
+                                    cancel_rect,
+                                    egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                    egui::Stroke::new(1.0, theme::text_muted()),
+                                    egui::StrokeKind::Outside,
+                                );
+                                ui.painter().text(
+                                    cancel_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "Cancel",
+                                    egui::FontId::proportional(13.0),
+                                    theme::text_primary(),
+                                );
+                                if cancel_resp.clicked() {
+                                    close = true;
+                                }
+
+                                ui.add_space(12.0);
+
+                                // Open Browser button
+                                let has_client_id = !self.auth_client_id_input.trim().is_empty();
+                                let (browser_rect, browser_resp) = ui
+                                    .allocate_exact_size(egui::vec2(140.0, 36.0), egui::Sense::click());
+                                let browser_bg = if !has_client_id {
+                                    theme::bg_dark()
+                                } else if browser_resp.hovered() {
+                                    theme::green_hover()
+                                } else {
+                                    theme::green()
+                                };
+                                ui.painter().rect_filled(
+                                    browser_rect,
+                                    egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                    browser_bg,
+                                );
+                                let browser_text_color = if has_client_id {
+                                    theme::bg_black()
+                                } else {
+                                    theme::text_muted()
+                                };
+                                ui.painter().text(
+                                    browser_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "Open Browser",
+                                    egui::FontId::proportional(13.0),
+                                    browser_text_color,
+                                );
+                                if browser_resp.clicked() && has_client_id {
+                                    // Save client ID to config and open browser
+                                    self.auth_step = AuthStep::Step2;
+                                    self.toast("Opening browser for authentication...".to_string());
+                                    // TODO: Trigger actual OAuth flow
+                                }
+                            });
+                        }
+                        AuthStep::Step2 => {
+                            ui.label(
+                                egui::RichText::new("Complete authentication in your browser...")
+                                    .size(14.0)
+                                    .color(theme::text_primary()),
+                            );
+                            ui.add_space(16.0);
+                            
+                            ui.horizontal_centered(|ui| {
+                                ui.add_space((popup_width - 48.0) / 2.0 - 20.0);
+                                ui.spinner();
+                            });
+                            ui.add_space(8.0);
+                            
+                            ui.label(
+                                egui::RichText::new("Waiting for authentication...")
+                                    .size(12.0)
+                                    .color(theme::text_dim()),
+                            );
+                            ui.add_space(24.0);
+
+                            // Cancel button
+                            let (cancel_rect, cancel_resp) = ui
+                                .allocate_exact_size(egui::vec2(100.0, 36.0), egui::Sense::click());
+                            let cancel_bg = if cancel_resp.hovered() {
+                                theme::bg_hover()
+                            } else {
+                                theme::bg_card()
+                            };
+                            ui.painter().rect_filled(
+                                cancel_rect,
+                                egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                cancel_bg,
+                            );
+                            ui.painter().rect_stroke(
+                                cancel_rect,
+                                egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                egui::Stroke::new(1.0, theme::text_muted()),
+                                egui::StrokeKind::Outside,
+                            );
+                            ui.painter().text(
+                                cancel_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "Cancel",
+                                egui::FontId::proportional(13.0),
+                                theme::text_primary(),
+                            );
+                            if cancel_resp.clicked() {
+                                self.auth_step = AuthStep::Step1;
+                            }
+                        }
+                        AuthStep::Complete => {
+                            ui.label(
+                                egui::RichText::new("✓ Authentication successful!")
+                                    .size(16.0)
+                                    .color(theme::green()),
+                            );
+                            ui.add_space(16.0);
+                            
+                            ui.label(
+                                egui::RichText::new("You're all set. Enjoy your music!")
+                                    .size(13.0)
+                                    .color(theme::text_secondary()),
+                            );
+                            ui.add_space(24.0);
+
+                            // Close button
+                            let (close_rect, close_resp) = ui
+                                .allocate_exact_size(egui::vec2(120.0, 36.0), egui::Sense::click());
+                            let close_bg = if close_resp.hovered() {
+                                theme::green_hover()
+                            } else {
+                                theme::green()
+                            };
+                            ui.painter().rect_filled(
+                                close_rect,
+                                egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                                close_bg,
+                            );
+                            ui.painter().text(
+                                close_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "Start Listening",
+                                egui::FontId::proportional(13.0),
+                                theme::bg_black(),
+                            );
+                            if close_resp.clicked() {
+                                close = true;
+                            }
+                        }
+                    }
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        if close {
+            self.show_auth_modal = false;
+            self.auth_step = AuthStep::Idle;
+            self.auth_client_id_input.clear();
         }
     }
 }

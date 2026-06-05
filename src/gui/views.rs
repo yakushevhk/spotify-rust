@@ -1,11 +1,27 @@
 use eframe::egui;
 use rspotify::prelude::Id;
-
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::gui::context_menu::{self, ContextTarget};
 use crate::gui::image_cache::{self, ImageCache};
 use crate::gui::{theme, Action, SortAction, SortColumn, SortDirection, SortState, View};
 use crate::state::{self, PlayableId, SharedState};
+
+#[derive(Debug)]
+pub struct SearchDebounceState {
+    pub last_input: Instant,
+    pub pending_query: Option<String>,
+    pub is_searching: bool,
+}
+
+impl Default for SearchDebounceState {
+    fn default() -> Self {
+        Self {
+            last_input: Instant::now(),
+            pending_query: None,
+            is_searching: false,
+        }
+    }
+}
 
 pub fn render_library(
     ui: &mut egui::Ui,
@@ -1349,6 +1365,8 @@ pub fn render_tracks(
     sort_action
 }
 
+use std::time::{Duration, Instant};
+
 pub fn render_search(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -1357,6 +1375,7 @@ pub fn render_search(
     selected_track: &mut Option<usize>,
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
+    debounce_state: &mut SearchDebounceState,
 ) -> Action {
     let mut action = Action::None;
 
@@ -1397,20 +1416,55 @@ pub fn render_search(
                 .frame(false),
         );
 
-        let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if (response.has_focus() && enter_pressed) || (response.lost_focus() && enter_pressed) {
-            if !search_query.is_empty() {
-                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
+        // Debounced search - trigger after 300ms of no typing
+        let now = Instant::now();
+        if response.changed() && !search_query.is_empty() {
+            debounce_state.last_input = now;
+            debounce_state.pending_query = Some(search_query.clone());
+            debounce_state.is_searching = false;
+        }
+
+        // Check if debounce period has passed
+        if let Some(ref pending) = debounce_state.pending_query {
+            if now.duration_since(debounce_state.last_input) >= Duration::from_millis(300) {
+                let _ = client_pub.send(ClientRequest::Search(pending.clone()));
+                debounce_state.pending_query = None;
+                debounce_state.is_searching = true;
             }
+        }
+
+        // Still allow Enter key for immediate search
+        let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if enter_pressed && !search_query.is_empty() {
+            // Cancel pending debounced search
+            debounce_state.pending_query = None;
+            debounce_state.is_searching = true;
+            let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
         }
 
         // Search button
         if theme::secondary_button(ui, "Search").clicked() {
             if !search_query.is_empty() {
+                debounce_state.pending_query = None;
+                debounce_state.is_searching = true;
                 let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
             }
         }
     });
+
+    // Show searching indicator
+    if debounce_state.is_searching && search_query.len() >= 2 {
+        ui.horizontal(|ui| {
+            ui.add_space(24.0);
+            ui.spinner();
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new("Searching...")
+                    .size(12.0)
+                    .color(theme::text_dim()),
+            );
+        });
+    }
 
     ui.add_space(24.0);
 

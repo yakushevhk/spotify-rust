@@ -17,6 +17,7 @@ pub fn render(
     ui: &mut egui::Ui,
     current_view: &View,
     state: &SharedState,
+    is_authenticated: bool,
 ) -> Action {
     let mut action = Action::None;
 
@@ -55,7 +56,38 @@ pub fn render(
                 .color(theme::text_primary()),
         );
     });
-    ui.allocate_space(egui::vec2(ui.available_width(), 20.0));
+    ui.allocate_space(egui::vec2(ui.available_width(), 16.0));
+
+    // Sign In button (when not authenticated)
+    if !is_authenticated {
+        let (signin_rect, signin_resp) = ui
+            .allocate_exact_size(egui::vec2(ui.available_width() - 32.0, 40.0), egui::Sense::click());
+        let signin_bg = if signin_resp.hovered() {
+            theme::green_hover()
+        } else {
+            theme::green()
+        };
+        ui.painter().rect_filled(
+            signin_rect,
+            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+            signin_bg,
+        );
+        ui.painter().text(
+            signin_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "🔑 Sign In",
+            egui::FontId::proportional(14.0),
+            theme::bg_black(),
+        );
+        if signin_resp.clicked() {
+            action = Action::OpenAuthModal;
+        }
+        ui.add_space(8.0);
+        theme::divider_line(ui);
+        ui.add_space(8.0);
+    }
+
+    ui.allocate_space(egui::vec2(ui.available_width(), 4.0));
 
     // Navigation
     let nav = [

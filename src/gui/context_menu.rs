@@ -65,6 +65,10 @@ pub struct ContextMenu {
     pub target: Option<ContextTarget>,
     pub position: egui::Pos2,
     pub confirm_action: Option<MenuAction>,
+    pub confirm_item_name: Option<String>,
+    pub loading_actions: std::collections::HashSet<String>,
+    pub skip_confirmations: std::collections::HashSet<String>,
+    pub show_dont_ask_again: bool,
 }
 
 impl ContextMenu {
@@ -73,7 +77,35 @@ impl ContextMenu {
             target: None,
             position: egui::Pos2::ZERO,
             confirm_action: None,
+            confirm_item_name: None,
+            loading_actions: std::collections::HashSet::new(),
+            skip_confirmations: std::collections::HashSet::new(),
+            show_dont_ask_again: false,
         }
+    }
+
+    fn is_action_loading(&self, action: &MenuAction) -> bool {
+        let key = format!("{:?}", action);
+        self.loading_actions.contains(&key)
+    }
+
+    fn set_action_loading(&mut self, action: &MenuAction, loading: bool) {
+        let key = format!("{:?}", action);
+        if loading {
+            self.loading_actions.insert(key);
+        } else {
+            self.loading_actions.remove(&key);
+        }
+    }
+
+    fn should_skip_confirmation(&self, action: &MenuAction) -> bool {
+        let key = format!("{:?}", action);
+        self.skip_confirmations.contains(&key)
+    }
+
+    fn skip_confirmation(&mut self, action: &MenuAction) {
+        let key = format!("{:?}", action);
+        self.skip_confirmations.insert(key);
     }
 
     pub fn is_open(&self) -> bool {
@@ -462,14 +494,25 @@ impl ContextMenu {
                             text_color,
                         );
 
-                        if response.clicked() {
-                            if item.destructive {
-                                self.confirm_action = Some(item.action.clone());
-                            } else {
-                                action_to_execute = Some(item.action.clone());
-                                should_close = true;
-                            }
-                        }
+                if response.clicked() && !self.is_action_loading(&item.action) {
+                    if item.destructive && !self.should_skip_confirmation(&item.action) {
+                        self.confirm_action = Some(item.action.clone());
+                        // Get item name for confirmation message
+                        self.confirm_item_name = match &target {
+                            ContextTarget::Track { track, .. } => Some(track.name.clone()),
+                            ContextTarget::Album(album) => Some(album.name.clone()),
+                            ContextTarget::Artist(artist) => Some(artist.name.clone()),
+                            ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
+                            ContextTarget::Show(show) => Some(show.name.clone()),
+                            ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
+                        };
+                        self.show_dont_ask_again = false;
+                    } else {
+                        self.set_action_loading(&item.action, true);
+                        action_to_execute = Some(item.action.clone());
+                        should_close = true;
+                    }
+                }
                     }
                 });
 
@@ -521,24 +564,28 @@ impl ContextMenu {
         state: &SharedState,
         client_pub: &flume::Sender<ClientRequest>,
     ) {
+        let item_name = self.confirm_item_name.as_deref().unwrap_or("this item");
         let (title, detail) = match &action {
             MenuAction::RemoveAlbumFromLibrary(_) => (
-                "Remove from Library?",
-                "This album will be removed from your library.",
+                "⚠️ Remove from Library?",
+                format!("'{}' will be removed from your library.", item_name),
             ),
             MenuAction::UnfollowArtist(_) => (
-                "Unfollow Artist?",
-                "You will no longer follow this artist.",
+                "⚠️ Unfollow Artist?",
+                format!("You will no longer follow '{}'.", item_name),
             ),
             MenuAction::RemoveShowFromLibrary(_) => (
-                "Unfollow Show?",
-                "This show will be removed from your library.",
+                "⚠️ Unfollow Show?",
+                format!("'{}' will be removed from your library.", item_name),
             ),
             MenuAction::DeleteFromPlaylist(_, _) => (
-                "Remove from Playlist?",
-                "This track will be removed from the playlist.",
+                "⚠️ Remove from Playlist?",
+                format!("'{}' will be removed from the playlist.", item_name),
             ),
-            _ => ("Confirm?", "Are you sure?"),
+            _ => (
+                "⚠️ Confirm?",
+                format!("Are you sure you want to proceed with '{}'", item_name),
+            ),
         };
 
         let dialog_width = 300.0;
@@ -577,17 +624,55 @@ impl ContextMenu {
                     ui.set_min_width(dialog_width - 32.0);
 
                     ui.label(
-                        egui::RichText::new(title)
+                        egui::RichText::new(title.clone())
                             .size(15.0)
                             .strong()
                             .color(theme::text_primary()),
                     );
                     ui.add_space(8.0);
                     ui.label(
-                        egui::RichText::new(detail)
+                        egui::RichText::new(detail.clone())
                             .size(12.0)
                             .color(theme::text_secondary()),
                     );
+                    ui.add_space(16.0);
+                    
+                    // "Don't ask again" checkbox
+                    ui.horizontal(|ui| {
+                        let checkbox_size = 16.0;
+                        let (checkbox_rect, checkbox_resp) = ui.allocate_exact_size(
+                            egui::vec2(checkbox_size, checkbox_size),
+                            egui::Sense::click(),
+                        );
+                        let checkbox_bg = if self.show_dont_ask_again {
+                            theme::green()
+                        } else {
+                            theme::bg_active()
+                        };
+                        ui.painter().rect_filled(
+                            checkbox_rect,
+                            egui::CornerRadius::same(4),
+                            checkbox_bg,
+                        );
+                        if self.show_dont_ask_again {
+                            ui.painter().text(
+                                checkbox_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "✓",
+                                egui::FontId::proportional(10.0),
+                                theme::bg_black(),
+                            );
+                        }
+                        if checkbox_resp.clicked() {
+                            self.show_dont_ask_again = !self.show_dont_ask_again;
+                        }
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new("Don't ask again for this action")
+                                .size(11.0)
+                                .color(theme::text_dim()),
+                        );
+                    });
                     ui.add_space(16.0);
 
                     ui.horizontal(|ui| {
@@ -644,6 +729,9 @@ impl ContextMenu {
                         if confirm_resp.clicked() {
                             execute = true;
                             close = true;
+                            if self.show_dont_ask_again {
+                                self.skip_confirmation(&action);
+                            }
                         }
                     });
                 });
