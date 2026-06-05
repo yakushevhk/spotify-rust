@@ -19,7 +19,8 @@ fn update_control_metadata(
                 .playback_progress()
                 .and_then(|p| Some(MediaPosition(p.to_std().ok()?)));
 
-            if player.playback.as_ref().expect("playback").is_playing {
+            let is_playing = player.playback.as_ref().is_some_and(|p| p.is_playing);
+            if is_playing {
                 controls.set_playback(MediaPlayback::Playing { progress })?;
             } else {
                 controls.set_playback(MediaPlayback::Paused { progress })?;

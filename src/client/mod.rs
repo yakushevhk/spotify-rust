@@ -189,7 +189,7 @@ impl AppClient {
     /// Create a new client session
     pub async fn new_session(&self, state: Option<&SharedState>, reauth: bool) -> Result<()> {
         let session = self.auth_config.session();
-        let creds = auth::get_creds(&self.auth_config, reauth, true).context("get credentials")?;
+        let creds = auth::get_creds(&self.auth_config, reauth, true).await.context("get credentials")?;
         self.spotify.set_session(session.clone()).await;
 
         #[allow(unused_mut)]
@@ -212,6 +212,7 @@ impl AppClient {
                     "Session connect failed, clearing cached credentials and retrying: {err:#}"
                 );
                 let fresh_creds = auth::get_creds(&self.auth_config, true, false)
+                    .await
                     .context("get credentials after clearing cache")?;
                 session
                     .connect(fresh_creds, true)

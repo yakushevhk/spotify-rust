@@ -1,5 +1,5 @@
 use crate::config;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use librespot_core::{authentication::Credentials, cache::Cache, config::SessionConfig, Session};
 use librespot_oauth::OAuthClientBuilder;
 
@@ -86,36 +86,42 @@ impl AuthConfig {
 /// - `auth_config`: authentication configuration
 /// - `reauth`: whether to re-authenticate the application if no cached credentials are found
 // - `use_cached`: whether to use cached credentials if available
-pub fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool) -> Result<Credentials> {
+pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool) -> Result<Credentials> {
     let creds = if use_cached {
         auth_config.cache.credentials()
     } else {
         None
     };
 
-    Ok(match creds {
+    match creds {
         None => {
             let msg = "No cached credentials found, please authenticate the application first.";
             if reauth {
                 eprintln!("{msg}");
 
-                let client_builder = OAuthClientBuilder::new(
-                    SPOTIFY_CLIENT_ID,
-                    &auth_config.login_redirect_uri,
-                    OAUTH_SCOPES.to_vec(),
-                )
-                .open_in_browser();
-                let oauth_client = client_builder.build()?;
-                oauth_client
-                    .get_access_token()
-                    .map(|t| Credentials::with_access_token(t.access_token))?
+                let login_redirect_uri = auth_config.login_redirect_uri.clone();
+                let creds = tokio::task::spawn_blocking(move || {
+                    let client_builder = OAuthClientBuilder::new(
+                        SPOTIFY_CLIENT_ID,
+                        &login_redirect_uri,
+                        OAUTH_SCOPES.to_vec(),
+                    )
+                    .open_in_browser();
+                    let oauth_client = client_builder.build()?;
+                    oauth_client
+                        .get_access_token()
+                        .map(|t| Credentials::with_access_token(t.access_token))
+                })
+                .await
+                .context("blocking task panicked")??;
+                Ok(creds)
             } else {
                 anyhow::bail!(msg);
             }
         }
         Some(creds) => {
             tracing::info!("Using cached credentials");
-            creds
+            Ok(creds)
         }
-    })
+    }
 }

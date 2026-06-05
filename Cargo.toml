@@ -29,7 +29,7 @@ chrono = "0.4.44"
 reqwest = { version = "0.13.2", features = ["json", "query"] }
 rspotify = { version = "0.15.3", features = ["cli"] }
 serde = { version = "1.0.228", features = ["derive"] }
-tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.50.0", features = ["rt", "rt-multi-thread", "macros", "time", "signal"] }
 toml = "1.1.0"
 rand = "0.10.0"
 maybe-async = "0.2.10"
@@ -45,6 +45,7 @@ ttl_cache = "0.5.1"
 html-escape = "0.2.13"
 rustls = { version = "0.23.37", default-features = false, features = ["ring"] }
 futures = "0.3.32"
+fs2 = "0.4"
 fuzzy-matcher = { version = "0.3.7", optional = true }
 
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

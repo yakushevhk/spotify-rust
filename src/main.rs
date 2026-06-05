@@ -24,10 +24,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 fn init_spotify(
     client_pub: &flume::Sender<client::ClientRequest>,
-    client: &client::AppClient,
-    state: &state::SharedState,
 ) -> Result<()> {
-    client.initialize_playback(state);
     client_pub.send(client::ClientRequest::GetCurrentUser)?;
     client_pub.send(client::ClientRequest::GetUserPlaylists)?;
     client_pub.send(client::ClientRequest::GetUserFollowedArtists)?;
@@ -47,21 +44,41 @@ fn init_logging(
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
-    if std::env::var_os("RUST_LOG").is_some_and(|x| x == "off") {
-        return Ok(());
-    }
-
     let log_prefix = format!(
         "spotify-player-gui-{}",
-        chrono::Local::now().format("%y-%m-%d-%H-%M")
+        chrono::Local::now().format("%Y-%m-%d-%H-%M")
     );
 
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "spotify_player_gui=info,librespot=info");
-    }
     if !log_folder.exists() {
         std::fs::create_dir_all(log_folder)?;
     }
+
+    // Install panic hook BEFORE tracing subscriber init (H2)
+    let backtrace_file = std::fs::File::create(log_folder.join(format!("{log_prefix}.backtrace")))
+        .context("failed to create backtrace file")?;
+    let backtrace_file = std::sync::Mutex::new(backtrace_file);
+    std::panic::set_hook(Box::new(move |info| {
+        if let Ok(mut file) = backtrace_file.lock() {
+            let backtrace = backtrace::Backtrace::new();
+            let _ = writeln!(&mut file, "Got a panic: {info:#?}\n");
+            let _ = writeln!(&mut file, "Stack backtrace:\n{backtrace:?}");
+        }
+    }));
+
+    // Always install the buffer layer so the in-app log viewer works
+    // even when RUST_LOG=off (H3)
+    let buffer_layer = log_layer::BufferLayer::new(log_buffer, 1000);
+
+    if std::env::var_os("RUST_LOG").is_some_and(|x| x == "off") {
+        tracing_subscriber::registry()
+            .with(buffer_layer)
+            .init();
+        return Ok(());
+    }
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_env("RUST_LOG")
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("spotify_player_gui=info,librespot=info"));
+
     let log_file = std::fs::File::create(log_folder.join(format!("{log_prefix}.log")))
         .context("failed to create log file")?;
 
@@ -69,23 +86,11 @@ fn init_logging(
         .with_ansi(false)
         .with_writer(std::sync::Mutex::new(log_file));
 
-    let buffer_layer = log_layer::BufferLayer::new(log_buffer, 1000);
-
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(env_filter)
         .with(fmt_layer)
         .with(buffer_layer)
         .init();
-
-    let backtrace_file = std::fs::File::create(log_folder.join(format!("{log_prefix}.backtrace")))
-        .context("failed to create backtrace file")?;
-    let backtrace_file = std::sync::Mutex::new(backtrace_file);
-    std::panic::set_hook(Box::new(move |info| {
-        let mut file = backtrace_file.lock().unwrap();
-        let backtrace = backtrace::Backtrace::new();
-        writeln!(&mut file, "Got a panic: {info:#?}\n").unwrap();
-        writeln!(&mut file, "Stack backtrace:\n{backtrace:?}").unwrap();
-    }));
 
     Ok(())
 }
@@ -104,7 +109,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
         .await
         .context("initialize new Spotify session")?;
 
-    init_spotify(&client_pub, &client, state).context("Failed to initialize the Spotify data")?;
+    init_spotify(&client_pub).context("Failed to initialize the Spotify data")?;
 
     // client event handler task
     let client_handler = tokio::task::spawn({
@@ -148,6 +153,17 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
         }
     };
 
+    // Signal handler for clean shutdown on Ctrl+C / SIGTERM
+    let signal_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::error!("Failed to listen for Ctrl+C: {e}");
+            return;
+        }
+        tracing::info!("Received shutdown signal, cleaning up...");
+        signal_state.running.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
     // Launch the GUI
     let gui_state = state.clone();
     let gui_client_pub = client_pub.clone();
@@ -186,14 +202,27 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .unwrap();
+    // Handle rustls install gracefully (M7)
+    if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+        eprintln!("Warning: failed to install rustls default crypto provider: {e:?}");
+    }
 
     let config_folder = config::get_config_folder_path()?;
     if !config_folder.exists() {
         std::fs::create_dir_all(&config_folder)?;
     }
+
+    // Multi-instance guard (C3)
+    let lock_path = config_folder.join(".lock");
+    let _lock_file = fs2::FileExt::try_lock_shared(
+        &std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .context("failed to open lock file")?,
+    )
+    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
 
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
