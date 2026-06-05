@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use crate::state::Lyrics;
@@ -50,17 +49,9 @@ pub struct AppClient {
     auth_config: AuthConfig,
     /// The user-provided Spotify client, mainly used for interacting with Spotify Web APIs
     user_client: Option<rspotify::AuthCodePkceSpotify>,
+    reauth_lock: Arc<tokio::sync::Mutex<()>>,
     #[cfg(feature = "streaming")]
     stream_conn: Arc<Mutex<Option<librespot_connect::Spirc>>>,
-}
-
-impl Deref for AppClient {
-    type Target = rspotify::AuthCodePkceSpotify;
-    fn deref(&self) -> &Self::Target {
-        self.user_client
-            .as_ref()
-            .expect("user-provided client is not initialized: no client_id configured. Set `client_id` or `client_id_command` in the config file.")
-    }
 }
 
 impl AppClient {
@@ -91,8 +82,6 @@ impl AppClient {
         let config = rspotify::Config {
             token_cached: true,
             token_refreshing: true,
-            // TODO: Ensure token cache file permissions are 0600 on Unix to prevent
-            // other users from reading the access token.
             cache_path: configs.cache_folder.join("user_client_token.json"),
             ..Default::default()
         };
@@ -103,10 +92,29 @@ impl AppClient {
             let url = client
                 .get_authorize_url(None)
                 .context("get authorize URL for user-provided client")?;
+            eprintln!("Please open this URL in your browser: {url}");
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open").arg(&url).spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+            }
             client
                 .prompt_for_token(&url)
                 .await
                 .context("get token for user-provided client")?;
+
+            // Set restrictive permissions on the user_client_token.json file
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let token_path = configs.cache_folder.join("user_client_token.json");
+                if token_path.exists() {
+                    let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+                }
+            }
         }
 
         Ok(Self {
@@ -114,6 +122,7 @@ impl AppClient {
             http: reqwest::Client::new(),
             auth_config,
             user_client,
+            reauth_lock: Arc::new(tokio::sync::Mutex::new(())),
 
             #[cfg(feature = "streaming")]
             stream_conn: Arc::new(Mutex::new(None)),
@@ -121,8 +130,9 @@ impl AppClient {
     }
 
     async fn token(&self) -> Result<String> {
-        self.auto_reauth().await?;
+        self.user_client()?.auto_reauth().await?;
         Ok(self
+            .user_client()?
             .get_token()
             .lock()
             .await
@@ -170,15 +180,22 @@ impl AppClient {
 
                     if let Some(id) = id {
                         tracing::info!("Trying to connect to device (id={id})");
-                        if let Err(err) = client.transfer_playback(&id, Some(false)).await {
-                            tracing::warn!("Connection failed (device_id={id}): {err:#}");
-                        } else {
-                            tracing::info!("Connection succeeded (device_id={id})!");
-                            // upon new connection, reset the buffered playback
-                            state.player.write().buffered_playback = None;
-                            // retrieve_current_playback at the top of this iteration
-                            // already fetched the current state; no need for update_playback
-                            break;
+                        match client.user_client() {
+                            Ok(uc) => {
+                                if let Err(err) = uc.transfer_playback(&id, Some(false)).await {
+                                    tracing::warn!("Connection failed (device_id={id}): {err:#}");
+                                } else {
+                                    tracing::info!("Connection succeeded (device_id={id})!");
+                                    // upon new connection, reset the buffered playback
+                                    state.player.write().buffered_playback = None;
+                                    // retrieve_current_playback at the top of this iteration
+                                    // already fetched the current state; no need for update_playback
+                                    break;
+                                }
+                            }
+                            Err(err) => {
+                                tracing::error!("No user client available: {err:#}");
+                            }
                         }
                     }
                 }
@@ -207,23 +224,57 @@ impl AppClient {
 
         if !connected {
             // if session is not connected (triggered by `new_streaming_connection`), connect to the session
+            let creds_backup = creds.clone();
             if let Err(err) = session.connect(creds, true).await {
-                tracing::warn!(
-                    "Session connect failed, clearing cached credentials and retrying: {err:#}"
-                );
-                let fresh_creds = auth::get_creds(&self.auth_config, true, false)
-                    .await
-                    .context("get credentials after clearing cache")?;
-                session
-                    .connect(fresh_creds, true)
-                    .await
-                    .context("connect to a session after re-auth")?;
+                let err_msg = format!("{err:#}");
+                let is_auth_failure = err_msg.to_lowercase().contains("authentication")
+                    || err_msg.to_lowercase().contains("auth")
+                    || err_msg.to_lowercase().contains("credentials")
+                    || err_msg.to_lowercase().contains("login");
+
+                if is_auth_failure {
+                    tracing::warn!(
+                        "Session connect failed with auth error, clearing cached credentials and retrying: {err:#}"
+                    );
+                    let fresh_creds = auth::get_creds(&self.auth_config, true, false)
+                        .await
+                        .context("get credentials after clearing cache")?;
+                    session
+                        .connect(fresh_creds, true)
+                        .await
+                        .context("connect to a session after re-auth")?;
+                } else {
+                    // Network/transport error: retry with same credentials using exponential backoff
+                    tracing::warn!(
+                        "Session connect failed with network error, retrying with backoff: {err:#}"
+                    );
+                    let mut connected = false;
+                    for attempt in 0..3u32 {
+                        let delay = std::time::Duration::from_secs(1 << attempt);
+                        tokio::time::sleep(delay).await;
+                        match session.connect(creds_backup.clone(), true).await {
+                            Ok(()) => {
+                                connected = true;
+                                break;
+                            }
+                            Err(retry_err) => {
+                                tracing::warn!(
+                                    "Session connect retry {}/3 failed: {retry_err:#}",
+                                    attempt + 1
+                                );
+                            }
+                        }
+                    }
+                    if !connected {
+                        anyhow::bail!("session.connect failed after 3 retries: {err:#}");
+                    }
+                }
             }
         }
 
         tracing::info!("Used a new session for Spotify client.");
 
-        self.refresh_token().await.context("refresh auth token")?;
+        self.user_client()?.refresh_token().await.context("refresh auth token")?;
 
         if let Some(state) = state {
             // reset the application's caches
@@ -250,14 +301,18 @@ impl AppClient {
     /// Check if the current session is valid and if invalid, create a new session
     pub async fn check_valid_session(&self, state: &SharedState) -> Result<()> {
         if self.spotify.session().await.is_invalid() {
-            tracing::info!("Client's current session is invalid, creating a new session...");
-            if let Err(err) = self.new_session(Some(state), false).await {
-                tracing::warn!(
-                    "Failed to create new session with cached credentials: {err:#}, retrying with re-auth..."
-                );
-                self.new_session(Some(state), true)
-                    .await
-                    .context("create new client session after re-auth")?;
+            let _guard = self.reauth_lock.lock().await;
+            // Re-check after acquiring the lock in case another task already fixed it
+            if self.spotify.session().await.is_invalid() {
+                tracing::info!("Client's current session is invalid, creating a new session...");
+                if let Err(err) = self.new_session(Some(state), false).await {
+                    tracing::warn!(
+                        "Failed to create new session with cached credentials: {err:#}, retrying with re-auth..."
+                    );
+                    self.new_session(Some(state), true)
+                        .await
+                        .context("create new client session after re-auth")?;
+                }
             }
         }
         Ok(())
@@ -296,7 +351,7 @@ impl AppClient {
             PlayerRequest::TransferPlayback(device_id, force_play) => {
                 // `TransferPlayback` needs to be handled separately from other player requests
                 // because `TransferPlayback` doesn't require an active playback
-                self.transfer_playback(&device_id, Some(force_play)).await?;
+                self.user_client()?.transfer_playback(&device_id, Some(force_play)).await?;
                 tracing::info!("Transferred playback to device with id={}", device_id);
                 return Ok(None);
             }
@@ -315,7 +370,7 @@ impl AppClient {
                 let device_id_ref = device_id.as_deref();
                 self.start_playback(p, device_id_ref).await?;
                 if let Some(ref playback) = playback {
-                    self.shuffle(playback.shuffle_state, device_id_ref).await?;
+                    self.user_client()?.shuffle(playback.shuffle_state, device_id_ref).await?;
                 }
                 return Ok(None);
             }
@@ -326,31 +381,31 @@ impl AppClient {
         let device_id = playback.device_id.as_deref();
 
         match request {
-            PlayerRequest::NextTrack => self.next_track(device_id).await?,
-            PlayerRequest::PreviousTrack => self.previous_track(device_id).await?,
+            PlayerRequest::NextTrack => self.user_client()?.next_track(device_id).await?,
+            PlayerRequest::PreviousTrack => self.user_client()?.previous_track(device_id).await?,
             PlayerRequest::Resume => {
                 if !playback.is_playing {
-                    self.resume_playback(device_id, None).await?;
+                    self.user_client()?.resume_playback(device_id, None).await?;
                     playback.is_playing = true;
                 }
             }
 
             PlayerRequest::Pause => {
                 if playback.is_playing {
-                    self.pause_playback(device_id).await?;
+                    self.user_client()?.pause_playback(device_id).await?;
                     playback.is_playing = false;
                 }
             }
             PlayerRequest::ResumePause => {
                 if playback.is_playing {
-                    self.pause_playback(device_id).await?;
+                    self.user_client()?.pause_playback(device_id).await?;
                 } else {
-                    self.resume_playback(device_id, None).await?;
+                    self.user_client()?.resume_playback(device_id, None).await?;
                 }
                 playback.is_playing = !playback.is_playing;
             }
             PlayerRequest::SeekTrack(position_ms) => {
-                self.seek_track(position_ms, device_id).await?;
+                self.user_client()?.seek_track(position_ms, device_id).await?;
             }
             PlayerRequest::Repeat => {
                 let next_repeat_state = match playback.repeat_state {
@@ -359,17 +414,17 @@ impl AppClient {
                     rspotify::model::RepeatState::Context => rspotify::model::RepeatState::Off,
                 };
 
-                self.repeat(next_repeat_state, device_id).await?;
+                self.user_client()?.repeat(next_repeat_state, device_id).await?;
 
                 playback.repeat_state = next_repeat_state;
             }
             PlayerRequest::Shuffle => {
-                self.shuffle(!playback.shuffle_state, device_id).await?;
+                self.user_client()?.shuffle(!playback.shuffle_state, device_id).await?;
 
                 playback.shuffle_state = !playback.shuffle_state;
             }
             PlayerRequest::Volume(volume) => {
-                self.volume(volume, device_id).await?;
+                self.user_client()?.volume(volume, device_id).await?;
 
                 playback.volume = Some(u32::from(volume));
                 playback.mute_state = None;
@@ -377,11 +432,11 @@ impl AppClient {
             PlayerRequest::ToggleMute => {
                 let new_mute_state = match playback.mute_state {
                     None => {
-                        self.volume(0, device_id).await?;
+                        self.user_client()?.volume(0, device_id).await?;
                         Some(playback.volume.unwrap_or_default())
                     }
                     Some(volume) => {
-                        self.volume(volume as u8, device_id).await?;
+                        self.user_client()?.volume(volume as u8, device_id).await?;
                         None
                     }
                 };
@@ -440,7 +495,7 @@ impl AppClient {
                 self.new_session(Some(state), false).await?;
             }
             ClientRequest::GetCurrentUser => {
-                let user = self.current_user().await?;
+                let user = self.user_client()?.current_user().await?;
                 state.data.write().user_data.user = Some(user);
             }
             ClientRequest::Player(request) => {
@@ -631,7 +686,7 @@ impl AppClient {
             }
 
             ClientRequest::AddPlayableToQueue(playable_id) => {
-                self.add_item_to_queue(playable_id, None).await?;
+                self.user_client()?.add_item_to_queue(playable_id, None).await?;
             }
             ClientRequest::AddPlayableToPlaylist(playlist_id, playable_id) => {
                 self.add_item_to_playlist(state, playlist_id, playable_id)
@@ -642,10 +697,46 @@ impl AppClient {
 
                 if let Context::Album { album: _, tracks } = album_context {
                     for track in tracks {
-                        self.add_item_to_queue(PlayableId::Track(track.id), None)
+                        self.user_client()?.add_item_to_queue(PlayableId::Track(track.id), None)
                             .await?;
                     }
                 }
+            }
+            ClientRequest::Logout => {
+                // Shutdown the librespot session
+                let session = self.spotify.session().await;
+                if !session.is_invalid() {
+                    session.shutdown();
+                }
+
+                // Delete cached credential files
+                let configs = config::get_config();
+                let credentials_file = configs.cache_folder.join("credentials.json");
+                if credentials_file.exists() {
+                    if let Err(err) = std::fs::remove_file(&credentials_file) {
+                        tracing::warn!("Failed to delete credentials file: {err:#}");
+                    }
+                }
+                let token_file = configs.cache_folder.join("user_client_token.json");
+                if token_file.exists() {
+                    if let Err(err) = std::fs::remove_file(&token_file) {
+                        tracing::warn!("Failed to delete user client token file: {err:#}");
+                    }
+                }
+
+                // Reset state
+                state.data.write().user_data = crate::state::UserData {
+                    user: None,
+                    playlists: Vec::new(),
+                    playlist_folder_node: None,
+                    followed_artists: Vec::new(),
+                    saved_shows: Vec::new(),
+                    saved_albums: Vec::new(),
+                    saved_tracks: std::collections::HashMap::new(),
+                };
+                *state.player.write() = crate::state::PlayerState::default();
+
+                state.toast_queue.lock().push_back("Logged out successfully".to_string());
             }
             ClientRequest::DeleteTrackFromPlaylist(playlist_id, track_id) => {
                 self.delete_track_from_playlist(state, playlist_id, track_id)
@@ -658,7 +749,7 @@ impl AppClient {
                 self.delete_from_library(state, id).await?;
             }
             ClientRequest::GetCurrentUserQueue => {
-                let queue = self.current_user_queue().await?;
+                let queue = self.user_client()?.current_user_queue().await?;
                 state.player.write().queue = Some(queue);
             }
             ClientRequest::ReorderPlaylistItems {
@@ -734,7 +825,7 @@ impl AppClient {
 
     /// Get user available devices
     pub async fn available_devices(&self) -> Result<Vec<rspotify::model::Device>> {
-        Ok(self.device().await?)
+        Ok(self.user_client()?.device().await?)
     }
 
     pub fn update_playback(&self, state: &SharedState) {
@@ -841,6 +932,7 @@ impl AppClient {
     /// Get Spotify's available browse categories
     pub async fn browse_categories(&self) -> Result<Vec<Category>> {
         let first_page = self
+            .user_client()?
             .categories_manual(Some("EN"), None, Some(50), None)
             .await?;
 
@@ -951,7 +1043,7 @@ impl AppClient {
 
     /// Get the recently played tracks of the current user
     pub async fn current_user_recently_played_tracks(&self) -> Result<Vec<Track>> {
-        let first_page = self.current_user_recently_played(Some(50), None).await?;
+        let first_page = self.user_client()?.current_user_recently_played(Some(50), None).await?;
 
         let play_histories = self.all_cursor_based_paging_items(first_page).await?;
 
@@ -1069,19 +1161,19 @@ impl AppClient {
         match playback {
             Playback::Context(id, offset) => match id {
                 ContextId::Album(id) => {
-                    self.start_context_playback(PlayContextId::from(id), device_id, offset, None)
+                    self.user_client()?.start_context_playback(PlayContextId::from(id), device_id, offset, None)
                         .await?;
                 }
                 ContextId::Artist(id) => {
-                    self.start_context_playback(PlayContextId::from(id), device_id, offset, None)
+                    self.user_client()?.start_context_playback(PlayContextId::from(id), device_id, offset, None)
                         .await?;
                 }
                 ContextId::Playlist(id) => {
-                    self.start_context_playback(PlayContextId::from(id), device_id, offset, None)
+                    self.user_client()?.start_context_playback(PlayContextId::from(id), device_id, offset, None)
                         .await?;
                 }
                 ContextId::Show(id) => {
-                    self.start_context_playback(PlayContextId::from(id), device_id, offset, None)
+                    self.user_client()?.start_context_playback(PlayContextId::from(id), device_id, offset, None)
                         .await?;
                 }
                 ContextId::Tracks(_) => {
@@ -1089,7 +1181,7 @@ impl AppClient {
                 }
             },
             Playback::URIs(ids, offset) => {
-                self.start_uris_playback(ids, device_id, offset, None)
+                self.user_client()?.start_uris_playback(ids, device_id, offset, None)
                     .await?;
             }
         }
@@ -1148,6 +1240,7 @@ impl AppClient {
 
         // Retrieve tracks based on IDs
         let tracks = self
+            .user_client()?
             .tracks(track_ids, Some(rspotify::model::Market::FromToken))
             .await?;
         let mut tracks: Vec<_> = tracks
@@ -1252,14 +1345,14 @@ impl AppClient {
         playable_id: PlayableId<'_>,
     ) -> Result<()> {
         // remove all the occurrences of the track to ensure no duplication in the playlist
-        self.playlist_remove_all_occurrences_of_items(
+        self.user_client()?.playlist_remove_all_occurrences_of_items(
             playlist_id.as_ref(),
             [playable_id.as_ref()],
             None,
         )
         .await?;
 
-        self.playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
+        self.user_client()?.playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
             .await?;
 
         // After adding a new track to a playlist, remove the cache of that playlist to force refetching new data
@@ -1276,7 +1369,7 @@ impl AppClient {
         track_id: TrackId<'_>,
     ) -> Result<()> {
         // remove all the occurrences of the track to ensure no duplication in the playlist
-        self.playlist_remove_all_occurrences_of_items(
+        self.user_client()?.playlist_remove_all_occurrences_of_items(
             playlist_id.as_ref(),
             [PlayableId::Track(track_id.as_ref())],
             None,
@@ -1313,7 +1406,7 @@ impl AppClient {
             insert_index
         };
 
-        self.playlist_reorder_items(
+        self.user_client()?.playlist_reorder_items(
             playlist_id.clone(),
             Some(range_start as i32),
             Some(insert_before as i32),
@@ -1343,10 +1436,11 @@ impl AppClient {
         match item {
             Item::Track(track) => {
                 let contains = self
+                    .user_client()?
                     .current_user_saved_tracks_contains([track.id.as_ref()])
                     .await?;
                 if !contains[0] {
-                    self.current_user_saved_tracks_add([track.id.as_ref()])
+                    self.user_client()?.current_user_saved_tracks_add([track.id.as_ref()])
                         .await?;
                     // update the in-memory `user_data`
                     state
@@ -1359,19 +1453,20 @@ impl AppClient {
             }
             Item::Album(album) => {
                 let contains = self
+                    .user_client()?
                     .current_user_saved_albums_contains([album.id.as_ref()])
                     .await?;
                 if !contains[0] {
-                    self.current_user_saved_albums_add([album.id.as_ref()])
+                    self.user_client()?.current_user_saved_albums_add([album.id.as_ref()])
                         .await?;
                     // update the in-memory `user_data`
                     state.data.write().user_data.saved_albums.insert(0, album);
                 }
             }
             Item::Artist(artist) => {
-                let follows = self.user_artist_check_follow([artist.id.as_ref()]).await?;
+                let follows = self.user_client()?.user_artist_check_follow([artist.id.as_ref()]).await?;
                 if !follows[0] {
-                    self.user_follow_artists([artist.id.as_ref()]).await?;
+                    self.user_client()?.user_follow_artists([artist.id.as_ref()]).await?;
                     // update the in-memory `user_data`
                     state
                         .data
@@ -1392,10 +1487,11 @@ impl AppClient {
 
                 if let Some(user_id) = user_id {
                     let follows = self
+                        .user_client()?
                         .playlist_check_follow(playlist.id.as_ref(), &[user_id])
                         .await?;
                     if !follows[0] {
-                        self.playlist_follow(playlist.id.as_ref(), None).await?;
+                        self.user_client()?.playlist_follow(playlist.id.as_ref(), None).await?;
                         // update the in-memory `user_data`
                         state
                             .data
@@ -1407,9 +1503,9 @@ impl AppClient {
                 }
             }
             Item::Show(show) => {
-                let follows = self.check_users_saved_shows([show.id.as_ref()]).await?;
+                let follows = self.user_client()?.check_users_saved_shows([show.id.as_ref()]).await?;
                 if !follows[0] {
-                    self.save_shows([show.id.as_ref()]).await?;
+                    self.user_client()?.save_shows([show.id.as_ref()]).await?;
                     // update the in-memory `user_data`
                     state.data.write().user_data.saved_shows.insert(0, show);
                 }
@@ -1423,7 +1519,7 @@ impl AppClient {
         match id {
             ItemId::Track(id) => {
                 let uri = id.uri();
-                self.current_user_saved_tracks_delete([id]).await?;
+                self.user_client()?.current_user_saved_tracks_delete([id]).await?;
                 state.data.write().user_data.saved_tracks.remove(&uri);
             }
             ItemId::Album(id) => {
@@ -1433,7 +1529,7 @@ impl AppClient {
                     .user_data
                     .saved_albums
                     .retain(|a| a.id != id);
-                self.current_user_saved_albums_delete([id]).await?;
+                self.user_client()?.current_user_saved_albums_delete([id]).await?;
             }
             ItemId::Artist(id) => {
                 state
@@ -1442,7 +1538,7 @@ impl AppClient {
                     .user_data
                     .followed_artists
                     .retain(|a| a.id != id);
-                self.user_unfollow_artists([id]).await?;
+                self.user_client()?.user_unfollow_artists([id]).await?;
             }
             ItemId::Playlist(id) => {
                 state
@@ -1454,7 +1550,7 @@ impl AppClient {
                         PlaylistFolderItem::Playlist(p) => p.id != id,
                         PlaylistFolderItem::Folder(_) => true,
                     });
-                self.playlist_unfollow(id).await?;
+                self.user_client()?.playlist_unfollow(id).await?;
             }
             ItemId::Show(id) => {
                 state
@@ -1463,7 +1559,7 @@ impl AppClient {
                     .user_data
                     .saved_shows
                     .retain(|s| s.id != id);
-                self.remove_users_saved_shows([id], Some(rspotify::model::Market::FromToken))
+                self.user_client()?.remove_users_saved_shows([id], Some(rspotify::model::Market::FromToken))
                     .await?;
             }
         }
@@ -1486,6 +1582,7 @@ impl AppClient {
         tracing::info!("Get playlist context: {}", playlist_uri);
 
         let playlist = self
+            .user_client()?
             .playlist(
                 playlist_id.clone(),
                 None,
@@ -1518,6 +1615,7 @@ impl AppClient {
         tracing::info!("Get album context: {}", album_uri);
 
         let album = self
+            .user_client()?
             .album(album_id.clone(), Some(rspotify::model::Market::FromToken))
             .await?;
 
@@ -1556,12 +1654,14 @@ impl AppClient {
         // get the artist's information, including top tracks, related artists, and albums
 
         let artist = self
+            .user_client()?
             .artist(artist_id.as_ref())
             .await
             .context("get artist")?
             .into();
 
         let top_tracks = self
+            .user_client()?
             .artist_top_tracks(artist_id.as_ref(), Some(rspotify::model::Market::FromToken))
             .await
             .context("get artist's top tracks")?
@@ -1571,6 +1671,7 @@ impl AppClient {
 
         #[allow(deprecated)]
         let related_artists = self
+            .user_client()?
             .artist_related_artists(artist_id.as_ref())
             .await
             .ok()
@@ -1597,7 +1698,7 @@ impl AppClient {
         let show_uri = show_id.uri();
         tracing::info!("Get show context: {}", show_uri);
 
-        let show = self.get_a_show(show_id.clone(), None).await?;
+        let show = self.user_client()?.get_a_show(show_id.clone(), None).await?;
 
         // get the show's episodes
         let episodes = self
@@ -1734,7 +1835,7 @@ impl AppClient {
     pub async fn current_playback2(
         &self,
     ) -> Result<Option<rspotify::model::CurrentPlaybackContext>> {
-        Ok(self.current_playback(None, PLAYBACK_TYPES.into()).await?)
+        Ok(self.user_client()?.current_playback(None, PLAYBACK_TYPES.into()).await?)
     }
 
     /// Retrieve the latest playback state
@@ -1828,7 +1929,7 @@ impl AppClient {
                     None
                 } else {
                     match &full_track.artists[0].id {
-                        Some(id) => self.artist(id.clone()).await.ok(),
+                        Some(id) => self.user_client()?.artist(id.clone()).await.ok(),
                         None => None,
                     }
                 }
@@ -1939,6 +2040,7 @@ impl AppClient {
         desc: &str,
     ) -> Result<()> {
         let playlist: Playlist = self
+            .user_client()?
             .user_playlist_create(
                 user_id,
                 playlist_name,

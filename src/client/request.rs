@@ -59,4 +59,5 @@ pub enum ClientRequest {
         collab: bool,
         desc: String,
     },
+    Logout,
 }

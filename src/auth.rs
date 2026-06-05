@@ -63,14 +63,24 @@ impl AuthConfig {
             None
         };
 
-        // TODO: Ensure credential cache file permissions are 0600 on Unix to prevent
-        // other users from reading cached access tokens.
         let cache = Cache::new(
             Some(configs.cache_folder.clone()),
             None,
             audio_cache_folder,
             None,
         )?;
+
+        // Set restrictive permissions on Unix to prevent other users from reading
+        // cached credentials and access tokens.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&configs.cache_folder, std::fs::Permissions::from_mode(0o700));
+            let credentials_file = configs.cache_folder.join("credentials.json");
+            if credentials_file.exists() {
+                let _ = std::fs::set_permissions(&credentials_file, std::fs::Permissions::from_mode(0o600));
+            }
+        }
 
         Ok(AuthConfig {
             cache,

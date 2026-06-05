@@ -4,6 +4,7 @@ use anyhow::Result;
 use librespot_core::session::Session;
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const MAX_RETRIES: u32 = 3;
 
 pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
     tracing::info!("Getting a new authentication token...");
@@ -12,18 +13,33 @@ pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
     if auth_data.is_empty() {
         anyhow::bail!("Session has no stored credentials for login5 token acquisition");
     }
-    let fut = session.login5().auth_token();
-    let token = match tokio::time::timeout(TIMEOUT, fut).await {
-        Ok(Ok(token)) => token,
-        Ok(Err(err)) => anyhow::bail!("failed to get the token: {err:?}"),
-        Err(_) => {
-            // The timeout likely happens because of the "corrupted" session,
-            // shutdown it to force re-initializing.
-            if !session.is_invalid() {
-                session.shutdown();
+
+    let mut last_err = None;
+    let token = 'retry: {
+        for attempt in 0..MAX_RETRIES {
+            let fut = session.login5().auth_token();
+            match tokio::time::timeout(TIMEOUT, fut).await {
+                Ok(Ok(token)) => break 'retry token,
+                Ok(Err(err)) => {
+                    anyhow::bail!("failed to get the token: {err:?}");
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "Token acquisition timed out (attempt {}/{})",
+                        attempt + 1,
+                        MAX_RETRIES
+                    );
+                    last_err = Some("timeout when getting the token");
+                    if attempt + 1 < MAX_RETRIES {
+                        continue;
+                    }
+                }
             }
-            anyhow::bail!("timeout when getting the token");
         }
+        anyhow::bail!(
+            "{}",
+            last_err.unwrap_or("timeout when getting the token")
+        );
     };
 
     // converts the token returned by librespot `get_token` function to a `rspotify::Token`

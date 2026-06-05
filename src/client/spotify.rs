@@ -19,6 +19,7 @@ pub struct Spotify {
     token: Arc<Mutex<Option<Token>>>,
     http: HttpClient,
     session: Arc<tokio::sync::Mutex<Option<Session>>>,
+    refresh_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[allow(clippy::missing_fields_in_debug)] // Seems like not all fields are necessary in debug
@@ -46,6 +47,7 @@ impl Spotify {
             token: Arc::new(Mutex::new(None)),
             http: HttpClient::default(),
             session: Arc::new(tokio::sync::Mutex::new(None)),
+            refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -84,6 +86,20 @@ impl BaseClient for Spotify {
     }
 
     async fn refetch_token(&self) -> ClientResult<Option<Token>> {
+        let _guard = self.refresh_lock.lock().await;
+
+        // Check if another task already refreshed the token while we were waiting
+        {
+            let existing = self.token.lock().await.unwrap();
+            if let Some(ref tok) = *existing {
+                if let Some(expires_at) = tok.expires_at {
+                    if chrono::Utc::now() < expires_at {
+                        return Ok(Some(tok.clone()));
+                    }
+                }
+            }
+        }
+
         let session = self.session.lock().await.clone();
         let old_token = self.token.lock().await.unwrap().clone();
 
