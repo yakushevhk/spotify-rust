@@ -23,6 +23,11 @@ pub struct PlayerState {
     /// Active when the integrated librespot player is streaming and the user
     /// started playback from a track-table context.
     pub custom_queue: Option<CustomQueue>,
+
+    /// Monotonically increasing generation counter incremented each time a new
+    /// streaming connection is established. Used by player_event_task to detect
+    /// and ignore stale writes after a connection restart.
+    pub streaming_generation: u64,
 }
 
 impl PlayerState {
@@ -45,10 +50,12 @@ impl PlayerState {
         };
 
         // update the playback's metadata based on the `buffered_playback` metadata
+        // NOTE: is_playing is intentionally NOT overridden from buffered_playback.
+        // The server is the source of truth for play/pause state; buffered_playback
+        // only provides progress estimation, device info, repeat, and shuffle.
         if let Some(ref p) = self.buffered_playback {
             playback.device.name.clone_from(&p.device_name);
             playback.device.id.clone_from(&p.device_id);
-            playback.is_playing = p.is_playing;
             playback.device.volume_percent = p.volume;
             playback.repeat_state = p.repeat_state;
             playback.shuffle_state = p.shuffle_state;

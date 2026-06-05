@@ -626,7 +626,7 @@ impl ContextMenu {
                         let (confirm_rect, confirm_resp) = ui
                             .allocate_exact_size(egui::vec2(100.0, 32.0), egui::Sense::click());
                         let confirm_bg = if confirm_resp.hovered() {
-                            theme::error_color()
+                            theme::lerp_color(theme::error_color(), theme::text_primary(), 0.25)
                         } else {
                             theme::error_color()
                         };

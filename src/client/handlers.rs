@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -207,6 +208,7 @@ fn handle_player_event(
 /// Starts event watcher listening to events and making update requests to the client if needed
 pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sender<ClientRequest>) {
     let configs = config::get_config();
+    let running = state.running.clone();
 
     let refresh_duration = Duration::from_millis(100);
     let playback_refresh_duration =
@@ -218,14 +220,14 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
         last_queue_check: Instant::now(),
     };
 
-    loop {
+    while running.load(Ordering::Relaxed) {
         // periodically refresh the playback state (if enabled in config)
         if configs.app_config.playback_refresh_duration_in_ms > 0
             && handler_state.last_playback_refresh_timer.elapsed() >= playback_refresh_duration
         {
-            client_pub
-                .send(ClientRequest::GetCurrentPlayback)
-                .unwrap_or_default();
+            if let Err(e) = client_pub.send(ClientRequest::GetCurrentPlayback) {
+                tracing::warn!("Failed to send GetCurrentPlayback request: {e:#}");
+            }
             handler_state.last_playback_refresh_timer = Instant::now();
         }
 

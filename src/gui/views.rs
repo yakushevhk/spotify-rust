@@ -1356,7 +1356,8 @@ pub fn render_search(
                 .frame(false),
         );
 
-        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if (response.has_focus() && enter_pressed) || (response.lost_focus() && enter_pressed) {
             if !search_query.is_empty() {
                 let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
             }

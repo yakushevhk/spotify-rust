@@ -59,11 +59,17 @@ impl Deref for AppClient {
     fn deref(&self) -> &Self::Target {
         self.user_client
             .as_ref()
-            .expect("user-provided client should be initialized")
+            .expect("user-provided client is not initialized: no client_id configured. Set `client_id` or `client_id_command` in the config file.")
     }
 }
 
 impl AppClient {
+    pub fn user_client(&self) -> Result<&rspotify::AuthCodePkceSpotify> {
+        self.user_client
+            .as_ref()
+            .context("user-provided client is not initialized: no client_id configured. Set `client_id` or `client_id_command` in the config file.")
+    }
+
     /// Construct a new client
     pub async fn new() -> Result<Self> {
         let configs = config::get_config();
@@ -168,7 +174,8 @@ impl AppClient {
                             tracing::info!("Connection succeeded (device_id={id})!");
                             // upon new connection, reset the buffered playback
                             state.player.write().buffered_playback = None;
-                            client.update_playback(&state);
+                            // retrieve_current_playback at the top of this iteration
+                            // already fetched the current state; no need for update_playback
                             break;
                         }
                     }
@@ -211,6 +218,19 @@ impl AppClient {
         if let Some(state) = state {
             // reset the application's caches
             state.data.write().caches = MemoryCaches::new();
+            // reset player state (playback, devices, queue, custom_queue)
+            // to avoid stale data from a previous account/session
+            *state.player.write() = crate::state::PlayerState::default();
+            // reset user data to avoid stale data from a previous account
+            state.data.write().user_data = crate::state::UserData {
+                user: None,
+                playlists: Vec::new(),
+                playlist_folder_node: None,
+                followed_artists: Vec::new(),
+                saved_shows: Vec::new(),
+                saved_albums: Vec::new(),
+                saved_tracks: std::collections::HashMap::new(),
+            };
             self.initialize_playback(state);
         }
 
@@ -236,6 +256,7 @@ impl AppClient {
         session: librespot_core::Session,
         creds: librespot_core::authentication::Credentials,
     ) -> Result<()> {
+        state.player.write().streaming_generation += 1;
         let new_conn =
             crate::streaming::new_connection(self.clone(), state, session, creds).await?;
         let mut stream_conn = self.stream_conn.lock();
@@ -414,15 +435,26 @@ impl AppClient {
                     None
                 };
                 let playback = state.player.read().buffered_playback.clone();
-                let playback = self.handle_player_request(request, playback).await?;
-                state.player.write().buffered_playback = playback;
+                let new_playback = self.handle_player_request(request, playback).await?;
+                let mut player = state.player.write();
+                if let Some(updated) = new_playback {
+                    if let Some(ref mut existing) = player.buffered_playback {
+                        existing.is_playing = updated.is_playing;
+                        existing.repeat_state = updated.repeat_state;
+                        existing.shuffle_state = updated.shuffle_state;
+                        existing.volume = updated.volume;
+                        existing.mute_state = updated.mute_state;
+                    } else {
+                        player.buffered_playback = Some(updated);
+                    }
+                }
                 if let Some(position_ms) = seek_position {
-                    let mut player = state.player.write();
                     if let Some(ref mut pb) = player.playback {
                         pb.progress = Some(position_ms);
                     }
                     player.playback_last_updated_time = Some(std::time::Instant::now());
                 }
+                drop(player);
                 self.update_playback(state);
             }
             ClientRequest::GetCurrentPlayback => {
@@ -693,15 +725,100 @@ impl AppClient {
         let state = state.clone();
         tokio::task::spawn(async move {
             let delay = std::time::Duration::from_secs(1);
-            for _ in 0..2 {
-                tokio::time::sleep(delay).await;
-                if let Err(err) = client.retrieve_current_playback(&state, false).await {
-                    tracing::error!(
-                        "Encountered an error when updating the playback state: {err:#}"
-                    );
-                }
+            tokio::time::sleep(delay).await;
+            if let Err(err) = client.retrieve_current_playback(&state, false).await {
+                tracing::error!(
+                    "Encountered an error when updating the playback state: {err:#}"
+                );
             }
         });
+    }
+
+    #[cfg(feature = "streaming")]
+    pub async fn handle_custom_queue_advance(
+        &self,
+        state: &SharedState,
+        result: crate::state::AdvanceResult,
+    ) {
+        match result {
+            crate::state::AdvanceResult::SameBatch => {
+                self.update_playback(state);
+            }
+            crate::state::AdvanceResult::NewBatch(tracks) => {
+                let mut device_id: Option<String> = state
+                    .player
+                    .read()
+                    .buffered_playback
+                    .as_ref()
+                    .and_then(|p| p.device_id.clone());
+                if device_id.is_none() {
+                    let session = self.spotify.session().await;
+                    device_id = Some(session.device_id().to_string());
+                }
+                if let Err(err) = self
+                    .start_playback(
+                        crate::state::Playback::URIs(tracks, None),
+                        device_id.as_deref(),
+                    )
+                    .await
+                {
+                    tracing::error!("Failed to start next batch playback: {err:#}");
+                }
+            }
+            crate::state::AdvanceResult::NeedsRadioTracks => {
+                let seed_uri = {
+                    let player = state.player.read();
+                    player
+                        .custom_queue
+                        .as_ref()
+                        .and_then(|q| q.source_context().map(|ctx| ctx.uri()))
+                        .or_else(|| {
+                            player
+                                .custom_queue
+                                .as_ref()
+                                .map(|q| q.current_track().uri())
+                        })
+                };
+
+                let tracks = match seed_uri {
+                    Some(uri) => match self.radio_tracks(uri).await {
+                        Ok(t) => t,
+                        Err(err) => {
+                            tracing::error!("Failed to fetch radio tracks: {err:#}");
+                            return;
+                        }
+                    },
+                    None => {
+                        tracing::error!("No seed URI available for radio tracks");
+                        return;
+                    }
+                };
+
+                let radio_ids: Vec<PlayableId<'static>> = tracks
+                    .into_iter()
+                    .map(|t| PlayableId::Track(t.id))
+                    .collect();
+
+                let new_result = {
+                    let mut player = state.player.write();
+                    match player.custom_queue.as_mut() {
+                        Some(queue) => {
+                            queue.append_radio_tracks(radio_ids);
+                            queue.advance()
+                        }
+                        None => return,
+                    }
+                };
+
+                Box::pin(self.handle_custom_queue_advance(state, new_result)).await;
+            }
+            crate::state::AdvanceResult::EndOfQueue => {
+                let mut player = state.player.write();
+                if let Some(ref mut playback) = player.buffered_playback {
+                    playback.is_playing = false;
+                }
+            }
+        }
     }
 
     /// Get Spotify's available browse categories
@@ -866,7 +983,7 @@ impl AppClient {
     /// Get all followed artists of the current user
     pub async fn current_user_followed_artists(&self) -> Result<Vec<Artist>> {
         let first_page = self
-            .deref()
+            .user_client()?
             .current_user_followed_artists(None, None)
             .await?;
 
@@ -1105,7 +1222,7 @@ impl AppClient {
         typ: rspotify::model::SearchType,
     ) -> Result<rspotify::model::SearchResult> {
         Ok(self
-            .deref()
+            .user_client()?
             .search(query, typ, None, None, None, None)
             .await?)
     }
@@ -1339,7 +1456,7 @@ impl AppClient {
     /// Get a track data
     pub async fn track(&self, track_id: TrackId<'_>) -> Result<Track> {
         Track::try_from_full_track(
-            self.deref()
+            self.user_client()?
                 .track(track_id, Some(rspotify::model::Market::FromToken))
                 .await?,
         )

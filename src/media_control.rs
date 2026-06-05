@@ -1,4 +1,5 @@
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig};
+use std::sync::atomic::Ordering;
 
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::state::SharedState;
@@ -76,43 +77,43 @@ pub fn start_event_watcher(
         tracing::info!("Media control event: {e:?}");
         match e {
             MediaControlEvent::Play => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::Resume))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Resume)) {
+                    tracing::warn!("Failed to send media control Play request: {e:#}");
+                }
             }
             MediaControlEvent::Pause => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::Pause))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Pause)) {
+                    tracing::warn!("Failed to send media control Pause request: {e:#}");
+                }
             }
             MediaControlEvent::Toggle => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::ResumePause))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause)) {
+                    tracing::warn!("Failed to send media control Toggle request: {e:#}");
+                }
             }
             MediaControlEvent::SetPosition(MediaPosition(dur)) => {
                 if let Ok(dur) = chrono::Duration::from_std(dur) {
-                    client_pub
-                        .send(ClientRequest::Player(PlayerRequest::SeekTrack(dur)))
-                        .unwrap_or_default();
+                    if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))) {
+                        tracing::warn!("Failed to send media control SetPosition request: {e:#}");
+                    }
                 }
             }
             MediaControlEvent::Next => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::NextTrack))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack)) {
+                    tracing::warn!("Failed to send media control Next request: {e:#}");
+                }
             }
             MediaControlEvent::Previous => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::PreviousTrack))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack)) {
+                    tracing::warn!("Failed to send media control Previous request: {e:#}");
+                }
             }
             MediaControlEvent::SetVolume(volume) => {
-                client_pub
-                    .send(ClientRequest::Player(PlayerRequest::Volume(
-                        (volume * 100.0) as u8,
-                    )))
-                    .unwrap_or_default();
+                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(
+                    (volume * 100.0) as u8,
+                ))) {
+                    tracing::warn!("Failed to send media control SetVolume request: {e:#}");
+                }
             }
             _ => {}
         }
@@ -120,12 +121,14 @@ pub fn start_event_watcher(
 
     controls.set_playback(MediaPlayback::Playing { progress: None })?;
 
+    let running = state.running.clone();
     let refresh_duration = std::time::Duration::from_secs(1);
     let mut info = String::new();
-    loop {
+    while running.load(Ordering::Relaxed) {
         if let Err(e) = update_control_metadata(state, &mut controls, &mut info) {
             tracing::warn!("Media control update error: {e}");
         }
         std::thread::sleep(refresh_duration);
     }
+    Ok(())
 }

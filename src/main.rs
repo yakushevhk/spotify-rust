@@ -105,7 +105,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     init_spotify(&client_pub, &client, state).context("Failed to initialize the Spotify data")?;
 
     // client event handler task
-    tokio::task::spawn({
+    let client_handler = tokio::task::spawn({
         let state = state.clone();
         async move {
             client::start_client_handler(&state, &client, &client_sub).await;
@@ -113,7 +113,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     });
 
     // player event watcher task
-    std::thread::Builder::new()
+    let player_watcher = std::thread::Builder::new()
         .name("player-event-watcher".to_string())
         .spawn({
             let state = state.clone();
@@ -125,22 +125,26 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 
     // media control task (MPRIS on Linux, native on macOS/Windows)
     #[cfg(feature = "media-control")]
-    {
+    let media_control_handle: Option<std::thread::JoinHandle<()>> = {
         let configs = config::get_config();
         if configs.app_config.enable_media_control {
             let media_client_pub = client_pub.clone();
-            std::thread::Builder::new()
-                .name("media-control".to_string())
-                .spawn({
-                    let state = state.clone();
-                    move || {
-                        if let Err(err) = media_control::start_event_watcher(&state, media_client_pub) {
-                            tracing::error!("Media control event watcher failed: {err:#}");
+            Some(
+                std::thread::Builder::new()
+                    .name("media-control".to_string())
+                    .spawn({
+                        let state = state.clone();
+                        move || {
+                            if let Err(err) = media_control::start_event_watcher(&state, media_client_pub) {
+                                tracing::error!("Media control event watcher failed: {err:#}");
+                            }
                         }
-                    }
-                })?;
+                    })?,
+            )
+        } else {
+            None
         }
-    }
+    };
 
     // Launch the GUI
     let gui_state = state.clone();
@@ -160,6 +164,25 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
         }),
     )
     .map_err(|e| anyhow::anyhow!("GUI error: {e}"))?;
+
+    // Signal background threads to shut down cleanly
+    state.running.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // Shutdown spawned tasks
+    client_handler.abort();
+    if player_watcher.is_finished() {
+        if let Err(_panic) = player_watcher.join() {
+            tracing::error!("Player event watcher thread panicked");
+        }
+    }
+    #[cfg(feature = "media-control")]
+    if let Some(handle) = media_control_handle {
+        if handle.is_finished() {
+            if let Err(_panic) = handle.join() {
+                tracing::error!("Media control thread panicked");
+            }
+        }
+    }
 
     Ok(())
 }

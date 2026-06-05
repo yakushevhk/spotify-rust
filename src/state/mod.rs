@@ -5,7 +5,7 @@ mod player;
 mod queue;
 mod ui;
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, sync::atomic::AtomicBool};
 
 pub use constant::*;
 pub use data::*;
@@ -25,10 +25,18 @@ pub type SharedState = Arc<State>;
 /// Application's state
 pub struct State {
     pub ui: Mutex<UIState>,
+    // TODO: player and data see more writes than reads in typical usage,
+    // making RwLock suboptimal. Consider replacing with parking_lot::Mutex
+    // to reduce overhead and avoid writer starvation.
     pub player: RwLock<PlayerState>,
     pub data: RwLock<AppData>,
 
     pub is_daemon: bool,
+
+    /// Shutdown signal for background threads. Set to false in main.rs after
+    /// the GUI window closes, allowing `player_event_watcher` and `media_control`
+    /// loops to exit cleanly.
+    pub running: Arc<AtomicBool>,
 
     /// Shared FFT frequency-band data written by the audio sink and read by the UI.
     /// `Some` only when `enable_audio_visualization` is `true`; avoids allocating
@@ -59,6 +67,7 @@ impl State {
             player: RwLock::new(PlayerState::default()),
             data: RwLock::new(app_data),
             is_daemon,
+            running: Arc::new(AtomicBool::new(true)),
             #[cfg(feature = "streaming")]
             vis_bands: if configs.app_config.enable_audio_visualization {
                 Some(Arc::new(Mutex::new(

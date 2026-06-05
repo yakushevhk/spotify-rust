@@ -805,7 +805,7 @@ impl From<librespot_metadata::lyrics::Lyrics> for Lyrics {
             .into_iter()
             .map(|l| {
                 let t = chrono::Duration::milliseconds(
-                    l.start_time_ms.parse::<i64>().expect("invalid number"),
+                    l.start_time_ms.parse::<i64>().unwrap_or_default(),
                 );
 
                 (t, to_bidi_string(&l.words))

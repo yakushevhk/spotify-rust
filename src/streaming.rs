@@ -77,8 +77,13 @@ pub async fn new_connection(
         let mut channel = player.get_player_event_channel();
         let state = state.clone();
         let client = client.clone();
+        let my_generation = state.player.read().streaming_generation;
         async move {
             while let Some(event) = channel.recv().await {
+                if state.player.read().streaming_generation != my_generation {
+                    tracing::debug!("player_event_task: generation mismatch, stopping");
+                    return;
+                }
                 match event {
                     player::PlayerEvent::Playing { .. } => {
                         let mut player = state.player.write();
@@ -106,17 +111,8 @@ pub async fn new_connection(
                             player.custom_queue.as_mut().map(|q| q.advance())
                         };
                         match advanced {
-                            Some(crate::state::AdvanceResult::SameBatch) => {
-                                client.update_playback(&state);
-                            }
-                            Some(crate::state::AdvanceResult::NewBatch(_tracks)) => {
-                                client.update_playback(&state);
-                            }
-                            Some(crate::state::AdvanceResult::NeedsRadioTracks) => {
-                                client.update_playback(&state);
-                            }
-                            Some(crate::state::AdvanceResult::EndOfQueue) => {
-                                client.update_playback(&state);
+                            Some(result) => {
+                                client.handle_custom_queue_advance(&state, result).await;
                             }
                             None => {
                                 client.update_playback(&state);
@@ -135,9 +131,8 @@ pub async fn new_connection(
         .await
         .context("initialize spirc")?;
 
-    tokio::task::spawn(async move {
-        let _ = tokio::join!(spirc_task, player_event_task);
-    });
+    tokio::task::spawn(spirc_task);
+    tokio::task::spawn(player_event_task);
 
     tracing::info!("New streaming connection has been established!");
 

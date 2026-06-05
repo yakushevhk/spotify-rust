@@ -84,8 +84,13 @@ impl BaseClient for Spotify {
     }
 
     async fn refetch_token(&self) -> ClientResult<Option<Token>> {
-        let session = self.session().await;
+        let session = self.session.lock().await.clone();
         let old_token = self.token.lock().await.unwrap().clone();
+
+        let Some(session) = session else {
+            tracing::warn!("No session available, keeping existing token");
+            return Ok(old_token);
+        };
 
         if session.is_invalid() {
             tracing::warn!("Session invalid, keeping existing token");
@@ -113,10 +118,10 @@ impl BaseClient for Spotify {
 #[maybe_async]
 impl OAuthClient for Spotify {
     fn get_oauth(&self) -> &OAuth {
-        panic!("`OAuthClient::get_oauth` should never be called!")
+        &self.oauth
     }
 
     async fn request_token(&self, _code: &str) -> ClientResult<()> {
-        panic!("`OAuthClient::request_token` should never be called!")
+        Ok(())
     }
 }
