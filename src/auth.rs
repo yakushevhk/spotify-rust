@@ -135,3 +135,87 @@ pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool)
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that AuthConfig::default() creates a valid configuration
+    #[test]
+    fn test_auth_config_default() {
+        let config = AuthConfig::default();
+        assert_eq!(config.login_redirect_uri, "http://127.0.0.1:8989/login");
+        // Cache should be initialized
+        assert!(config.cache.credentials().is_none());
+    }
+
+    /// Test that session() returns a valid Session
+    /// Note: This test requires a tokio runtime for Session::new
+    #[tokio::test]
+    async fn test_auth_config_session() {
+        let config = AuthConfig::default();
+        let session = config.session();
+        // Session should be created without panicking
+        assert!(!session.is_invalid());
+    }
+
+    /// Test OAUTH_SCOPES contains expected scopes
+    #[test]
+    fn test_oauth_scopes() {
+        assert!(OAUTH_SCOPES.contains(&"user-read-playback-state"));
+        assert!(OAUTH_SCOPES.contains(&"user-modify-playback-state"));
+        assert!(OAUTH_SCOPES.contains(&"streaming"));
+        assert!(OAUTH_SCOPES.contains(&"playlist-read-private"));
+        assert!(!OAUTH_SCOPES.is_empty());
+    }
+
+    /// Test client IDs are defined
+    #[test]
+    fn test_client_ids() {
+        assert!(!SPOTIFY_CLIENT_ID.is_empty());
+        assert!(!NCSPOT_CLIENT_ID.is_empty());
+        // They should be different
+        assert_ne!(SPOTIFY_CLIENT_ID, NCSPOT_CLIENT_ID);
+    }
+
+    /// Test credential caching behavior - no credentials initially
+    #[test]
+    fn test_credential_caching_no_credentials() {
+        let config = AuthConfig::default();
+        // Should return None when no credentials are cached
+        let creds = config.cache.credentials();
+        assert!(creds.is_none());
+    }
+
+    /// Test error handling for reauth=false with no cached credentials
+    /// This test verifies the error path when credentials are not available
+    #[tokio::test]
+    async fn test_get_creds_error_no_reauth() {
+        let config = AuthConfig::default();
+        
+        // With use_cached=false and reauth=false, should fail with no credentials
+        let result = get_creds(&config, false, false).await;
+        assert!(result.is_err());
+        
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No cached credentials found"));
+    }
+
+    /// Test that get_creds respects the use_cached parameter
+    #[tokio::test]
+    async fn test_get_creds_use_cached_parameter() {
+        let config = AuthConfig::default();
+        
+        // With use_cached=false, should behave as if no credentials exist
+        let result = get_creds(&config, false, false).await;
+        assert!(result.is_err());
+    }
+
+    /// Test AuthConfig implements Clone
+    #[test]
+    fn test_auth_config_clone() {
+        let config = AuthConfig::default();
+        let cloned = config.clone();
+        assert_eq!(config.login_redirect_uri, cloned.login_redirect_uri);
+    }
+}

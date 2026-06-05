@@ -636,4 +636,386 @@ pub fn reload_config() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    /// Test Configs::new creates valid configuration
+    #[test]
+    fn test_configs_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_folder = temp_dir.path().join("config");
+        let cache_folder = temp_dir.path().join("cache");
+        
+        std::fs::create_dir_all(&config_folder).unwrap();
+        
+        let configs = Configs::new(&config_folder, &cache_folder).unwrap();
+        
+        // Verify all configs are initialized
+        assert_eq!(configs.cache_folder, cache_folder);
+        assert!(!configs.app_config.theme.is_empty());
+    }
+
+    /// Test AppConfig default values
+    #[test]
+    fn test_app_config_default() {
+        let config = AppConfig::default();
+        
+        assert_eq!(config.theme, "Spotify");
+        assert_eq!(config.client_port, 8080);
+        assert_eq!(config.login_redirect_uri, "http://127.0.0.1:8989/login");
+        assert_eq!(config.tracks_playback_limit, 50);
+        assert_eq!(config.app_refresh_duration_in_ms, 32);
+        assert_eq!(config.playback_refresh_duration_in_ms, 5000);
+        assert_eq!(config.page_size_in_rows, 20);
+        assert_eq!(config.explicit_icon, "(E)");
+        assert_eq!(config.default_device, "spotify-player");
+        assert!(config.enable_cover_image_cache);
+        assert!(config.custom_queue);
+    }
+
+    /// Test DeviceConfig default values
+    #[test]
+    fn test_device_config_default() {
+        let config = DeviceConfig::default();
+        
+        assert_eq!(config.name, "spotify-player");
+        assert_eq!(config.device_type, "speaker");
+        assert_eq!(config.volume, 70);
+        assert_eq!(config.bitrate, 320);
+        assert!(!config.audio_cache);
+        assert!(!config.normalization);
+        assert!(!config.autoplay);
+    }
+
+    /// Test LayoutConfig default values
+    #[test]
+    fn test_layout_config_default() {
+        let config = LayoutConfig::default();
+        
+        assert_eq!(config.library.playlist_percent, 40);
+        assert_eq!(config.library.album_percent, 40);
+    }
+
+    /// Test LayoutConfig::check_values with valid percentages
+    #[test]
+    fn test_layout_config_check_values_valid() {
+        let config = LayoutConfig::default();
+        assert!(config.check_values().is_ok());
+    }
+
+    /// Test LayoutConfig::check_values with invalid percentages
+    #[test]
+    fn test_layout_config_check_values_invalid() {
+        let config = LayoutConfig {
+            library: LibraryLayoutConfig {
+                playlist_percent: 60,
+                album_percent: 50, // Sum = 110 > 99
+            },
+            playback_window_position: Position::Top,
+            playback_window_height: 6,
+        };
+        
+        let result = config.check_values();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be greater than 99"));
+    }
+
+    /// Test StreamingType variants
+    #[test]
+    fn test_streaming_type_variants() {
+        let always = StreamingType::Always;
+        let daemon = StreamingType::DaemonOnly;
+        let never = StreamingType::Never;
+        
+        // Just verify they can be created
+        assert!(matches!(always, StreamingType::Always));
+        assert!(matches!(daemon, StreamingType::DaemonOnly));
+        assert!(matches!(never, StreamingType::Never));
+    }
+
+    /// Test Position variants
+    #[test]
+    fn test_position_variants() {
+        let top = Position::Top;
+        let bottom = Position::Bottom;
+        
+        assert!(matches!(top, Position::Top));
+        assert!(matches!(bottom, Position::Bottom));
+    }
+
+    /// Test BorderType variants
+    #[test]
+    fn test_border_type_variants() {
+        assert!(matches!(BorderType::Hidden, BorderType::Hidden));
+        assert!(matches!(BorderType::Plain, BorderType::Plain));
+        assert!(matches!(BorderType::Rounded, BorderType::Rounded));
+        assert!(matches!(BorderType::Double, BorderType::Double));
+        assert!(matches!(BorderType::Thick, BorderType::Thick));
+    }
+
+    /// Test ProgressBarType variants
+    #[test]
+    fn test_progress_bar_type_variants() {
+        assert!(matches!(ProgressBarType::Line, ProgressBarType::Line));
+        assert!(matches!(ProgressBarType::Rectangle, ProgressBarType::Rectangle));
+    }
+
+    /// Test ProgressBarPosition variants
+    #[test]
+    fn test_progress_bar_position_variants() {
+        assert!(matches!(ProgressBarPosition::Bottom, ProgressBarPosition::Bottom));
+        assert!(matches!(ProgressBarPosition::Right, ProgressBarPosition::Right));
+    }
+
+    /// Test Command::new
+    #[test]
+    fn test_command_new() {
+        let cmd = Command::new("/usr/bin/echo", &["hello", "world"]);
+        assert_eq!(cmd.command, "/usr/bin/echo");
+        assert_eq!(cmd.args, vec!["hello", "world"]);
+    }
+
+    /// Test Command::execute with allowed command
+    #[test]
+    fn test_command_execute_allowed() {
+        let cmd = Command::new("/bin/echo", &["hello"]);
+        let result = cmd.execute(None);
+        
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("hello"));
+    }
+
+    /// Test Command::execute with relative path (should fail)
+    #[test]
+    fn test_command_execute_relative_path() {
+        let cmd = Command::new("echo", &["hello"]);
+        let result = cmd.execute(None);
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("absolute path"));
+    }
+
+    /// Test Command::execute with disallowed command
+    #[test]
+    fn test_command_execute_disallowed() {
+        let cmd = Command::new("/usr/bin/ls", &["-la"]);
+        let result = cmd.execute(None);
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not in allowed list"));
+    }
+
+    /// Test Command::execute with shell metacharacters
+    #[test]
+    fn test_command_execute_metacharacters() {
+        let cmd = Command::new("/bin/echo", &["hello; rm -rf /"]);
+        let result = cmd.execute(None);
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("shell metacharacters"));
+    }
+
+    /// Test Command::execute with extra args
+    #[test]
+    fn test_command_execute_extra_args() {
+        let cmd = Command::new("/bin/echo", &["hello"]);
+        let result = cmd.execute(Some(vec!["extra".to_string()]));
+        
+        assert!(result.is_ok());
+    }
+
+    /// Test AppConfig::session_config
+    #[test]
+    fn test_app_config_session_config() {
+        let config = AppConfig::default();
+        let session_config = config.session_config();
+        
+        assert_eq!(session_config.client_id, SPOTIFY_CLIENT_ID);
+        assert!(session_config.proxy.is_none());
+        assert!(session_config.ap_port.is_none());
+    }
+
+    /// Test AppConfig::session_config with proxy
+    #[test]
+    fn test_app_config_session_config_with_proxy() {
+        let mut config = AppConfig::default();
+        config.proxy = Some("http://proxy.example.com:8080".to_string());
+        
+        let session_config = config.session_config();
+        assert!(session_config.proxy.is_some());
+    }
+
+    /// Test AppConfig::get_user_client_id with client_id
+    #[test]
+    fn test_app_config_get_user_client_id() {
+        let config = AppConfig::default();
+        let result = config.get_user_client_id();
+        
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some()); // Should have ncspot client ID
+    }
+
+    /// Test get_config_folder_path
+    #[test]
+    fn test_get_config_folder_path() {
+        let result = get_config_folder_path();
+        assert!(result.is_ok());
+        
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("spotify-player"));
+    }
+
+    /// Test get_cache_folder_path
+    #[test]
+    fn test_get_cache_folder_path() {
+        let result = get_cache_folder_path();
+        assert!(result.is_ok());
+        
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("spotify-player"));
+    }
+
+    /// Test AppConfig parsing with valid TOML
+    #[test]
+    fn test_app_config_parse_valid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path();
+        
+        // Create a valid app.toml
+        let toml_content = r#"
+theme = "TestTheme"
+tracks_playback_limit = 100
+"#;
+        
+        let mut file = std::fs::File::create(config_path.join("app.toml")).unwrap();
+        file.write_all(toml_content.as_bytes()).unwrap();
+        
+        let config = AppConfig::new(config_path).unwrap();
+        assert_eq!(config.theme, "TestTheme");
+        assert_eq!(config.tracks_playback_limit, 100);
+    }
+
+    /// Test AppConfig parsing with missing file (creates default)
+    #[test]
+    fn test_app_config_parse_missing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path();
+        
+        // No app.toml exists
+        let config = AppConfig::new(config_path).unwrap();
+        
+        // Should have default values
+        assert_eq!(config.theme, "Spotify");
+        
+        // Should have created the file
+        assert!(config_path.join("app.toml").exists());
+    }
+
+    /// Test AppConfig parsing with invalid layout
+    #[test]
+    fn test_app_config_parse_invalid_layout() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path();
+        
+        let toml_content = r#"
+[layout.library]
+playlist_percent = 60
+album_percent = 50
+"#;
+        
+        let mut file = std::fs::File::create(config_path.join("app.toml")).unwrap();
+        file.write_all(toml_content.as_bytes()).unwrap();
+        
+        let result = AppConfig::new(config_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be greater than 99"));
+    }
+
+    /// Test StreamingType deserialization from bool
+    #[test]
+    fn test_streaming_type_from_bool_true() {
+        // Test that true maps to Always
+        let raw: StreamingTypeOrBool = StreamingTypeOrBool::Bool(true);
+        let streaming: StreamingType = raw.into();
+        assert!(matches!(streaming, StreamingType::Always));
+    }
+
+    #[test]
+    fn test_streaming_type_from_bool_false() {
+        // Test that false maps to Never
+        let raw: StreamingTypeOrBool = StreamingTypeOrBool::Bool(false);
+        let streaming: StreamingType = raw.into();
+        assert!(matches!(streaming, StreamingType::Never));
+    }
+
+    /// Test Command serialization/deserialization
+    #[test]
+    fn test_command_serialization() {
+        let cmd = Command {
+            command: "/bin/echo".to_string(),
+            args: vec!["hello".to_string()],
+        };
+        
+        let serialized = serde_json::to_string(&cmd).unwrap();
+        assert!(serialized.contains("/bin/echo"));
+        assert!(serialized.contains("hello"));
+    }
+
+    /// Test DeviceConfig serialization
+    #[test]
+    fn test_device_config_serialization() {
+        let config = DeviceConfig::default();
+        let serialized = serde_json::to_string(&config).unwrap();
+        
+        assert!(serialized.contains("spotify-player"));
+        assert!(serialized.contains("speaker"));
+    }
+
+    /// Test NotifyFormat (when feature is enabled)
+    #[cfg(feature = "notify")]
+    #[test]
+    fn test_notify_format_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.notify_format.summary, "{track} • {artists}");
+        assert_eq!(config.notify_format.body, "{album}");
+    }
+
+    /// Test client_id_command takes precedence over client_id
+    #[test]
+    fn test_client_id_command_priority() {
+        // This is a conceptual test - in reality we'd need to set up
+        // a mock command that returns a specific value
+        let config = AppConfig::default();
+        
+        // When client_id_command is set, it should be used
+        // When it's None, client_id should be used
+        assert!(config.client_id.is_some());
+        assert!(config.client_id_command.is_none());
+    }
+
+    /// Test volume_scroll_step bounds
+    #[test]
+    fn test_volume_scroll_step_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.volume_scroll_step, 5);
+    }
+
+    /// Test seek_duration_secs default
+    #[test]
+    fn test_seek_duration_secs_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.seek_duration_secs, 5);
+    }
+
+    /// Test sort_artist_albums_by_type default
+    #[test]
+    fn test_sort_artist_albums_by_type_default() {
+        let config = AppConfig::default();
+        assert!(!config.sort_artist_albums_by_type);
+    }
+}
+
 

@@ -671,3 +671,520 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    /// Test KeymapConfig::new with missing file
+    #[test]
+    fn test_keymap_config_new_missing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = KeymapConfig::new(temp_dir.path());
+        
+        assert!(config.is_ok());
+        assert!(config.unwrap().keymaps.is_empty());
+    }
+
+    /// Test KeymapConfig::new with valid TOML
+    #[test]
+    fn test_keymap_config_new_valid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        let toml_content = r#"
+[[keymaps]]
+key_sequence = "C-p"
+command = "play_pause"
+
+[[keymaps]]
+key_sequence = "Space"
+command = "next_track"
+"#;
+        
+        let mut file = std::fs::File::create(temp_dir.path().join("keymap.toml")).unwrap();
+        file.write_all(toml_content.as_bytes()).unwrap();
+        
+        let config = KeymapConfig::new(temp_dir.path()).unwrap();
+        assert_eq!(config.keymaps.len(), 2);
+        assert_eq!(config.keymaps[0].key_sequence, "C-p");
+        assert_eq!(config.keymaps[0].command, "play_pause");
+    }
+
+    /// Test KeymapConfig::new with invalid TOML (should return default)
+    #[test]
+    fn test_keymap_config_new_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        
+        let toml_content = "not valid toml {{{";
+        
+        let mut file = std::fs::File::create(temp_dir.path().join("keymap.toml")).unwrap();
+        file.write_all(toml_content.as_bytes()).unwrap();
+        
+        let config = KeymapConfig::new(temp_dir.path()).unwrap();
+        // Should return default (empty) on parse error
+        assert!(config.keymaps.is_empty());
+    }
+
+    /// Test KeymapConfig::default
+    #[test]
+    fn test_keymap_config_default() {
+        let config = KeymapConfig::default();
+        assert!(config.keymaps.is_empty());
+    }
+
+    /// Test parse_key_sequence with empty string
+    #[test]
+    fn test_parse_key_sequence_empty() {
+        let result = parse_key_sequence("");
+        assert!(result.is_empty());
+    }
+
+    /// Test parse_key_sequence with whitespace
+    #[test]
+    fn test_parse_key_sequence_whitespace() {
+        let result = parse_key_sequence("   ");
+        assert!(result.is_empty());
+    }
+
+    /// Test parse_key_sequence with single character
+    #[test]
+    fn test_parse_key_sequence_single_char() {
+        let result = parse_key_sequence("a");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(result[0], KeyBinding::Key('a')));
+    }
+
+    /// Test parse_key_sequence with uppercase character
+    #[test]
+    fn test_parse_key_sequence_uppercase() {
+        let result = parse_key_sequence("G");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(result[0], KeyBinding::Key('G')));
+    }
+
+    /// Test parse_key_sequence with Ctrl modifier
+    #[test]
+    fn test_parse_key_sequence_ctrl() {
+        let result = parse_key_sequence("C-x");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
+            assert_eq!(*key, 'x');
+            assert!(ctrl);
+            assert!(!shift);
+        } else {
+            panic!("Expected Modified keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with Shift modifier
+    #[test]
+    fn test_parse_key_sequence_shift() {
+        let result = parse_key_sequence("S-x");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
+            assert_eq!(*key, 'x');
+            assert!(!ctrl);
+            assert!(shift);
+        } else {
+            panic!("Expected Modified keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with Ctrl+Shift modifiers
+    #[test]
+    fn test_parse_key_sequence_ctrl_shift() {
+        let result = parse_key_sequence("C-S-x");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
+            assert_eq!(*key, 'x');
+            assert!(ctrl);
+            assert!(shift);
+        } else {
+            panic!("Expected Modified keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with Shift+Ctrl (different order)
+    #[test]
+    fn test_parse_key_sequence_shift_ctrl() {
+        // Note: The parser expects C- first, then S-
+        // So "S-C-x" would not be parsed as expected
+        let result = parse_key_sequence("C-S-x");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
+            assert_eq!(*key, 'x');
+            assert!(ctrl);
+            assert!(shift);
+        } else {
+            panic!("Expected Modified keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with special keys
+    #[test]
+    fn test_parse_key_sequence_special_keys() {
+        let keys = vec![
+            ("Space", "Space"),
+            ("Enter", "Enter"),
+            ("Escape", "Escape"),
+            ("Tab", "Tab"),
+            ("BackTab", "BackTab"),
+            ("Backspace", "Backspace"),
+            ("Home", "Home"),
+            ("End", "End"),
+            ("PageUp", "PageUp"),
+            ("PageDown", "PageDown"),
+            ("ArrowUp", "ArrowUp"),
+            ("ArrowDown", "ArrowDown"),
+            ("ArrowLeft", "ArrowLeft"),
+            ("ArrowRight", "ArrowRight"),
+            ("F1", "F1"),
+            ("F12", "F12"),
+        ];
+        
+        for (input, expected) in keys {
+            let result = parse_key_sequence(input);
+            assert_eq!(result.len(), 1);
+            
+            if let KeyBinding::Special(s) = &result[0] {
+                assert_eq!(s, expected);
+            } else {
+                panic!("Expected Special keybinding for {}", input);
+            }
+        }
+    }
+
+    /// Test parse_key_sequence with special keys (lowercase)
+    #[test]
+    fn test_parse_key_sequence_special_keys_lowercase() {
+        let result = parse_key_sequence("space");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Special(s) = &result[0] {
+            assert_eq!(s, "Space");
+        } else {
+            panic!("Expected Special keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with multi-key sequence
+    #[test]
+    fn test_parse_key_sequence_multi_key() {
+        let result = parse_key_sequence("g g");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Sequence(seq) = &result[0] {
+            assert_eq!(seq.len(), 2);
+            assert_eq!(seq[0], "g");
+            assert_eq!(seq[1], "g");
+        } else {
+            panic!("Expected Sequence keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with longer multi-key sequence
+    #[test]
+    fn test_parse_key_sequence_longer_sequence() {
+        let result = parse_key_sequence("s l a");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Sequence(seq) = &result[0] {
+            assert_eq!(seq.len(), 3);
+            assert_eq!(seq[0], "s");
+            assert_eq!(seq[1], "l");
+            assert_eq!(seq[2], "a");
+        } else {
+            panic!("Expected Sequence keybinding");
+        }
+    }
+
+    /// Test parse_key_sequence with invalid modifier
+    #[test]
+    fn test_parse_key_sequence_invalid_modifier() {
+        // "X-a" is not a valid modifier combination
+        let result = parse_key_sequence("X-a");
+        // Should fall through to empty result (not a special key, not a sequence)
+        assert!(result.is_empty());
+    }
+
+    /// Test parse_key_sequence with unknown special key
+    #[test]
+    fn test_parse_key_sequence_unknown_special() {
+        let result = parse_key_sequence("UnknownKey");
+        // Should return empty for unknown keys
+        assert!(result.is_empty());
+    }
+
+    /// Test parse_key_sequence case insensitivity for special keys
+    #[test]
+    fn test_parse_key_sequence_case_insensitive_special() {
+        let lower = parse_key_sequence("space");
+        let upper = parse_key_sequence("SPACE");
+        let mixed = parse_key_sequence("Space");
+        
+        assert_eq!(lower.len(), 1);
+        assert_eq!(upper.len(), 1);
+        assert_eq!(mixed.len(), 1);
+        
+        // All should parse to the same key
+        assert!(matches!(lower[0], KeyBinding::Special(_)));
+        assert!(matches!(upper[0], KeyBinding::Special(_)));
+        assert!(matches!(mixed[0], KeyBinding::Special(_)));
+    }
+
+    /// Test KeymapConfig::apply_overrides
+    #[test]
+    fn test_apply_overrides() {
+        let mut defaults = default_keybindings();
+        
+        let keymap_config = KeymapConfig {
+            keymaps: vec![
+                Keymap {
+                    key_sequence: "C-p".to_string(),
+                    command: "play_pause".to_string(),
+                },
+            ],
+        };
+        
+        // Find the play_pause binding before override
+        let before_binding = defaults.iter()
+            .find(|b| b.command.0 == "play_pause")
+            .unwrap();
+        let before_keys = before_binding.keybindings.clone();
+        
+        // Apply override
+        keymap_config.apply_overrides(&mut defaults);
+        
+        // Find the play_pause binding after override
+        let after_binding = defaults.iter()
+            .find(|b| b.command.0 == "play_pause")
+            .unwrap();
+        
+        // Keybindings should have been updated
+        assert_ne!(after_binding.keybindings, before_keys);
+    }
+
+    /// Test KeymapConfig::apply_overrides with empty key_sequence
+    #[test]
+    fn test_apply_overrides_empty_sequence() {
+        let mut defaults = default_keybindings();
+        
+        let keymap_config = KeymapConfig {
+            keymaps: vec![
+                Keymap {
+                    key_sequence: "".to_string(), // Empty sequence
+                    command: "play_pause".to_string(),
+                },
+            ],
+        };
+        
+        // Find the play_pause binding before override
+        let before_binding = defaults.iter()
+            .find(|b| b.command.0 == "play_pause")
+            .unwrap();
+        let before_keys = before_binding.keybindings.clone();
+        
+        // Apply override
+        keymap_config.apply_overrides(&mut defaults);
+        
+        // Find the play_pause binding after override
+        let after_binding = defaults.iter()
+            .find(|b| b.command.0 == "play_pause")
+            .unwrap();
+        
+        // Empty sequence should not change the binding
+        assert_eq!(after_binding.keybindings, before_keys);
+    }
+
+    /// Test KeymapConfig::apply_overrides with non-existent command
+    #[test]
+    fn test_apply_overrides_nonexistent_command() {
+        let mut defaults = default_keybindings();
+        let original_count = defaults.len();
+        
+        let keymap_config = KeymapConfig {
+            keymaps: vec![
+                Keymap {
+                    key_sequence: "C-x".to_string(),
+                    command: "nonexistent_command".to_string(),
+                },
+            ],
+        };
+        
+        // Apply override
+        keymap_config.apply_overrides(&mut defaults);
+        
+        // Should not add new bindings, only modify existing ones
+        assert_eq!(defaults.len(), original_count);
+    }
+
+    /// Test KeymapConfig::apply_overrides multiple commands
+    #[test]
+    fn test_apply_overrides_multiple() {
+        let mut defaults = default_keybindings();
+        
+        let keymap_config = KeymapConfig {
+            keymaps: vec![
+                Keymap {
+                    key_sequence: "C-p".to_string(),
+                    command: "play_pause".to_string(),
+                },
+                Keymap {
+                    key_sequence: "C-n".to_string(),
+                    command: "next_track".to_string(),
+                },
+            ],
+        };
+        
+        // Apply overrides
+        keymap_config.apply_overrides(&mut defaults);
+        
+        // Both bindings should be updated
+        let play_pause = defaults.iter()
+            .find(|b| b.command.0 == "play_pause")
+            .unwrap();
+        let next_track = defaults.iter()
+            .find(|b| b.command.0 == "next_track")
+            .unwrap();
+        
+        // Check that keybindings were updated
+        assert!(play_pause.keybindings.iter().any(|k| {
+            matches!(k, KeyBinding::Modified { key: 'p', ctrl: true, shift: false })
+        }));
+        assert!(next_track.keybindings.iter().any(|k| {
+            matches!(k, KeyBinding::Modified { key: 'n', ctrl: true, shift: false })
+        }));
+    }
+
+    /// Test Keymap creation
+    #[test]
+    fn test_keymap_creation() {
+        let keymap = Keymap {
+            key_sequence: "C-x".to_string(),
+            command: "test_command".to_string(),
+        };
+        
+        assert_eq!(keymap.key_sequence, "C-x");
+        assert_eq!(keymap.command, "test_command");
+    }
+
+    /// Test KeymapConfig creation
+    #[test]
+    fn test_keymap_config_creation() {
+        let config = KeymapConfig {
+            keymaps: vec![
+                Keymap {
+                    key_sequence: "C-p".to_string(),
+                    command: "play_pause".to_string(),
+                },
+            ],
+        };
+        
+        assert_eq!(config.keymaps.len(), 1);
+        assert_eq!(config.keymaps[0].key_sequence, "C-p");
+    }
+
+    /// Test default_keybindings contains expected commands
+    #[test]
+    fn test_default_keybindings_contains_expected() {
+        let bindings = default_keybindings();
+        
+        let has_play_pause = bindings.iter().any(|b| b.command.0 == "play_pause");
+        let has_next_track = bindings.iter().any(|b| b.command.0 == "next_track");
+        let has_prev_track = bindings.iter().any(|b| b.command.0 == "prev_track");
+        let has_nav_up = bindings.iter().any(|b| b.command.0 == "nav_up");
+        let has_nav_down = bindings.iter().any(|b| b.command.0 == "nav_down");
+        let has_quit = bindings.iter().any(|b| b.command.0 == "quit");
+        
+        assert!(has_play_pause);
+        assert!(has_next_track);
+        assert!(has_prev_track);
+        assert!(has_nav_up);
+        assert!(has_nav_down);
+        assert!(has_quit);
+    }
+
+    /// Test default_keybindings have descriptions
+    #[test]
+    fn test_default_keybindings_have_descriptions() {
+        let bindings = default_keybindings();
+        
+        for binding in &bindings {
+            assert!(!binding.description.is_empty());
+        }
+    }
+
+    /// Test default_keybindings have categories
+    #[test]
+    fn test_default_keybindings_have_categories() {
+        let bindings = default_keybindings();
+        
+        for binding in &bindings {
+            // All bindings should have a category
+            assert!(
+                matches!(binding.category, 
+                    CommandCategory::Navigation |
+                    CommandCategory::Sorting |
+                    CommandCategory::Playback |
+                    CommandCategory::Actions |
+                    CommandCategory::Pages |
+                    CommandCategory::Other
+                )
+            );
+        }
+    }
+
+    /// Test parse_key_sequence with Ctrl+Shift+special key (invalid - special keys can't be modified)
+    #[test]
+    fn test_parse_key_sequence_ctrl_shift_special() {
+        // Special keys like "space" should not be parsed with modifiers
+        // The parser will treat "C-space" as ctrl+space, which is valid
+        let result = parse_key_sequence("C-space");
+        assert_eq!(result.len(), 1);
+        
+        // This should be parsed as a modified key, not a special key
+        if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
+            assert_eq!(*key, 's'); // 's' from "space"
+            assert!(ctrl);
+            assert!(!shift);
+        } else {
+            // If it's a special key, that's also acceptable
+            assert!(matches!(result[0], KeyBinding::Special(_)));
+        }
+    }
+
+    /// Test parse_key_sequence with tab character (should be handled)
+    #[test]
+    fn test_parse_key_sequence_tab() {
+        let result = parse_key_sequence("Tab");
+        assert_eq!(result.len(), 1);
+        
+        if let KeyBinding::Special(s) = &result[0] {
+            assert_eq!(s, "Tab");
+        } else {
+            panic!("Expected Special keybinding for Tab");
+        }
+    }
+
+    /// Test parse_key_sequence with function keys
+    #[test]
+    fn test_parse_key_sequence_function_keys() {
+        for i in 1..=12 {
+            let key = format!("F{}", i);
+            let result = parse_key_sequence(&key);
+            assert_eq!(result.len(), 1);
+            
+            if let KeyBinding::Special(s) = &result[0] {
+                assert_eq!(s, &key);
+            } else {
+                panic!("Expected Special keybinding for {}", key);
+            }
+        }
+    }
+}

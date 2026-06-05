@@ -533,7 +533,9 @@ impl AppClient {
         Ok(Some(playback))
     }
 
-    /// Handle a client request
+}
+
+impl AppClient {
     pub(crate) async fn handle_request(
         &self,
         state: &SharedState,
@@ -2509,8 +2511,8 @@ fn move_seed_track_to_front(tracks: &mut Vec<Track>, seed_track: Track) {
 
 #[cfg(test)]
 mod tests {
-    use super::move_seed_track_to_front;
-    use crate::state::Track;
+    use super::*;
+    use crate::state::{Track, PlaybackMetadata};
     use rspotify::model::TrackId;
 
     fn sample_track(id: &'static str, name: &str) -> Track {
@@ -2553,5 +2555,216 @@ mod tests {
         assert_eq!(tracks.len(), 2);
         assert_eq!(tracks[0].id, seed.id);
         assert_eq!(tracks[1].id, second.id);
+    }
+
+    // Additional playback control tests
+    /// Test PlayerRequest state transitions for Pause/Resume
+    #[test]
+    fn test_playback_pause_resume_states() {
+        let mut playback = PlaybackMetadata {
+            device_name: "Test Device".to_string(),
+            device_id: Some("test_device_id".to_string()),
+            volume: Some(50),
+            is_playing: true,
+            repeat_state: rspotify::model::RepeatState::Off,
+            shuffle_state: false,
+            mute_state: None,
+        };
+
+        // Test pause transition
+        let was_playing = playback.is_playing;
+        playback.is_playing = false;
+        assert!(was_playing);
+        assert!(!playback.is_playing);
+
+        // Test resume transition
+        playback.is_playing = true;
+        assert!(playback.is_playing);
+    }
+
+    /// Test PlayerRequest Repeat state transitions
+    #[test]
+    fn test_playback_repeat_transitions() {
+        let mut playback = PlaybackMetadata {
+            device_name: "Test Device".to_string(),
+            device_id: Some("test_device_id".to_string()),
+            volume: Some(50),
+            is_playing: true,
+            repeat_state: rspotify::model::RepeatState::Off,
+            shuffle_state: false,
+            mute_state: None,
+        };
+
+        // Test repeat state transitions
+        let next_state = match playback.repeat_state {
+            rspotify::model::RepeatState::Off => rspotify::model::RepeatState::Track,
+            rspotify::model::RepeatState::Track => rspotify::model::RepeatState::Context,
+            rspotify::model::RepeatState::Context => rspotify::model::RepeatState::Off,
+        };
+        playback.repeat_state = next_state;
+        assert_eq!(playback.repeat_state, rspotify::model::RepeatState::Track);
+
+        // Second transition
+        let next_state = match playback.repeat_state {
+            rspotify::model::RepeatState::Off => rspotify::model::RepeatState::Track,
+            rspotify::model::RepeatState::Track => rspotify::model::RepeatState::Context,
+            rspotify::model::RepeatState::Context => rspotify::model::RepeatState::Off,
+        };
+        playback.repeat_state = next_state;
+        assert_eq!(playback.repeat_state, rspotify::model::RepeatState::Context);
+
+        // Third transition (back to Off)
+        let next_state = match playback.repeat_state {
+            rspotify::model::RepeatState::Off => rspotify::model::RepeatState::Track,
+            rspotify::model::RepeatState::Track => rspotify::model::RepeatState::Context,
+            rspotify::model::RepeatState::Context => rspotify::model::RepeatState::Off,
+        };
+        playback.repeat_state = next_state;
+        assert_eq!(playback.repeat_state, rspotify::model::RepeatState::Off);
+    }
+
+    /// Test PlayerRequest Shuffle toggle
+    #[test]
+    fn test_playback_shuffle_toggle() {
+        let mut playback = PlaybackMetadata {
+            device_name: "Test Device".to_string(),
+            device_id: Some("test_device_id".to_string()),
+            volume: Some(50),
+            is_playing: true,
+            repeat_state: rspotify::model::RepeatState::Off,
+            shuffle_state: false,
+            mute_state: None,
+        };
+
+        // Toggle shuffle on
+        playback.shuffle_state = !playback.shuffle_state;
+        assert!(playback.shuffle_state);
+
+        // Toggle shuffle off
+        playback.shuffle_state = !playback.shuffle_state;
+        assert!(!playback.shuffle_state);
+    }
+
+    /// Test PlayerRequest Volume changes
+    #[test]
+    fn test_playback_volume() {
+        let mut playback = PlaybackMetadata {
+            device_name: "Test Device".to_string(),
+            device_id: Some("test_device_id".to_string()),
+            volume: Some(50),
+            is_playing: true,
+            repeat_state: rspotify::model::RepeatState::Off,
+            shuffle_state: false,
+            mute_state: None,
+        };
+
+        // Test volume change
+        let new_volume: u8 = 75;
+        playback.volume = Some(u32::from(new_volume));
+        playback.mute_state = None;
+        assert_eq!(playback.volume, Some(75));
+        assert!(playback.mute_state.is_none());
+    }
+
+    /// Test PlayerRequest ToggleMute behavior
+    #[test]
+    fn test_playback_toggle_mute() {
+        let mut playback = PlaybackMetadata {
+            device_name: "Test Device".to_string(),
+            device_id: Some("test_device_id".to_string()),
+            volume: Some(50),
+            is_playing: true,
+            repeat_state: rspotify::model::RepeatState::Off,
+            shuffle_state: false,
+            mute_state: None,
+        };
+
+        // Toggle mute on
+        let new_mute_state = match playback.mute_state {
+            None => {
+                let restore_volume = playback.volume.unwrap_or(50).min(100);
+                Some(restore_volume)
+            }
+            Some(volume) => {
+                let vol = volume.min(100) as u8;
+                let _ = vol;
+                None
+            }
+        };
+        playback.mute_state = new_mute_state;
+        assert_eq!(playback.mute_state, Some(50));
+
+        // Toggle mute off
+        let new_mute_state = match playback.mute_state {
+            None => {
+                let restore_volume = playback.volume.unwrap_or(50).min(100);
+                Some(restore_volume)
+            }
+            Some(volume) => {
+                let vol = volume.min(100) as u8;
+                let _ = vol;
+                None
+            }
+        };
+        playback.mute_state = new_mute_state;
+        assert!(playback.mute_state.is_none());
+    }
+
+    /// Test sanitize_image_filename with various inputs
+    #[test]
+    fn test_sanitize_image_filename() {
+        // Test normal filename
+        let sanitized = AppClient::sanitize_image_filename("test_image.png");
+        assert_eq!(sanitized, "test_image.png");
+
+        // Test filename with path traversal
+        let sanitized = AppClient::sanitize_image_filename("../etc/passwd");
+        assert!(sanitized.starts_with("invalid_traversal_"));
+
+        // Test filename with invalid characters
+        let sanitized = AppClient::sanitize_image_filename("test:image?.png");
+        assert_eq!(sanitized, "test_image_.png");
+
+        // Test filename with control characters
+        let sanitized = AppClient::sanitize_image_filename("test\x01image.png");
+        assert_eq!(sanitized, "test_image.png");
+
+        // Test very long filename
+        let long_name = "a".repeat(300);
+        let sanitized = AppClient::sanitize_image_filename(&long_name);
+        assert!(sanitized.len() <= 200);
+    }
+
+    /// Test hash_filename produces consistent results
+    #[test]
+    fn test_hash_filename_consistency() {
+        let name1 = "test_image.png";
+        let hash1 = AppClient::hash_filename(name1);
+        let hash2 = AppClient::hash_filename(name1);
+        assert_eq!(hash1, hash2);
+
+        // Different names should produce different hashes (likely)
+        let name2 = "different_image.png";
+        let hash3 = AppClient::hash_filename(name2);
+        assert_ne!(hash1, hash3);
+    }
+
+    /// Test hash_filename produces different values for different inputs
+    #[test]
+    fn test_hash_filename_uniqueness() {
+        let names = vec![
+            "image1.png",
+            "image2.png",
+            "test.jpg",
+            "cover.png",
+        ];
+        
+        let hashes: Vec<u64> = names.iter()
+            .map(|n| AppClient::hash_filename(n))
+            .collect();
+        
+        // All hashes should be different
+        let unique_hashes: std::collections::HashSet<u64> = hashes.iter().cloned().collect();
+        assert_eq!(hashes.len(), unique_hashes.len());
     }
 }

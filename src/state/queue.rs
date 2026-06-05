@@ -663,4 +663,324 @@ mod tests {
         assert_eq!(*q.current_track().unwrap(), tracks[3]);
         assert_eq!(q.position(), 3);
     }
+
+    // ============ SmartShuffle Tests ============
+
+    #[test]
+    fn set_shuffle_mode_smart_shuffle_interleaves_radio() {
+        let tracks = make_tracks(8);
+        let radio = make_tracks(3); // Radio tracks
+        let mut q = CustomQueue::new(tracks.clone(), 0, 10, None, false);
+
+        q.set_shuffle_mode(ShuffleMode::SmartShuffle(radio.clone()));
+
+        // Current track should be at front.
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
+        assert_eq!(q.position(), 0);
+        
+        // Smart shuffle should have more tracks than original (original + radio)
+        assert!(q.len() >= tracks.len());
+        
+        // Verify shuffle mode is set correctly
+        assert!(matches!(q.shuffle_mode(), ShuffleMode::SmartShuffle(_)));
+    }
+
+    #[test]
+    fn smart_shuffle_empty_radio_tracks() {
+        let tracks = make_tracks(5);
+        let radio: Vec<PlayableId<'static>> = vec![];
+        let mut q = CustomQueue::new(tracks.clone(), 0, 10, None, false);
+
+        q.set_shuffle_mode(ShuffleMode::SmartShuffle(radio));
+
+        // Should still have all original tracks
+        assert_eq!(q.len(), tracks.len());
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
+    }
+
+    #[test]
+    fn smart_shuffle_with_many_radio_tracks() {
+        let tracks = make_tracks(4);
+        let radio = make_tracks(20); // More radio tracks than original
+        let mut q = CustomQueue::new(tracks.clone(), 0, 10, None, false);
+
+        q.set_shuffle_mode(ShuffleMode::SmartShuffle(radio.clone()));
+
+        // Should have original tracks + all radio tracks
+        assert_eq!(q.len(), tracks.len() + radio.len());
+    }
+
+    // ============ Batch Truncation Tests ============
+
+    #[test]
+    fn truncate_batch_to_current_at_start() {
+        let tracks = make_tracks(10);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        q.truncate_batch_to_current();
+
+        // At position 0, batch_end should be 1
+        assert_eq!(q.batch_end(), 1);
+        assert!(q.is_at_batch_end());
+    }
+
+    #[test]
+    fn truncate_batch_to_current_mid_batch() {
+        let tracks = make_tracks(10);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // Advance to position 2
+        q.advance();
+        q.advance();
+        assert_eq!(q.position(), 2);
+
+        q.truncate_batch_to_current();
+
+        // Batch should end right after current position
+        assert_eq!(q.batch_end(), 3);
+        assert!(q.is_at_batch_end());
+    }
+
+    #[test]
+    fn truncate_batch_affects_next_batch() {
+        let tracks = make_tracks(10);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // Advance to position 2 and truncate
+        q.advance();
+        q.advance();
+        q.truncate_batch_to_current();
+
+        // After truncation at position 2, batch_end = 3
+        // next_batch should return tracks from position 3
+        let next = q.next_batch();
+        assert!(next.is_some());
+        // Should have remaining tracks (10 - 3 = 7, but limited by max_batch_size = 5)
+        assert_eq!(next.unwrap().len(), 5); // tracks 3,4,5,6,7
+    }
+
+    // ============ Edge Cases ============
+
+    #[test]
+    fn empty_queue_operations() {
+        let tracks: Vec<PlayableId<'static>> = vec![];
+        let q = CustomQueue::new(tracks.clone(), 0, 5, None, false);
+
+        assert_eq!(q.len(), 0);
+        assert!(q.is_empty());
+        assert!(q.current_track().is_none());
+        assert!(q.current_batch().is_none());
+        assert!(q.remaining_tracks().is_empty());
+    }
+
+    #[test]
+    fn single_item_queue() {
+        let tracks = make_tracks(1);
+        let mut q = CustomQueue::new(tracks.clone(), 0, 5, None, false);
+
+        assert_eq!(q.len(), 1);
+        assert!(!q.is_empty());
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
+        assert_eq!(q.batch_end(), 1);
+
+        // Advance should go to end of queue
+        assert_eq!(q.advance(), AdvanceResult::EndOfQueue);
+    }
+
+    #[test]
+    fn single_item_queue_with_autoplay() {
+        let tracks = make_tracks(1);
+        let mut q = CustomQueue::new(tracks.clone(), 0, 5, None, true);
+
+        assert_eq!(q.advance(), AdvanceResult::NeedsRadioTracks);
+    }
+
+    #[test]
+    fn batch_size_larger_than_queue() {
+        let tracks = make_tracks(3);
+        let q = CustomQueue::new(tracks.clone(), 0, 10, None, false);
+
+        // Batch end should be clamped to queue length
+        assert_eq!(q.batch_end(), 3);
+        assert_eq!(q.current_batch().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn start_position_at_end() {
+        let tracks = make_tracks(5);
+        let q = CustomQueue::new(tracks.clone(), 4, 10, None, false);
+
+        assert_eq!(q.position(), 4);
+        assert_eq!(*q.current_track().unwrap(), tracks[4]);
+        assert_eq!(q.batch_start(), 4);
+        assert_eq!(q.batch_end(), 5);
+    }
+
+    #[test]
+    fn remaining_tracks_empty_at_end() {
+        let tracks = make_tracks(3);
+        let mut q = CustomQueue::new(tracks, 0, 10, None, false);
+
+        // Advance to last track
+        q.advance();
+        q.advance();
+        
+        assert!(q.remaining_tracks().is_empty());
+    }
+
+    #[test]
+    fn expected_next_track_at_queue_end() {
+        let tracks = make_tracks(3);
+        let mut q = CustomQueue::new(tracks, 0, 10, None, false);
+
+        // Advance to last position
+        q.advance();
+        q.advance();
+        assert_eq!(q.position(), 2);
+
+        // No next track at end of queue
+        assert!(q.expected_next_track().is_none());
+    }
+
+    #[test]
+    fn is_at_batch_end_with_empty_queue() {
+        let tracks: Vec<PlayableId<'static>> = vec![];
+        let q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // Should return false for empty queue
+        assert!(!q.is_at_batch_end());
+    }
+
+    #[test]
+    fn is_at_batch_start_with_empty_queue() {
+        let tracks: Vec<PlayableId<'static>> = vec![];
+        let q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // Should return false for empty queue
+        assert!(!q.is_at_batch_start());
+    }
+
+    #[test]
+    fn retreat_at_beginning_no_repeat() {
+        let tracks = make_tracks(5);
+        let mut q = CustomQueue::new(tracks, 0, 10, None, false);
+
+        // Without repeat, should return BeginningOfQueue
+        assert_eq!(q.retreat(), RetreatResult::BeginningOfQueue);
+        assert_eq!(q.position(), 0);
+    }
+
+    #[test]
+    fn advance_repeat_context_single_item() {
+        let tracks = make_tracks(1);
+        let mut q = CustomQueue::new(tracks.clone(), 0, 10, None, false);
+        q.set_repeat(rspotify::model::RepeatState::Context);
+
+        // With single item and repeat context, should wrap
+        let result = q.advance();
+        assert!(matches!(result, AdvanceResult::NewBatch(_)));
+        assert_eq!(q.position(), 0);
+    }
+
+    #[test]
+    fn batch_transition_timestamp() {
+        let tracks = make_tracks(10);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // Initially no transition
+        assert!(q.last_batch_transition().is_none());
+
+        // Advance to trigger batch transition
+        for _ in 0..4 {
+            q.advance();
+        }
+        let _ = q.advance(); // This triggers NewBatch
+
+        // Should have recorded transition time
+        assert!(q.last_batch_transition().is_some());
+    }
+
+    #[test]
+    fn next_batch_at_end_returns_none() {
+        let tracks = make_tracks(5);
+        let mut q = CustomQueue::new(tracks, 0, 10, None, false);
+
+        // At end of queue, next_batch should return None
+        assert!(q.next_batch().is_none());
+    }
+
+    #[test]
+    fn next_batch_returns_tracks() {
+        let tracks = make_tracks(10);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        // First batch is [0..5), next should be [5..10)
+        let next = q.next_batch();
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().len(), 5);
+        assert_eq!(q.batch_start(), 5);
+        assert_eq!(q.batch_end(), 10);
+    }
+
+    #[test]
+    fn append_radio_tracks_empty_queue() {
+        let tracks: Vec<PlayableId<'static>> = vec![];
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        let radio = make_tracks(3);
+        q.append_radio_tracks(radio);
+
+        assert_eq!(q.len(), 3);
+    }
+
+    #[test]
+    fn mark_batch_transition_updates_timestamp() {
+        let tracks = make_tracks(5);
+        let mut q = CustomQueue::new(tracks, 0, 10, None, false);
+
+        let before = q.last_batch_transition();
+        q.mark_batch_transition();
+        let after = q.last_batch_transition();
+
+        assert!(before.is_none());
+        assert!(after.is_some());
+    }
+
+    #[test]
+    fn source_context_accessor() {
+        use crate::state::model::TracksId;
+        
+        let tracks = make_tracks(5);
+        let context = ContextId::Tracks(TracksId {
+            uri: "test:uri".to_string(),
+            kind: "test".to_string(),
+        });
+        
+        let q = CustomQueue::new(tracks, 0, 5, Some(context.clone()), false);
+        
+        assert!(q.source_context().is_some());
+        assert_eq!(q.source_context().unwrap().uri(), "test:uri");
+    }
+
+    #[test]
+    fn shuffle_mode_accessor() {
+        let tracks = make_tracks(5);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        assert_eq!(*q.shuffle_mode(), ShuffleMode::Off);
+
+        q.set_shuffle_mode(ShuffleMode::Shuffle);
+        assert_eq!(*q.shuffle_mode(), ShuffleMode::Shuffle);
+    }
+
+    #[test]
+    fn repeat_accessor() {
+        let tracks = make_tracks(5);
+        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
+
+        assert_eq!(q.repeat(), rspotify::model::RepeatState::Off);
+
+        q.set_repeat(rspotify::model::RepeatState::Track);
+        assert_eq!(q.repeat(), rspotify::model::RepeatState::Track);
+    }
 }
