@@ -60,11 +60,14 @@ pub fn render(
 
     ui.allocate_space(egui::vec2(ui.available_width(), 9.0));
 
+    let total_width = ui.available_width();
+    
     ui.horizontal(|ui| {
         ui.add_space(16.0);
 
         // === LEFT: Track info ===
-        let track_info_width = 320.0;
+        // Flexible width, takes remaining space after center and right
+        let track_info_width = (total_width * 0.25).max(200.0).min(320.0);
         ui.allocate_space(egui::vec2(track_info_width, 0.0));
 
         let track_rect = ui
@@ -240,15 +243,17 @@ pub fn render(
         }
 
         // === CENTER: Controls + Progress ===
-        let center_width = 480.0;
+        // Percentage-based width with min/max constraints
+        let center_width = (total_width * 0.40).max(300.0).min(500.0);
         let available = ui.available_width();
-        let left_pad = ((available - center_width) / 2.0).max(0.0);
+        let right_section_width = (total_width * 0.25).max(200.0).min(320.0);
+        let left_pad = ((available - center_width - right_section_width + 200.0) / 2.0).max(8.0);
         ui.allocate_space(egui::vec2(left_pad, 0.0));
 
         ui.vertical(|ui| {
             // Playback controls row
             ui.horizontal(|ui| {
-                let controls_width = 280.0;
+                let controls_width = (center_width * 0.65).max(200.0).min(320.0);
                 let pad = ((ui.available_width() - controls_width) / 2.0).max(0.0);
                 ui.add_space(pad);
 
@@ -256,14 +261,14 @@ pub fn render(
 
                 // Shuffle
                 let shuffle_on = playback.as_ref().is_some_and(|p| p.shuffle_state);
-                if theme::icon_button(ui, "⇄", 30.0, shuffle_on).clicked() {
+                if theme::icon_button(ui, theme::ICON_SHUFFLE, 30.0, shuffle_on).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle));
                 }
 
                 ui.add_space(12.0);
 
                 // Previous
-                if theme::icon_button(ui, "⏮", 30.0, false).clicked() {
+                if theme::icon_button(ui, theme::ICON_PREV, 30.0, false).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack));
                 }
 
@@ -277,7 +282,7 @@ pub fn render(
                 ui.add_space(8.0);
 
                 // Next
-                if theme::icon_button(ui, "⏭", 30.0, false).clicked() {
+                if theme::icon_button(ui, theme::ICON_NEXT, 30.0, false).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack));
                 }
 
@@ -289,8 +294,8 @@ pub fn render(
                     .map_or(rspotify::model::RepeatState::Off, |p| p.repeat_state);
                 let repeat_active = repeat_state != rspotify::model::RepeatState::Off;
                 let repeat_icon = match repeat_state {
-                    rspotify::model::RepeatState::Track => "⟳¹",
-                    _ => "⟳",
+                    rspotify::model::RepeatState::Track => theme::ICON_REPEAT_ONE,
+                    _ => theme::ICON_REPEAT,
                 };
                 if theme::icon_button(ui, repeat_icon, 30.0, repeat_active).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Repeat));
@@ -482,14 +487,14 @@ pub fn render(
             ui.add_space(16.0);
 
             // Device button (always visible)
-            if theme::icon_button(ui, "🖥", 28.0, false).clicked() {
+            if theme::icon_button(ui, theme::ICON_DEVICE, 28.0, false).clicked() {
                 result.device_button_clicked = true;
             }
 
             ui.add_space(8.0);
 
             // Lyrics button
-            if theme::icon_button(ui, "🎤", 28.0, false).clicked() {
+            if theme::icon_button(ui, theme::ICON_LYRICS, 28.0, false).clicked() {
                 result.navigate = Some(View::Lyrics);
             }
 
@@ -510,7 +515,10 @@ pub fn render(
                     .unwrap_or(50) as f32;
 
                 // Volume icon
-                let vol_icon = if volume == 0.0 { "🔇" } else if volume < 30.0 { "🔈" } else if volume < 70.0 { "🔉" } else { "🔊" };
+                let vol_icon = if volume == 0.0 { theme::ICON_VOLUME_OFF } 
+                    else if volume < 30.0 { theme::ICON_VOLUME_LOW } 
+                    else if volume < 70.0 { theme::ICON_VOLUME_MED } 
+                    else { theme::ICON_VOLUME_HIGH };
                 ui.label(
                     egui::RichText::new(vol_icon).size(14.0).color(theme::text_dim()),
                 );
@@ -526,7 +534,7 @@ pub fn render(
                 ui.add_space(12.0);
 
                 // Mute button
-                let mute_text = if volume == 0.0 { "🔇" } else { "🔊" };
+                let mute_text = if volume == 0.0 { theme::ICON_VOLUME_OFF } else { theme::ICON_VOLUME_HIGH };
                 if ui.button(egui::RichText::new(mute_text).size(14.0)).clicked() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::ToggleMute));
                 }

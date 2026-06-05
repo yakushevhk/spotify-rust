@@ -369,6 +369,9 @@ pub fn set_palette(name: &str) {
 
 // === Layout constants ===
 pub const SIDEBAR_WIDTH: f32 = 280.0;
+pub const SIDEBAR_WIDTH_MIN: f32 = 200.0;
+pub const SIDEBAR_WIDTH_MAX: f32 = 320.0;
+pub const SIDEBAR_COLLAPSE_THRESHOLD: f32 = 900.0;
 pub const PLAYBACK_BAR_HEIGHT: f32 = 100.0;
 pub const ICON_SIZE: f32 = 24.0;
 pub const PLAYBACK_ART_SIZE: f32 = 80.0;
@@ -378,6 +381,47 @@ pub const ART_CORNER_RADIUS: f32 = 4.0;
 pub const RADIUS_SMALL: u8 = 4;
 pub const RADIUS_MEDIUM: u8 = 8;
 pub const RADIUS_LARGE: u8 = 12;
+
+// === Icon constants (Unicode symbols only) ===
+pub const ICON_HOME: &str = "\u{2302}";
+pub const ICON_SEARCH: &str = "\u{1F50D}";
+pub const ICON_LIBRARY: &str = "\u{266B}";
+pub const ICON_BROWSE: &str = "\u{2630}";
+pub const ICON_SHOWS: &str = "\u{1F3A7}";
+pub const ICON_SETTINGS: &str = "\u{2699}";
+pub const ICON_HELP: &str = "\u{003F}";
+pub const ICON_LOGS: &str = "\u{1F4DD}";
+pub const ICON_QUEUE: &str = "\u{2630}";
+pub const ICON_LIKED: &str = "\u{2665}";
+pub const ICON_RECENT: &str = "\u{23F3}";
+pub const ICON_TOP: &str = "\u{2605}";
+pub const ICON_PLAY: &str = "\u{25B6}";
+pub const ICON_PAUSE: &str = "\u{23F8}";
+pub const ICON_NEXT: &str = "\u{23ED}";
+pub const ICON_PREV: &str = "\u{23EE}";
+pub const ICON_SHUFFLE: &str = "\u{21C4}";
+pub const ICON_REPEAT: &str = "\u{21BB}";
+pub const ICON_REPEAT_ONE: &str = "\u{21BB}\u{00B9}";
+pub const ICON_VOLUME_OFF: &str = "\u{1F507}";
+pub const ICON_VOLUME_LOW: &str = "\u{1F508}";
+pub const ICON_VOLUME_MED: &str = "\u{1F509}";
+pub const ICON_VOLUME_HIGH: &str = "\u{1F50A}";
+pub const ICON_DEVICE: &str = "\u{1F5A5}";
+pub const ICON_LYRICS: &str = "\u{1F3A4}";
+pub const ICON_ARTIST: &str = "\u{1F3A4}";
+pub const ICON_MORE: &str = "\u{22EF}";
+pub const ICON_BACK: &str = "\u{2190}";
+pub const ICON_EDIT: &str = "\u{270E}";
+pub const ICON_CLOSE: &str = "\u{2715}";
+pub const ICON_COLLAPSE: &str = "\u{25C0}";
+pub const ICON_EXPAND: &str = "\u{25B6}";
+
+/// Calculate responsive sidebar width based on window width
+pub fn responsive_sidebar_width(window_width: f32) -> (f32, bool) {
+    let width = (window_width * 0.25).clamp(SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX);
+    let collapsed = window_width < SIDEBAR_COLLAPSE_THRESHOLD;
+    (if collapsed { 56.0 } else { width }, collapsed)
+}
 
 // === Color accessor functions ===
 // These replace the old constants. Every call reads from the global palette.
@@ -474,7 +518,7 @@ pub fn primary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let desired_size = egui::vec2(ui.available_width().min(160.0), 36.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
     let bg = if response.hovered() { green_hover() } else { green() };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(18), bg);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(RADIUS_MEDIUM), bg);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -493,8 +537,8 @@ pub fn secondary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     } else {
         (bg_card(), divider())
     };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(18), bg);
-    ui.painter().rect_stroke(rect, egui::CornerRadius::same(18), egui::Stroke::new(1.0, bc), egui::StrokeKind::Outside);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(RADIUS_MEDIUM), bg);
+    ui.painter().rect_stroke(rect, egui::CornerRadius::same(RADIUS_MEDIUM), egui::Stroke::new(1.0, bc), egui::StrokeKind::Outside);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -520,7 +564,8 @@ pub fn icon_button(ui: &mut egui::Ui, text: &str, size: f32, active: bool) -> eg
     } else {
         egui::Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same((size / 2.0) as u8), bg);
+    let radius = ((size / 2.0) as u8).clamp(RADIUS_SMALL, RADIUS_LARGE);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(radius), bg);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -536,8 +581,8 @@ pub fn play_pause_button(ui: &mut egui::Ui, is_playing: bool) -> egui::Response 
     let desired_size = egui::vec2(size, size);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
     let bg = if response.hovered() { green_hover() } else { green() };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(21), bg);
-    let symbol = if is_playing { "⏸" } else { "▶" };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(RADIUS_LARGE), bg);
+    let symbol = if is_playing { ICON_PAUSE } else { ICON_PLAY };
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -548,7 +593,7 @@ pub fn play_pause_button(ui: &mut egui::Ui, is_playing: bool) -> egui::Response 
     response
 }
 
-pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, is_selected: bool) -> egui::Response {
+pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, is_selected: bool, collapsed: bool) -> egui::Response {
     let height = 40.0;
     let desired_size = egui::vec2(ui.available_width(), height);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
@@ -569,24 +614,35 @@ pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, is_selected: bool) -
     if is_selected {
         ui.painter().rect_filled(
             egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())),
-            egui::CornerRadius::same(1),
+            egui::CornerRadius::same(RADIUS_SMALL),
             green(),
         );
     }
-    ui.painter().text(
-        rect.left_center() + egui::vec2(16.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        icon,
-        egui::FontId::proportional(18.0),
-        icon_color,
-    );
-    ui.painter().text(
-        rect.left_center() + egui::vec2(48.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(14.0),
-        text_color,
-    );
+    if collapsed {
+        // Center icon when collapsed
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(18.0),
+            icon_color,
+        );
+    } else {
+        ui.painter().text(
+            rect.left_center() + egui::vec2(16.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            icon,
+            egui::FontId::proportional(18.0),
+            icon_color,
+        );
+        ui.painter().text(
+            rect.left_center() + egui::vec2(48.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(14.0),
+            text_color,
+        );
+    }
     response
 }
 
@@ -608,7 +664,7 @@ pub fn list_item(ui: &mut egui::Ui, label: &str, sublabel: &str, is_selected: bo
         text_secondary()
     };
     ui.painter().text(
-        rect.left_center() + egui::vec2(16.0, -6.0),
+        rect.left_center() + egui::vec2(16.0, if sublabel.is_empty() { 0.0 } else { -6.0 }),
         egui::Align2::LEFT_CENTER,
         label,
         egui::FontId::proportional(14.0),
@@ -652,6 +708,13 @@ pub fn card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R)
         .corner_radius(egui::CornerRadius::same(RADIUS_MEDIUM))
         .inner_margin(egui::Margin::same(16))
         .show(ui, add_contents)
+}
+
+/// Calculate responsive number of grid columns based on available width
+/// Returns between 2 and 6 columns
+pub fn responsive_grid_columns(avail_width: f32) -> usize {
+    let num_cols = ((avail_width - 24.0) / 220.0).floor().max(2.0).min(6.0) as usize;
+    num_cols.max(2)
 }
 
 pub fn page_title(ui: &mut egui::Ui, title: &str) {

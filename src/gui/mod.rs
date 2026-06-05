@@ -1543,18 +1543,20 @@ impl eframe::App for SpotifyApp {
             }
         }
 
-        // Left panel — sidebar
+        // Left panel — sidebar with responsive width
         let mut action = Action::None;
         let is_authenticated = {
             let data = self.state.data.read();
             !data.user_data.playlists.is_empty() || !data.user_data.saved_albums.is_empty()
         };
+        let window_width = ctx.screen_rect().width();
+        let (sidebar_width, _) = theme::responsive_sidebar_width(window_width);
         egui::SidePanel::left("sidebar")
             .resizable(false)
-            .exact_width(theme::SIDEBAR_WIDTH)
+            .exact_width(sidebar_width)
             .frame(egui::Frame::new().fill(theme::bg_black()).inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
-                action = sidebar::render(ui, &self.current_view, &self.state, is_authenticated);
+                action = sidebar::render(ui, &self.current_view, &self.state, is_authenticated, window_width);
             });
         self.handle_action(action);
 
