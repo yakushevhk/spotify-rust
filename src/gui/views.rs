@@ -114,7 +114,8 @@ pub fn render_library(
 
             match library_sort_order {
                 crate::gui::LibrarySortOrder::Alphabetical => {
-                    playlists.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                    // Use cached lowercase names for sorting
+                    playlists.sort_by(|a, b| a.name_lower_ref().cmp(&b.name_lower_ref()));
                 }
                 crate::gui::LibrarySortOrder::RecentlyAdded => {
                     // C7: API order is already reverse-chronological (most recently added first).
@@ -197,16 +198,8 @@ pub fn render_library(
                     for (i, album) in data.user_data.saved_albums.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
-                            let sub = format!(
-                                "{} · {}",
-                                album
-                                    .artists
-                                    .iter()
-                                    .map(|a| a.name.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                                album.year()
-                            );
+                            // Use pre-computed artists display string
+                            let sub = format!("{} · {}", album.artists_display_ref(), album.year());
                             let cover_path = image_cache::album_cover_path(album);
                             if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
                                 if !path.exists() {
@@ -781,7 +774,10 @@ fn truncate_text_binary(
     let chars: Vec<char> = text.chars().collect();
     let mut lo = 0usize;
     let mut hi = chars.len();
-    while lo < hi {
+    let mut iterations = 0;
+    const MAX_TRUNCATE_ITERATIONS: usize = 3;
+    while lo < hi && iterations < MAX_TRUNCATE_ITERATIONS {
+        iterations += 1;
         let mid = (lo + hi + 1) / 2;
         let candidate: String = chars[..mid].iter().collect();
         let test = format!("{}\u{2026}", candidate);

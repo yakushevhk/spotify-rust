@@ -2438,6 +2438,9 @@ mod tests {
             duration: std::time::Duration::default(),
             explicit: false,
             added_at: 0,
+            name_lower: None,
+            artists_info_lower: None,
+            album_info_lower: None,
         }
     }
 

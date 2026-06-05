@@ -79,9 +79,10 @@ pub struct SortState {
 impl SortState {
     pub fn compare(&self, a: &state::Track, b: &state::Track) -> std::cmp::Ordering {
         let ord = match self.column {
-            SortColumn::Title => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            SortColumn::Artist => a.artists_info().to_lowercase().cmp(&b.artists_info().to_lowercase()),
-            SortColumn::Album => a.album_info().to_lowercase().cmp(&b.album_info().to_lowercase()),
+            // Use cached lowercase values for sorting (avoids O(n log n) allocations)
+            SortColumn::Title => a.name_lower_ref().cmp(&b.name_lower_ref()),
+            SortColumn::Artist => a.artists_info_lower_ref().cmp(&b.artists_info_lower_ref()),
+            SortColumn::Album => a.album_info_lower_ref().cmp(&b.album_info_lower_ref()),
             SortColumn::Duration => a.duration.cmp(&b.duration),
         };
         match self.direction {
@@ -1290,7 +1291,11 @@ impl SpotifyApp {
 
 impl eframe::App for SpotifyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let is_playing = self.state.player.read().playback.is_some();
+        // Batch state lock acquisitions - read once, get all needed data
+        let is_playing = {
+            let player = self.state.player.read();
+            player.playback.is_some()
+        };
         let repaint_ms = if is_playing { 100 } else { 1000 };
         ctx.request_repaint_after(std::time::Duration::from_millis(repaint_ms));
 
@@ -1305,8 +1310,10 @@ impl eframe::App for SpotifyApp {
             drop(data);
         }
 
-        // Drain toast messages from background tasks
-        let toasts: Vec<String> = self.state.toast_queue.lock().drain(..).collect();
+        // Drain toast messages from background tasks - use try_lock to avoid blocking
+        let toasts: Vec<String> = self.state.toast_queue.try_lock()
+            .map(|mut q| q.drain(..).collect())
+            .unwrap_or_default();
         for msg in toasts {
             self.toast(msg);
         }

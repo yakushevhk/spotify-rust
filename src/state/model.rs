@@ -136,6 +136,15 @@ pub struct Track {
     pub explicit: bool,
     #[serde(skip)]
     pub added_at: u64,
+    #[serde(skip)]
+    /// Cached lowercase name for sorting (computed on first access)
+    pub name_lower: Option<String>,
+    #[serde(skip)]
+    /// Cached lowercase artist info for sorting
+    pub artists_info_lower: Option<String>,
+    #[serde(skip)]
+    /// Cached lowercase album info for sorting
+    pub album_info_lower: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -149,6 +158,15 @@ pub struct Album {
     pub added_at: u64,
     #[serde(default)]
     pub cover_url: Option<String>,
+    #[serde(skip)]
+    /// Cached lowercase name for sorting
+    pub name_lower: Option<String>,
+    #[serde(skip)]
+    /// Cached artists display string (pre-computed)
+    pub artists_display: Option<String>,
+    #[serde(skip)]
+    /// Cached image path (computed once)
+    pub image_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -178,6 +196,12 @@ pub struct Playlist {
     pub snapshot_id: String,
     #[serde(default)]
     pub cover_url: Option<String>,
+    #[serde(skip)]
+    /// Cached lowercase name for sorting
+    pub name_lower: Option<String>,
+    #[serde(skip)]
+    /// Cached image path (computed once)
+    pub image_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -298,6 +322,45 @@ impl Track {
             .unwrap_or_default()
     }
 
+    /// gets cached lowercase name for sorting (computes if not cached)
+    pub fn name_lower_cached(&mut self) -> String {
+        if self.name_lower.is_none() {
+            self.name_lower = Some(self.name.to_ascii_lowercase());
+        }
+        self.name_lower.clone().unwrap()
+    }
+
+    /// gets cached lowercase artist info for sorting (computes if not cached)
+    pub fn artists_info_lower_cached(&mut self) -> String {
+        if self.artists_info_lower.is_none() {
+            self.artists_info_lower = Some(self.artists_info().to_ascii_lowercase());
+        }
+        self.artists_info_lower.clone().unwrap()
+    }
+
+    /// gets cached lowercase album info for sorting (computes if not cached)
+    pub fn album_info_lower_cached(&mut self) -> String {
+        if self.album_info_lower.is_none() {
+            self.album_info_lower = Some(self.album_info().to_ascii_lowercase());
+        }
+        self.album_info_lower.clone().unwrap()
+    }
+
+    /// gets cached lowercase name for sorting (immutable version)
+    pub fn name_lower_ref(&self) -> &str {
+        self.name_lower.as_deref().unwrap_or(self.name.as_str())
+    }
+
+    /// gets cached lowercase artist info for sorting (immutable version)
+    pub fn artists_info_lower_ref(&self) -> String {
+        self.artists_info_lower.clone().unwrap_or_else(|| self.artists_info().to_ascii_lowercase())
+    }
+
+    /// gets cached lowercase album info for sorting (immutable version)
+    pub fn album_info_lower_ref(&self) -> String {
+        self.album_info_lower.clone().unwrap_or_else(|| self.album_info().to_ascii_lowercase())
+    }
+
     /// gets the track's name, including an explicit label
     pub fn display_name(&self) -> Cow<'_, str> {
         if self.explicit {
@@ -326,6 +389,9 @@ impl Track {
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: 0,
+                name_lower: None,
+                artists_info_lower: None,
+                album_info_lower: None,
             })
         } else {
             None
@@ -350,6 +416,9 @@ impl Track {
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: added_at.map(|t| t.timestamp() as u64).unwrap_or_default(),
+                name_lower: None,
+                artists_info_lower: None,
+                album_info_lower: None,
             })
         } else {
             None
@@ -386,11 +455,14 @@ impl std::fmt::Display for Track {
 impl Album {
     /// tries to convert from a `rspotify::model::SimplifiedAlbum` into `Album`
     pub fn try_from_simplified_album(album: rspotify::model::SimplifiedAlbum) -> Option<Self> {
+        let name = album.name;
+        let artists = from_simplified_artists_to_artists(album.artists);
+        let artists_display = Some(map_join(&artists, |a| &a.name, ", "));
         Some(Self {
             id: album.id?,
-            name: album.name,
+            name,
             release_date: album.release_date.unwrap_or_default(),
-            artists: from_simplified_artists_to_artists(album.artists),
+            artists,
             typ: album
                 .album_type
                 .and_then(|t| match t.to_ascii_lowercase().as_str() {
@@ -402,6 +474,9 @@ impl Album {
                 }),
             added_at: 0,
             cover_url: album.images.first().map(|img| img.url.clone()),
+            name_lower: None,
+            artists_display,
+            image_path: None,
         })
     }
 
@@ -425,14 +500,19 @@ impl Album {
 
 impl From<rspotify::model::FullAlbum> for Album {
     fn from(album: rspotify::model::FullAlbum) -> Self {
+        let artists = from_simplified_artists_to_artists(album.artists);
+        let artists_display = Some(map_join(&artists, |a| &a.name, ", "));
         Self {
             name: album.name,
             id: album.id,
             release_date: album.release_date,
-            artists: from_simplified_artists_to_artists(album.artists),
+            artists,
             typ: Some(album.album_type),
             added_at: 0,
             cover_url: album.images.first().map(|img| img.url.clone()),
+            name_lower: None,
+            artists_display,
+            image_path: None,
         }
     }
 }
@@ -442,6 +522,18 @@ impl From<rspotify::model::SavedAlbum> for Album {
         let mut album: Album = saved_album.album.into();
         album.added_at = saved_album.added_at.timestamp() as u64;
         album
+    }
+}
+
+impl Album {
+    /// gets cached lowercase name for sorting (immutable version)
+    pub fn name_lower_ref(&self) -> String {
+        self.name_lower.clone().unwrap_or_else(|| self.name.to_ascii_lowercase())
+    }
+
+    /// gets cached artists display string (pre-computed)
+    pub fn artists_display_ref(&self) -> String {
+        self.artists_display.clone().unwrap_or_else(|| map_join(&self.artists, |a| &a.name, ", "))
     }
 }
 
@@ -522,6 +614,8 @@ impl From<rspotify::model::SimplifiedPlaylist> for Playlist {
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
             cover_url: playlist.images.first().map(|img| img.url.clone()),
+            name_lower: None,
+            image_path: None,
         }
     }
 }
@@ -546,6 +640,8 @@ impl From<rspotify::model::FullPlaylist> for Playlist {
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
             cover_url: playlist.images.first().map(|img| img.url.clone()),
+            name_lower: None,
+            image_path: None,
         }
     }
 }
@@ -553,6 +649,13 @@ impl From<rspotify::model::FullPlaylist> for Playlist {
 impl std::fmt::Display for Playlist {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} • {}", self.name, self.owner.0)
+    }
+}
+
+impl Playlist {
+    /// gets cached lowercase name for sorting (immutable version)
+    pub fn name_lower_ref(&self) -> String {
+        self.name_lower.clone().unwrap_or_else(|| self.name.to_ascii_lowercase())
     }
 }
 

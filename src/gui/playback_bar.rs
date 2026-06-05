@@ -350,10 +350,10 @@ pub fn render(
                         _ => String::new(),
                     }).unwrap_or_default();
 
-                    // Generate waveform bars (cached by track URI and bar count)
+                    // Generate waveform bars (cached by track URI only - regenerate only when track changes)
                     let num_bars = (bar_width / 3.0) as usize;
                     let cache_key_uri = track_uri.clone();
-                    if waveform_cache.as_ref().map_or(true, |(uri, n, _)| *uri != cache_key_uri || *n != num_bars) {
+                    if waveform_cache.as_ref().map_or(true, |(uri, _, _)| *uri != cache_key_uri) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
                         *waveform_cache = Some((cache_key_uri, num_bars, bars));
                     }

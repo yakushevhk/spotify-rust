@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
+use lru::LruCache;
 use rspotify::prelude::Id;
 
 use crate::state;
@@ -9,8 +10,7 @@ use crate::state;
 const MAX_TEXTURES: usize = 256;
 
 pub struct ImageCache {
-    textures: HashMap<String, egui::TextureHandle>,
-    access_order: VecDeque<String>,
+    textures: LruCache<String, egui::TextureHandle>,
     download_tx: Option<mpsc::Sender<(String, PathBuf)>>,
     download_thread: Option<std::thread::JoinHandle<()>>,
     in_flight: HashSet<String>,
@@ -76,8 +76,7 @@ impl ImageCache {
             .expect("spawn image-downloader thread");
 
         Self {
-            textures: HashMap::new(),
-            access_order: VecDeque::new(),
+            textures: LruCache::new(std::num::NonZeroUsize::new(MAX_TEXTURES).unwrap()),
             download_tx: Some(tx),
             download_thread: Some(handle),
             in_flight: HashSet::new(),
@@ -110,11 +109,13 @@ impl ImageCache {
     ) -> Option<&egui::TextureHandle> {
         let key = path.to_string_lossy().to_string();
 
-        if self.textures.contains_key(&key) {
-            self.touch(&key);
+        // O(1) LRU cache lookup
+        if self.textures.get(&key).is_some() {
             return self.textures.get(&key);
         }
 
+        // Offload file existence check to background or cache result
+        // For now, we still check but this is much faster with the LRU cache
         if !path.exists() {
             return None;
         }
@@ -126,27 +127,9 @@ impl ImageCache {
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels);
         let texture = ctx.load_texture(&key, color_image, egui::TextureOptions::LINEAR);
 
-        self.evict_if_needed();
-        self.textures.insert(key.clone(), texture);
-        self.access_order.push_back(key.clone());
+        // O(1) LRU insertion with automatic eviction
+        self.textures.put(key.clone(), texture);
         self.textures.get(&key)
-    }
-
-    fn touch(&mut self, key: &str) {
-        if let Some(pos) = self.access_order.iter().position(|k| k == key) {
-            self.access_order.remove(pos);
-            self.access_order.push_back(key.to_string());
-        }
-    }
-
-    fn evict_if_needed(&mut self) {
-        while self.textures.len() >= MAX_TEXTURES {
-            if let Some(oldest) = self.access_order.pop_front() {
-                self.textures.remove(&oldest);
-            } else {
-                break;
-            }
-        }
     }
 }
 
