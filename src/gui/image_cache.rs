@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
@@ -12,13 +12,15 @@ pub struct ImageCache {
     textures: HashMap<String, egui::TextureHandle>,
     access_order: VecDeque<String>,
     download_tx: mpsc::Sender<(String, PathBuf)>,
+    _download_thread: std::thread::JoinHandle<()>,
+    in_flight: HashSet<String>,
 }
 
 impl ImageCache {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(String, PathBuf)>();
 
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name("image-downloader".to_string())
             .spawn(move || {
                 let rt = match tokio::runtime::Runtime::new() {
@@ -48,16 +50,26 @@ impl ImageCache {
                     });
                 }
             })
-            .ok();
+            .expect("spawn image-downloader thread");
 
         Self {
             textures: HashMap::new(),
             access_order: VecDeque::new(),
             download_tx: tx,
+            _download_thread: handle,
+            in_flight: HashSet::new(),
         }
     }
 
-    pub fn request_download(&self, url: &str, path: &Path) {
+    pub fn request_download(&mut self, url: &str, path: &Path) {
+        if path.exists() {
+            self.in_flight.remove(url);
+            return;
+        }
+        if self.in_flight.contains(url) {
+            return;
+        }
+        self.in_flight.insert(url.to_string());
         let _ = self
             .download_tx
             .send((url.to_string(), path.to_path_buf()));

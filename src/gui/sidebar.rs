@@ -91,10 +91,10 @@ pub fn render(
         theme::bg_dark()
     };
     ui.painter()
-        .rect_filled(btn_rect, egui::CornerRadius::same(6), btn_bg);
+        .rect_filled(btn_rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), btn_bg);
     ui.painter().rect_stroke(
         btn_rect,
-        egui::CornerRadius::same(6),
+        egui::CornerRadius::same(theme::RADIUS_MEDIUM),
         egui::Stroke::new(1.0, theme::text_muted()),
         egui::StrokeKind::Outside,
     );
@@ -217,15 +217,15 @@ pub fn render(
             ui.add_space(16.0);
             ui.label(
                 egui::RichText::new(*key)
-                    .size(10.0)
+                    .size(11.0)
                     .color(theme::green())
                     .monospace(),
             );
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new(*desc)
-                    .size(10.0)
-                    .color(theme::text_hint()),
+                    .size(11.0)
+                    .color(theme::text_secondary()),
             );
         });
     }

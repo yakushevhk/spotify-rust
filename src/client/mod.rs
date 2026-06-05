@@ -91,6 +91,8 @@ impl AppClient {
         let config = rspotify::Config {
             token_cached: true,
             token_refreshing: true,
+            // TODO: Ensure token cache file permissions are 0600 on Unix to prevent
+            // other users from reading the access token.
             cache_path: configs.cache_folder.join("user_client_token.json"),
             ..Default::default()
         };
@@ -205,10 +207,17 @@ impl AppClient {
 
         if !connected {
             // if session is not connected (triggered by `new_streaming_connection`), connect to the session
-            session
-                .connect(creds, true)
-                .await
-                .context("connect to a session")?;
+            if let Err(err) = session.connect(creds, true).await {
+                tracing::warn!(
+                    "Session connect failed, clearing cached credentials and retrying: {err:#}"
+                );
+                let fresh_creds = auth::get_creds(&self.auth_config, true, false)
+                    .context("get credentials after clearing cache")?;
+                session
+                    .connect(fresh_creds, true)
+                    .await
+                    .context("connect to a session after re-auth")?;
+            }
         }
 
         tracing::info!("Used a new session for Spotify client.");
@@ -241,9 +250,14 @@ impl AppClient {
     pub async fn check_valid_session(&self, state: &SharedState) -> Result<()> {
         if self.spotify.session().await.is_invalid() {
             tracing::info!("Client's current session is invalid, creating a new session...");
-            self.new_session(Some(state), false)
-                .await
-                .context("create new client session")?;
+            if let Err(err) = self.new_session(Some(state), false).await {
+                tracing::warn!(
+                    "Failed to create new session with cached credentials: {err:#}, retrying with re-auth..."
+                );
+                self.new_session(Some(state), true)
+                    .await
+                    .context("create new client session after re-auth")?;
+            }
         }
         Ok(())
     }
@@ -263,7 +277,7 @@ impl AppClient {
         // shutdown old streaming connection and replace it with a new connection
         if let Some(conn) = stream_conn.as_ref() {
             if let Err(err) = conn.shutdown() {
-                log::error!("Failed to shutdown old streaming connection: {err:#}");
+                tracing::error!("Failed to shutdown old streaming connection: {err:#}");
             }
         }
         *stream_conn = Some(new_conn);
@@ -453,6 +467,8 @@ impl AppClient {
                         pb.progress = Some(position_ms);
                     }
                     player.playback_last_updated_time = Some(std::time::Instant::now());
+                    player.seek_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
                 }
                 drop(player);
                 self.update_playback(state);
@@ -1314,7 +1330,7 @@ impl AppClient {
             .get_mut(&playlist_id.uri())
         {
             let track = tracks.remove(range_start);
-            tracks.insert(insert_index, track);
+            tracks.insert(std::cmp::min(insert_before, tracks.len()), track);
         }
 
         Ok(())

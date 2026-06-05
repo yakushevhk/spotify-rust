@@ -7,15 +7,6 @@ pub use rspotify::model::{
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::fmt::{Display, Write};
-
-/// A trait similar to Display but with bidirectional text support
-pub trait BidiDisplay: Display {
-    fn to_bidi_string(&self) -> String {
-        let disp_str = self.to_string();
-        to_bidi_string(&disp_str)
-    }
-}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(untagged)]
@@ -84,15 +75,7 @@ pub struct SearchResults {
     pub episodes: Vec<Episode>,
 }
 
-#[derive(Debug)]
-/// A track order
-pub enum TrackOrder {
-    AddedAt,
-    TrackName,
-    Album,
-    Artists,
-    Duration,
-}
+
 
 #[derive(Debug, Clone)]
 /// A Spotify item (track, album, artist, playlist)
@@ -250,67 +233,6 @@ pub struct Category {
     pub icon_url: Option<String>,
 }
 
-impl Context {
-    /// gets the context's description
-    pub fn description(&self) -> String {
-        match self {
-            Context::Album {
-                ref album,
-                ref tracks,
-            } => format!(
-                "{} | {} | {} songs | {}",
-                album.name,
-                album.release_date,
-                tracks.len(),
-                play_time(tracks),
-            ),
-            Context::Playlist {
-                ref playlist,
-                tracks,
-            } => format!(
-                "{} | {} | {} songs | {}",
-                playlist.name,
-                playlist.owner.0,
-                tracks.len(),
-                play_time(tracks),
-            ),
-            Context::Artist { ref artist, .. } => artist.name.clone(),
-            Context::Tracks { desc, tracks } => {
-                format!("{} | {} songs | {}", desc, tracks.len(), play_time(tracks))
-            }
-            Context::Show {
-                ref show,
-                ref episodes,
-            } => format!("{} | {} episodes", show.name, episodes.len()),
-        }
-    }
-}
-
-fn play_time(tracks: &[Track]) -> String {
-    let duration = tracks
-        .iter()
-        .map(|t| t.duration)
-        .sum::<std::time::Duration>();
-
-    let mut output = String::new();
-
-    let seconds = duration.as_secs() % 60;
-    let minutes = (duration.as_secs() / 60) % 60;
-    let hours = duration.as_secs() / 3600;
-
-    if hours > 0 {
-        write!(output, "{hours}h ").unwrap();
-    }
-
-    if minutes > 0 {
-        write!(output, "{minutes}m ").unwrap();
-    }
-
-    write!(output, "{seconds}s").unwrap();
-
-    output
-}
-
 impl ContextId {
     pub fn uri(&self) -> String {
         match self {
@@ -319,18 +241,6 @@ impl ContextId {
             Self::Playlist(id) => id.uri(),
             Self::Tracks(id) => id.uri.clone(),
             Self::Show(id) => id.uri(),
-        }
-    }
-}
-
-impl TrackOrder {
-    pub fn compare(&self, x: &Track, y: &Track) -> std::cmp::Ordering {
-        match *self {
-            Self::AddedAt => x.added_at.cmp(&y.added_at),
-            Self::TrackName => x.name.cmp(&y.name),
-            Self::Album => x.album_info().cmp(&y.album_info()),
-            Self::Duration => x.duration.cmp(&y.duration),
-            Self::Artists => x.artists_info().cmp(&y.artists_info()),
         }
     }
 }
@@ -460,8 +370,6 @@ impl std::fmt::Display for Track {
     }
 }
 
-impl BidiDisplay for Track {}
-
 impl Album {
     /// tries to convert from a `rspotify::model::SimplifiedAlbum` into `Album`
     pub fn try_from_simplified_album(album: rspotify::model::SimplifiedAlbum) -> Option<Self> {
@@ -536,7 +444,6 @@ impl std::fmt::Display for Album {
     }
 }
 
-impl BidiDisplay for Album {}
 
 impl Artist {
     /// tries to convert from a `rspotify::model::SimplifiedArtist` into `Artist`
@@ -580,7 +487,6 @@ fn from_simplified_artists_to_artists(
         .collect()
 }
 
-impl BidiDisplay for Artist {}
 
 impl From<rspotify::model::SimplifiedPlaylist> for Playlist {
     fn from(playlist: rspotify::model::SimplifiedPlaylist) -> Self {
@@ -629,7 +535,6 @@ impl std::fmt::Display for Playlist {
     }
 }
 
-impl BidiDisplay for Playlist {}
 
 impl From<rspotify::model::SimplifiedShow> for Show {
     fn from(show: rspotify::model::SimplifiedShow) -> Self {
@@ -661,7 +566,6 @@ impl std::fmt::Display for Show {
     }
 }
 
-impl BidiDisplay for Show {}
 
 impl From<rspotify::model::SimplifiedEpisode> for Episode {
     fn from(episode: rspotify::model::SimplifiedEpisode) -> Self {
@@ -705,7 +609,6 @@ impl std::fmt::Display for PlaylistFolder {
     }
 }
 
-impl BidiDisplay for PlaylistFolder {}
 
 impl std::fmt::Display for PlaylistFolderItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -716,7 +619,6 @@ impl std::fmt::Display for PlaylistFolderItem {
     }
 }
 
-impl BidiDisplay for PlaylistFolderItem {}
 
 impl From<rspotify::model::category::Category> for Category {
     fn from(c: rspotify::model::category::Category) -> Self {
@@ -743,36 +645,6 @@ impl TracksId {
         Self {
             uri: uri.into(),
             kind: kind.into(),
-        }
-    }
-}
-
-impl Playback {
-    /// creates new playback with a specified offset based on the current playback
-    pub fn uri_offset(&self, uri: String, limit: usize) -> Self {
-        match self {
-            Playback::Context(id, _) => {
-                Playback::Context(id.clone(), Some(rspotify::model::Offset::Uri(uri)))
-            }
-            Playback::URIs(ids, _) => {
-                let ids = if ids.len() < limit {
-                    ids.clone()
-                } else {
-                    let pos = ids
-                        .iter()
-                        .position(|id| id.uri() == uri)
-                        .unwrap_or_default();
-                    let l = pos.saturating_sub(limit / 2);
-                    let r = std::cmp::min(l + limit, ids.len());
-                    // For a list with too many tracks, to avoid payload limit when making the `start_playback`
-                    // API request, we restrict the range of tracks to be played, which is based on the
-                    // playing track's position (if any) and the application's limit (`app_config.tracks_playback_limit`).
-                    // Related issue: https://github.com/aome510/spotify-player/issues/78
-                    ids[l..r].to_vec()
-                };
-
-                Playback::URIs(ids, Some(rspotify::model::Offset::Uri(uri)))
-            }
         }
     }
 }

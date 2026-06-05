@@ -54,6 +54,8 @@ pub struct AppConfig {
     pub client_id: Option<String>,
     pub client_id_command: Option<Command>,
 
+    // Unused in GUI
+    #[allow(dead_code)]
     pub client_port: u16,
 
     pub login_redirect_uri: String,
@@ -63,6 +65,8 @@ pub struct AppConfig {
     pub player_event_hook_command: Option<Command>,
 
     pub playback_format: String,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub playback_metadata_fields: Vec<String>,
     #[cfg(feature = "notify")]
     pub notify_format: NotifyFormat,
@@ -85,18 +89,32 @@ pub struct AppConfig {
     pub page_size_in_rows: usize,
 
     // icon configs
+    // Unused in GUI
+    #[allow(dead_code)]
     pub play_icon: String,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub pause_icon: String,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub liked_icon: String,
     pub explicit_icon: String,
 
     // layout configs
+    // Unused in GUI
+    #[allow(dead_code)]
     pub border_type: BorderType,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub progress_bar_type: ProgressBarType,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub progress_bar_position: ProgressBarPosition,
 
     pub layout: LayoutConfig,
 
+    // Unused in GUI
+    #[allow(dead_code)]
     pub genre_num: u8,
 
     #[cfg(feature = "image")]
@@ -133,6 +151,8 @@ pub struct AppConfig {
     pub sort_artist_albums_by_type: bool,
 
     pub volume_scroll_step: u8,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub enable_mouse_scroll_volume: bool,
 
     /// Enable app-managed queue for full playlist playback.
@@ -222,7 +242,11 @@ pub struct NotifyFormat {
 // Application layout configurations
 pub struct LayoutConfig {
     pub library: LibraryLayoutConfig,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub playback_window_position: Position,
+    // Unused in GUI
+    #[allow(dead_code)]
     pub playback_window_height: usize,
 }
 

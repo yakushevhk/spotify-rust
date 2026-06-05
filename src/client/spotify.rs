@@ -4,7 +4,7 @@ use rspotify::{
     clients::{BaseClient, OAuthClient},
     http::HttpClient,
     sync::Mutex,
-    ClientResult, Config, Credentials, OAuth, Token,
+    ClientError, ClientResult, Config, Credentials, OAuth, Token,
 };
 use std::{fmt, sync::Arc};
 
@@ -88,20 +88,30 @@ impl BaseClient for Spotify {
         let old_token = self.token.lock().await.unwrap().clone();
 
         let Some(session) = session else {
-            tracing::warn!("No session available, keeping existing token");
-            return Ok(old_token);
+            tracing::error!("No session available for token refresh");
+            return Err(ClientError::Cli(
+                "No session available for token refresh".to_string(),
+            ));
         };
 
         if session.is_invalid() {
-            tracing::warn!("Session invalid, keeping existing token");
-            return Ok(old_token);
+            tracing::error!("Session is invalid, cannot refresh token");
+            return Err(ClientError::Cli(
+                "Session is invalid, cannot refresh token".to_string(),
+            ));
         }
 
         match token::get_token_rspotify(&session).await {
             Ok(token) => Ok(Some(token)),
             Err(err) => {
-                tracing::warn!("Token refresh failed: {err:#}, keeping existing token");
-                Ok(old_token)
+                let msg = format!("{err:#}");
+                if msg.contains("timeout") {
+                    tracing::warn!("Token refresh timed out, keeping existing token");
+                    Ok(old_token)
+                } else {
+                    tracing::error!("Token refresh failed: {err:#}");
+                    Err(ClientError::Cli(msg))
+                }
             }
         }
     }

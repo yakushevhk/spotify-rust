@@ -10,8 +10,6 @@ use super::model::{
 };
 use super::Lyrics;
 
-pub type DataReadGuard<'a> = parking_lot::RwLockReadGuard<'a, AppData>;
-
 #[derive(Debug, Copy, Clone)]
 pub enum FileCacheKey {
     Playlists,
@@ -32,6 +30,7 @@ pub struct AppData {
     pub caches: MemoryCaches,
     pub browse: BrowseData,
     pub shows_loading: bool,
+    pub library_loading: bool,
 }
 
 #[derive(Debug)]
@@ -84,6 +83,7 @@ impl AppData {
             caches: MemoryCaches::new(),
             browse: BrowseData::default(),
             shows_loading: false,
+            library_loading: false,
         }
     }
 

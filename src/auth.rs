@@ -63,6 +63,8 @@ impl AuthConfig {
             None
         };
 
+        // TODO: Ensure credential cache file permissions are 0600 on Unix to prevent
+        // other users from reading cached access tokens.
         let cache = Cache::new(
             Some(configs.cache_folder.clone()),
             None,

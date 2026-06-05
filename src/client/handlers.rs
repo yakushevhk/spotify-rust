@@ -2,20 +2,16 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use rspotify::model::Id;
 use tracing::Instrument;
 
 use crate::{
     config,
-    state::{ContextId, ContextPageType, ContextPageUIState, PageState, PlayableId, SharedState},
+    state::{PlayableId, SharedState},
 };
-
-use crate::utils::map_join;
 
 use super::ClientRequest;
 
 struct PlayerEventHandlerState {
-    get_context_timer: Instant,
     last_playback_refresh_timer: Instant,
     last_track_end_check: Instant,
     last_queue_check: Instant,
@@ -108,97 +104,11 @@ fn handle_playback_change_event(
     Ok(())
 }
 
-fn handle_page_change_event(
-    state: &SharedState,
-    client_pub: &flume::Sender<ClientRequest>,
-    handler_state: &mut PlayerEventHandlerState,
-) -> anyhow::Result<()> {
-    match state.ui.lock().current_page_mut() {
-        PageState::Context {
-            id,
-            context_page_type,
-            state: page_state,
-        } => {
-            let expected_id = match context_page_type {
-                ContextPageType::Browsing(context_id) => Some(context_id.clone()),
-                ContextPageType::CurrentPlaying => state.player.read().playing_context_id(),
-            };
-
-            let new_id = if *id == expected_id {
-                false
-            } else {
-                // update the context state and request new data when moving to a new context page
-                tracing::info!("Current context ID ({:?}) is different from the expected ID ({:?}), update the context state", id, expected_id);
-
-                *id = expected_id;
-
-                // update the UI page state based on the context's type
-                match id {
-                    Some(id) => {
-                        *page_state = Some(match id {
-                            ContextId::Album(_) => ContextPageUIState::new_album(),
-                            ContextId::Artist(_) => ContextPageUIState::new_artist(),
-                            ContextId::Playlist(_) => ContextPageUIState::new_playlist(),
-                            ContextId::Tracks(_) => ContextPageUIState::new_tracks(),
-                            ContextId::Show(_) => ContextPageUIState::new_show(),
-                        });
-                    }
-                    None => {
-                        *page_state = None;
-                    }
-                }
-                true
-            };
-
-            // request new context's data if not found in memory
-            // To avoid making too many requests, only request if context id is changed
-            // or it's been a while since the last request.
-            if let Some(id) = id {
-                if !matches!(id, ContextId::Tracks(_))
-                    && !state.data.read().caches.context.contains_key(&id.uri())
-                    && (new_id
-                        || handler_state.get_context_timer.elapsed() > Duration::from_secs(5))
-                {
-                    client_pub.send(ClientRequest::GetContext(id.clone()))?;
-                    handler_state.get_context_timer = Instant::now();
-                }
-            }
-        }
-
-        PageState::Lyrics {
-            track_uri,
-            track,
-            artists,
-        } => {
-            if let Some(rspotify::model::PlayableItem::Track(current_track)) =
-                state.player.read().currently_playing()
-            {
-                if current_track.name != *track {
-                    if let Some(id) = &current_track.id {
-                        tracing::info!("Currently playing track \"{}\" is different from the track \"{track}\" shown up in the lyrics page. Fetching new track's lyrics...", current_track.name);
-                        track.clone_from(&current_track.name);
-                        *artists = map_join(&current_track.artists, |a| &a.name, ", ");
-                        *track_uri = id.uri();
-                        client_pub.send(ClientRequest::GetLyrics {
-                            track_id: id.clone_static(),
-                        })?;
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
-
 fn handle_player_event(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     handler_state: &mut PlayerEventHandlerState,
 ) -> anyhow::Result<()> {
-    handle_page_change_event(state, client_pub, handler_state)
-        .context("handle page change event")?;
     handle_playback_change_event(state, client_pub, handler_state)
         .context("handle playback change event")?;
 
@@ -214,7 +124,6 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
     let playback_refresh_duration =
         Duration::from_millis(configs.app_config.playback_refresh_duration_in_ms);
     let mut handler_state = PlayerEventHandlerState {
-        get_context_timer: Instant::now(),
         last_playback_refresh_timer: Instant::now(),
         last_track_end_check: Instant::now(),
         last_queue_check: Instant::now(),

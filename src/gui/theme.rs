@@ -374,6 +374,10 @@ pub const PLAYBACK_ART_SIZE: f32 = 80.0;
 pub const TRACK_THUMB_SIZE: f32 = 36.0;
 pub const ART_CORNER_RADIUS: f32 = 4.0;
 
+pub const RADIUS_SMALL: u8 = 4;
+pub const RADIUS_MEDIUM: u8 = 8;
+pub const RADIUS_LARGE: u8 = 12;
+
 // === Color accessor functions ===
 // These replace the old constants. Every call reads from the global palette.
 
@@ -420,7 +424,7 @@ fn wv(bg: egui::Color32, fg: egui::Color32) -> egui::style::WidgetVisuals {
         bg_fill: bg,
         weak_bg_fill: bg,
         bg_stroke: egui::Stroke::NONE,
-        corner_radius: egui::CornerRadius::same(6),
+        corner_radius: egui::CornerRadius::same(RADIUS_MEDIUM),
         fg_stroke: egui::Stroke::new(1.0, fg),
         expansion: 0.0,
     }
@@ -560,7 +564,7 @@ pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, is_selected: bool) -
         text_secondary()
     };
     let icon_color = if is_selected { green() } else { text_color };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(6), bg);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(RADIUS_MEDIUM), bg);
     if is_selected {
         ui.painter().rect_filled(
             egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())),
@@ -596,7 +600,7 @@ pub fn list_item(ui: &mut egui::Ui, label: &str, sublabel: &str, is_selected: bo
     } else {
         egui::Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(4), bg);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(RADIUS_SMALL), bg);
     let text_color = if is_selected || response.hovered() {
         text_primary()
     } else {
@@ -644,7 +648,7 @@ pub fn divider_line(ui: &mut egui::Ui) {
 pub fn card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> egui::InnerResponse<R> {
     egui::Frame::new()
         .fill(bg_dark())
-        .corner_radius(egui::CornerRadius::same(8))
+        .corner_radius(egui::CornerRadius::same(RADIUS_MEDIUM))
         .inner_margin(egui::Margin::same(16))
         .show(ui, add_contents)
 }
@@ -717,7 +721,7 @@ pub fn glass_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(bg_black())
         .stroke(egui::Stroke::new(1.0, with_alpha(border(), 80)))
-        .corner_radius(egui::CornerRadius::same(8))
+        .corner_radius(egui::CornerRadius::same(RADIUS_MEDIUM))
         .inner_margin(egui::Margin::same(8))
 }
 

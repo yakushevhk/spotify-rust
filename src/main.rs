@@ -57,7 +57,7 @@ fn init_logging(
     );
 
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "spotify_player=info,librespot=info");
+        std::env::set_var("RUST_LOG", "spotify_player_gui=info,librespot=info");
     }
     if !log_folder.exists() {
         std::fs::create_dir_all(log_folder)?;
@@ -92,11 +92,13 @@ fn init_logging(
 
 #[tokio::main]
 async fn start_app(state: &state::SharedState) -> Result<()> {
-    let (client_pub, client_sub) = flume::unbounded::<client::ClientRequest>();
+    let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(256);
 
+    eprintln!("Opening browser for Spotify login (step 1/2)...");
     let client = client::AppClient::new()
         .await
         .context("construct app client")?;
+    eprintln!("Opening browser for Spotify login (step 2/2)...");
     client
         .new_session(Some(state), true)
         .await
@@ -170,17 +172,13 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 
     // Shutdown spawned tasks
     client_handler.abort();
-    if player_watcher.is_finished() {
-        if let Err(_panic) = player_watcher.join() {
-            tracing::error!("Player event watcher thread panicked");
-        }
+    if let Err(_panic) = player_watcher.join() {
+        tracing::error!("Player event watcher thread panicked");
     }
     #[cfg(feature = "media-control")]
     if let Some(handle) = media_control_handle {
-        if handle.is_finished() {
-            if let Err(_panic) = handle.join() {
-                tracing::error!("Media control thread panicked");
-            }
+        if let Err(_panic) = handle.join() {
+            tracing::error!("Media control thread panicked");
         }
     }
 

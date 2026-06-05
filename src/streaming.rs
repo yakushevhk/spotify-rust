@@ -22,6 +22,10 @@ pub async fn new_connection(
     let configs = config::get_config();
     let device = &configs.app_config.device;
 
+    // Volume is mapped linearly here (0-100 → 0-65535) because
+    // SoftMixer::open defaults to VolumeCurve::Cubic, which applies
+    // the dB-mapped power curve internally.  Passing a pre-curved
+    // value would double-apply the curve and distort perceived loudness.
     let volume =
         (f64::from(std::cmp::min(device.volume, 100_u8)) / 100.0 * 65535.0).round() as u16;
 
@@ -41,6 +45,11 @@ pub async fn new_connection(
     );
     mixer.set_volume(volume);
 
+    // TODO: audio device hotplug is not supported – `audio_backend::find(None)` is
+    // called once at startup.  If the default output device changes (e.g. Bluetooth
+    // headphones connect/disconnect), the backend/sink keeps writing to the old
+    // device.  A full fix requires listening for OS device-change notifications and
+    // rebuilding the player with a fresh sink.
     let backend = audio_backend::find(None)
         .ok_or_else(|| anyhow::anyhow!("no audio backend found on this system"))?;
     let player_config = PlayerConfig {
@@ -122,6 +131,10 @@ pub async fn new_connection(
                     _ => {}
                 }
             }
+            tracing::error!(
+                "player_event_task: event channel closed unexpectedly – the Spirc/player \
+                 task may have died (possible audio device failure)"
+            );
         }
     });
 

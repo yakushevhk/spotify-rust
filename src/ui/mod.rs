@@ -1,5 +1,4 @@
 pub mod utils;
-pub mod single_line_input;
 
 #[cfg(feature = "streaming")]
 pub mod streaming {
@@ -67,6 +66,7 @@ pub mod streaming {
                         }
                     }
                 }
+                drop(bands);
             }
             self.real.write(packet, converter)
         }

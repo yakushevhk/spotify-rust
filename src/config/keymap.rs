@@ -199,6 +199,18 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
             category: CommandCategory::Navigation,
         },
         CommandBinding {
+            command: CommandId("forward"),
+            keybindings: vec![
+                KeyBinding::Modified {
+                    key: ']',
+                    ctrl: true,
+                    shift: false,
+                },
+            ],
+            description: "Next page (go forward)",
+            category: CommandCategory::Navigation,
+        },
+        CommandBinding {
             command: CommandId("enter"),
             keybindings: vec![
                 KeyBinding::Special("Enter".to_string()),

@@ -82,6 +82,16 @@ impl State {
         }
     }
 
+    const MAX_TOAST_QUEUE: usize = 32;
+
+    pub fn push_toast(&self, msg: impl Into<String>) {
+        let mut queue = self.toast_queue.lock();
+        if queue.len() >= Self::MAX_TOAST_QUEUE {
+            queue.pop_front();
+        }
+        queue.push_back(msg.into());
+    }
+
     #[cfg(feature = "streaming")]
     pub fn is_streaming_enabled(&self) -> bool {
         let configs = config::get_config();

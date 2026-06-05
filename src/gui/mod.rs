@@ -148,6 +148,7 @@ pub struct SpotifyApp {
     keybindings: Vec<CommandBinding>,
     help_search: String,
     view_history: Vec<View>,
+    forward_history: Vec<View>,
     show_theme_switcher: bool,
     theme_search: String,
     current_theme_name: String,
@@ -171,6 +172,7 @@ pub struct SpotifyApp {
     browse_popup_filter: String,
     show_in_page_search: bool,
     in_page_search_query: String,
+    waveform_cache: Option<(u64, usize, Vec<f32>)>,
 }
 
 impl SpotifyApp {
@@ -226,6 +228,7 @@ impl SpotifyApp {
             },
             help_search: String::new(),
             view_history: Vec::new(),
+            forward_history: Vec::new(),
             show_theme_switcher: false,
             theme_search: String::new(),
             current_theme_name,
@@ -249,6 +252,7 @@ impl SpotifyApp {
             browse_popup_filter: String::new(),
             show_in_page_search: false,
             in_page_search_query: String::new(),
+            waveform_cache: None,
         }
     }
 
@@ -257,12 +261,14 @@ impl SpotifyApp {
             Action::Navigate(view) => {
                 if view != self.current_view && view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.current_view = view;
             }
             Action::OpenPlaylist(idx) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let data = self.state.data.read();
                 if let Some(item) = data.user_data.playlists.get(idx) {
@@ -285,6 +291,7 @@ impl SpotifyApp {
             Action::OpenAlbum(idx) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let data = self.state.data.read();
                 if let Some(album) = data.user_data.saved_albums.get(idx) {
@@ -305,6 +312,7 @@ impl SpotifyApp {
             Action::OpenLikedTracks => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = "Liked Tracks".to_string();
                 self.context_tracks.clear();
@@ -321,6 +329,7 @@ impl SpotifyApp {
             Action::OpenRecentlyPlayed => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = "Recently Played".to_string();
                 self.context_tracks.clear();
@@ -337,6 +346,7 @@ impl SpotifyApp {
             Action::OpenTopTracks => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = "Top Tracks".to_string();
                 self.context_tracks.clear();
@@ -353,6 +363,7 @@ impl SpotifyApp {
             Action::OpenSearchResultPlaylist(playlist) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
@@ -367,6 +378,7 @@ impl SpotifyApp {
             Action::OpenSearchResultAlbum(album) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
@@ -381,6 +393,7 @@ impl SpotifyApp {
             Action::OpenArtist(artist) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
@@ -392,6 +405,7 @@ impl SpotifyApp {
             Action::OpenBrowseCategory(id, name) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let _ = self.client_pub.send(ClientRequest::GetBrowseCategoryPlaylists(
                     state::Category {
@@ -405,6 +419,7 @@ impl SpotifyApp {
             Action::OpenBrowsePlaylist(playlist) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
@@ -422,6 +437,7 @@ impl SpotifyApp {
             Action::ContextMenuNavigateArtist(artist) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
@@ -433,6 +449,7 @@ impl SpotifyApp {
             Action::ContextMenuNavigateAlbum(album) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
@@ -447,6 +464,7 @@ impl SpotifyApp {
             Action::ContextMenuNavigateShow(show) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
@@ -477,6 +495,7 @@ impl SpotifyApp {
             Action::OpenShowDetail(show) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
@@ -489,6 +508,7 @@ impl SpotifyApp {
             Action::OpenShowFromSearch(show) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
+                    self.forward_history.clear();
                 }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.show_detail_context_id = Some(ctx_id.clone());
@@ -505,13 +525,20 @@ impl SpotifyApp {
     fn navigate_to_view(&mut self, view: View) {
         if view != self.current_view {
             self.view_history.push(self.current_view.clone());
+            self.forward_history.clear();
         }
         self.current_view = view;
     }
 
     fn go_back(&mut self) {
         if let Some(prev) = self.view_history.pop() {
-            self.current_view = prev;
+            self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
+        }
+    }
+
+    fn navigate_forward(&mut self) {
+        if let Some(next) = self.forward_history.pop() {
+            self.view_history.push(std::mem::replace(&mut self.current_view, next));
         }
     }
 
@@ -597,6 +624,9 @@ impl SpotifyApp {
                 }
                 NavCommand::Back => {
                     self.go_back();
+                }
+                NavCommand::Forward => {
+                    self.navigate_forward();
                 }
                 NavCommand::Quit => {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1175,7 +1205,9 @@ impl SpotifyApp {
 
 impl eframe::App for SpotifyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        let is_playing = self.state.player.read().playback.is_some();
+        let repaint_ms = if is_playing { 100 } else { 1000 };
+        ctx.request_repaint_after(std::time::Duration::from_millis(repaint_ms));
 
         // Drain toast messages from background tasks
         let toasts: Vec<String> = self.state.toast_queue.lock().drain(..).collect();
@@ -1215,7 +1247,7 @@ impl eframe::App for SpotifyApp {
             .resizable(false)
             .exact_height(theme::PLAYBACK_BAR_HEIGHT)
             .show(ctx, |ui| {
-                let bar_response = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache);
+                let bar_response = playback_bar::render(ui, &self.state, &self.client_pub, &mut self.image_cache, &mut self.waveform_cache);
                 if let Some(view) = bar_response.navigate {
                     self.current_view = view;
                 }
@@ -1324,7 +1356,7 @@ impl eframe::App for SpotifyApp {
                                 };
 
                                 ui.painter()
-                                    .rect_filled(item_rect, egui::CornerRadius::same(6), bg);
+                                    .rect_filled(item_rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), bg);
 
                                 // Device icon
                                 ui.painter().text(
@@ -1396,17 +1428,15 @@ impl eframe::App for SpotifyApp {
             if close_popup {
                 self.show_device_popup = false;
             } else {
-                let popup_rect = ctx.screen_rect();
                 let click_outside = ctx.input(|i| {
                     i.pointer.any_pressed()
                         && i.pointer
                             .latest_pos()
                             .map(|pos| {
-                                // Check if click is outside popup area (approximate)
-                                pos.y < popup_rect.bottom() - theme::PLAYBACK_BAR_HEIGHT - 420.0
-                                    || pos.y > popup_rect.bottom() - theme::PLAYBACK_BAR_HEIGHT
-                                    || pos.x < popup_x - popup_width
-                                    || pos.x > popup_x
+                                pos.y < popup_y
+                                    || pos.y > popup_y + popup_max_height
+                                    || pos.x < popup_x
+                                    || pos.x > popup_x + popup_width
                             })
                             .unwrap_or(false)
                 });
@@ -2019,7 +2049,7 @@ impl SpotifyApp {
                         };
                         ui.painter().rect_filled(
                             cancel_rect,
-                            egui::CornerRadius::same(6),
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
                             cancel_bg,
                         );
                         ui.painter().text(
@@ -2048,7 +2078,7 @@ impl SpotifyApp {
                         };
                         ui.painter().rect_filled(
                             create_rect,
-                            egui::CornerRadius::same(6),
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
                             create_bg,
                         );
                         let create_text_color = if can_create {
@@ -2233,7 +2263,7 @@ impl SpotifyApp {
                                 };
                                 ui.painter().rect_filled(
                                     item_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SMALL),
                                     bg,
                                 );
 
@@ -2435,7 +2465,7 @@ impl SpotifyApp {
                                 };
                                 ui.painter().rect_filled(
                                     item_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SMALL),
                                     bg,
                                 );
 
@@ -2520,7 +2550,7 @@ impl SpotifyApp {
                                     };
                                     ui.painter().rect_filled(
                                         item_rect,
-                                        egui::CornerRadius::same(4),
+                                        egui::CornerRadius::same(theme::RADIUS_SMALL),
                                         bg,
                                     );
 
@@ -2890,9 +2920,12 @@ impl SpotifyApp {
 
     fn render_in_page_search(&mut self, ctx: &egui::Context) {
         let search_width = 300.0;
+        let search_height = 52.0;
         let screen = ctx.screen_rect();
         let search_pos = egui::pos2(screen.center().x - search_width / 2.0, screen.top() + 8.0);
+        let search_rect = egui::Rect::from_min_size(search_pos, egui::vec2(search_width, search_height));
 
+        let mut close_search = false;
         egui::Area::new(egui::Id::new("in_page_search"))
             .order(egui::Order::Foreground)
             .fixed_pos(search_pos)
@@ -2914,11 +2947,10 @@ impl SpotifyApp {
                 });
 
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                    self.show_in_page_search = false;
-                    self.in_page_search_query.clear();
+                    close_search = true;
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    self.show_in_page_search = false;
+                    close_search = true;
                     if !self.in_page_search_query.is_empty() {
                         let query = std::mem::take(&mut self.in_page_search_query);
                         let _ = self.client_pub.send(ClientRequest::Search(query.clone()));
@@ -2929,6 +2961,23 @@ impl SpotifyApp {
                     }
                 }
             });
+
+        if close_search {
+            self.show_in_page_search = false;
+            self.in_page_search_query.clear();
+        } else {
+            let click_outside = ctx.input(|i| {
+                i.pointer.any_pressed()
+                    && i.pointer
+                        .latest_pos()
+                        .map(|pos| !search_rect.contains(pos))
+                        .unwrap_or(false)
+            });
+            if click_outside {
+                self.show_in_page_search = false;
+                self.in_page_search_query.clear();
+            }
+        }
     }
 
     fn toast(&mut self, message: String) {
@@ -2967,7 +3016,7 @@ impl SpotifyApp {
                 let frame = egui::Frame::new()
                     .fill(theme::with_alpha(theme::bg_dark(), 220))
                     .stroke(egui::Stroke::new(1.0, theme::with_alpha(theme::accent(), 60)))
-                    .corner_radius(egui::CornerRadius::same(8))
+                    .corner_radius(egui::CornerRadius::same(theme::RADIUS_MEDIUM))
                     .inner_margin(egui::Margin::symmetric(16, 10));
 
                 frame.show(ui, |ui| {
@@ -3009,7 +3058,7 @@ impl SpotifyApp {
                 let frame = egui::Frame::new()
                     .fill(theme::with_alpha(theme::bg_dark(), 220))
                     .stroke(egui::Stroke::new(1.0, theme::with_alpha(theme::accent(), 40)))
-                    .corner_radius(egui::CornerRadius::same(6))
+                    .corner_radius(egui::CornerRadius::same(theme::RADIUS_MEDIUM))
                     .inner_margin(egui::Margin::symmetric(12, 6));
 
                 frame.show(ui, |ui| {
@@ -3028,7 +3077,8 @@ impl SpotifyApp {
             || self.settings_editing.client_port != self.settings_original.client_port
             || self.settings_editing.default_device != self.settings_original.default_device
             || self.settings_editing.device.name != self.settings_original.device.name
-            || self.settings_editing.device.bitrate != self.settings_original.device.bitrate;
+            || self.settings_editing.device.bitrate != self.settings_original.device.bitrate
+            || self.settings_editing.theme != self.settings_original.theme;
 
         match crate::config::get_config_folder_path() {
             Ok(config_folder) => {
@@ -3052,7 +3102,7 @@ impl SpotifyApp {
                                     self.settings_dirty = false;
                                     self.settings_original = self.settings_editing.clone();
                                     if needs_restart {
-                                        self.toast("Settings saved. Some changes require restart.".to_string());
+                                        self.toast("Settings saved. Restart the app to apply changes.".to_string());
                                     } else {
                                         self.toast("Settings saved".to_string());
                                     }

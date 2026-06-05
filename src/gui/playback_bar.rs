@@ -30,6 +30,7 @@ pub fn render(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
+    waveform_cache: &mut Option<(u64, usize, Vec<f32>)>,
 ) -> PlaybackBarResponse {
     let mut result = PlaybackBarResponse {
         navigate: None,
@@ -280,10 +281,14 @@ pub fn render(
                     let (bar_rect, bar_response) =
                         ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::click());
 
-                    // Generate waveform bars
+                    // Generate waveform bars (cached by duration and bar count)
                     let num_bars = (bar_width / 3.0) as usize;
-                    let seed = d_secs.wrapping_add(p_secs / 5);
-                    let waveform = generate_waveform_bars(num_bars, seed);
+                    let cache_key = (d_secs, num_bars);
+                    if waveform_cache.as_ref().map_or(true, |(d, n, _)| (*d, *n) != cache_key) {
+                        let bars = generate_waveform_bars(num_bars, d_secs);
+                        *waveform_cache = Some((d_secs, num_bars, bars));
+                    }
+                    let waveform = &waveform_cache.as_ref().unwrap().2;
 
                     let bar_gap = 1.0;
                     let bar_w = (bar_width / num_bars as f32) - bar_gap;

@@ -28,6 +28,11 @@ pub struct PlayerState {
     /// streaming connection is established. Used by player_event_task to detect
     /// and ignore stale writes after a connection restart.
     pub streaming_generation: u64,
+
+    /// Deadline after which progress estimation resumes after a seek.
+    /// Set to `Some(Instant::now() + 500ms)` on seek to prevent the progress
+    /// bar from racing ahead of the actual audio position.
+    pub seek_deadline: Option<std::time::Instant>,
 }
 
 impl PlayerState {
@@ -39,8 +44,12 @@ impl PlayerState {
     pub fn current_playback(&self) -> Option<rspotify::model::CurrentPlaybackContext> {
         let mut playback = self.playback.clone()?;
 
+        let seeking = self
+            .seek_deadline
+            .is_some_and(|d| d > std::time::Instant::now());
+
         playback.progress = match (playback.progress, self.playback_last_updated_time) {
-            (Some(d), Some(last_time)) if playback.is_playing => {
+            (Some(d), Some(last_time)) if playback.is_playing && !seeking => {
                 chrono::Duration::from_std(last_time.elapsed())
                     .ok()
                     .map(|elapsed| d + elapsed)
@@ -74,6 +83,12 @@ impl PlayerState {
             Some(ref playback) => {
                 let base = playback.progress?;
                 if !playback.is_playing {
+                    return Some(base);
+                }
+                let seeking = self
+                    .seek_deadline
+                    .is_some_and(|d| d > std::time::Instant::now());
+                if seeking {
                     return Some(base);
                 }
                 let elapsed = self.playback_last_updated_time.map(|t| t.elapsed())?;

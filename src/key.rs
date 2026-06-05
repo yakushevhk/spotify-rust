@@ -2,38 +2,6 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct KeyCombo {
-    pub key: egui::Key,
-    pub modifiers: egui::Modifiers,
-}
-
-impl KeyCombo {
-    pub fn new(key: egui::Key, modifiers: egui::Modifiers) -> Self {
-        Self { key, modifiers }
-    }
-
-    pub fn plain(key: egui::Key) -> Self {
-        Self {
-            key,
-            modifiers: egui::Modifiers::NONE,
-        }
-    }
-
-    pub fn ctrl(key: egui::Key) -> Self {
-        Self {
-            key,
-            modifiers: egui::Modifiers::CTRL,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum KeyInput {
-    Single(KeyCombo),
-    Char(char),
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeySequenceResult {
     /// Need more keys to complete the sequence

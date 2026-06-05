@@ -201,7 +201,7 @@ impl CommandPalette {
                                 };
                                 ui.painter().rect_filled(
                                     item_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SMALL),
                                     bg,
                                 );
 

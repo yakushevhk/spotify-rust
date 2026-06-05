@@ -18,6 +18,28 @@ pub fn render_library(
 
     theme::page_title(ui, "Your Library");
 
+    let data = state.data.read();
+    let library_empty = data.user_data.playlists.is_empty() && data.user_data.saved_albums.is_empty();
+    drop(data);
+
+    if library_empty {
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            ui.label(
+                egui::RichText::new("Loading library...")
+                    .size(16.0)
+                    .color(theme::text_dim()),
+            );
+        });
+        return action;
+    }
+
     egui::ScrollArea::vertical()
         .id_salt("library_scroll")
         .show(ui, |ui| {
@@ -143,15 +165,13 @@ pub fn render_library(
             ui.add_space(12.0);
 
             let data = state.data.read();
-            let albums: Vec<_> = data.user_data.saved_albums.clone();
-            drop(data);
 
             let grid_card_width = ((ui.available_width() - 24.0 - 16.0 * 3.0) / 4.0).min(200.0).max(100.0);
             egui::Grid::new("albums_grid")
                 .num_columns(4)
                 .spacing([16.0, 16.0])
                 .show(ui, |ui| {
-                    for (i, album) in albums.iter().enumerate() {
+                    for (i, album) in data.user_data.saved_albums.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
                             let sub = format!(
@@ -206,16 +226,16 @@ pub fn render_shows(
     theme::page_title(ui, "Your Shows");
 
     let data = state.data.read();
-    let shows: Vec<_> = data.user_data.saved_shows.clone();
+    let shows_empty = data.user_data.saved_shows.is_empty();
     let shows_loading = data.shows_loading;
     drop(data);
 
-    if shows.is_empty() && !shows_loading {
+    if shows_empty && !shows_loading {
         state.data.write().shows_loading = true;
         let _ = client_pub.send(ClientRequest::GetUserSavedShows);
     }
 
-    if shows.is_empty() {
+    if shows_empty {
         ui.add_space(60.0);
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 30.0);
@@ -231,6 +251,7 @@ pub fn render_shows(
             );
         });
     } else {
+        let data = state.data.read();
         egui::ScrollArea::vertical()
             .id_salt("shows_scroll")
             .show(ui, |ui| {
@@ -243,7 +264,7 @@ pub fn render_shows(
                     .num_columns(4)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (i, show) in shows.iter().enumerate() {
+                        for (i, show) in data.user_data.saved_shows.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::show_cover_path(show);
@@ -793,20 +814,57 @@ fn grid_card(
     }
 
     // Title
+    let title_font = egui::FontId::proportional(13.0);
+    let max_text_width = (width - 24.0).max(20.0);
+    let truncated_title = {
+        let galley = ui.fonts(|f| f.layout_no_wrap(title.to_string(), title_font.clone(), theme::text_primary()));
+        if galley.rect.width() > max_text_width {
+            let mut s = title.to_string();
+            while s.len() > 1 {
+                s.pop();
+                let test = format!("{}…", s);
+                let g = ui.fonts(|f| f.layout_no_wrap(test, title_font.clone(), theme::text_primary()));
+                if g.rect.width() <= max_text_width {
+                    break;
+                }
+            }
+            format!("{}…", s)
+        } else {
+            title.to_string()
+        }
+    };
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
-        title,
-        egui::FontId::proportional(13.0),
+        &truncated_title,
+        title_font,
         theme::text_primary(),
     );
 
     // Subtitle
+    let subtitle_font = egui::FontId::proportional(11.0);
+    let truncated_subtitle = {
+        let galley = ui.fonts(|f| f.layout_no_wrap(subtitle.to_string(), subtitle_font.clone(), theme::text_dim()));
+        if galley.rect.width() > max_text_width {
+            let mut s = subtitle.to_string();
+            while s.len() > 1 {
+                s.pop();
+                let test = format!("{}…", s);
+                let g = ui.fonts(|f| f.layout_no_wrap(test, subtitle_font.clone(), theme::text_dim()));
+                if g.rect.width() <= max_text_width {
+                    break;
+                }
+            }
+            format!("{}…", s)
+        } else {
+            subtitle.to_string()
+        }
+    };
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
-        subtitle,
-        egui::FontId::proportional(11.0),
+        &truncated_subtitle,
+        subtitle_font,
         theme::text_dim(),
     );
 
@@ -837,12 +895,12 @@ pub fn render_tracks(
 
     // Breadcrumb navigation
     let breadcrumb_segments = match context_id {
-        Some(state::ContextId::Playlist(_)) => vec![("Library", true), (title, false)],
-        Some(state::ContextId::Album(_)) => vec![("Library", true), (title, false)],
+        Some(state::ContextId::Playlist(_)) => vec![("Home", true), (title, false)],
+        Some(state::ContextId::Album(_)) => vec![("Home", true), (title, false)],
         Some(state::ContextId::Artist(_)) => vec![("Artist", true), (title, false)],
         Some(state::ContextId::Show(_)) => vec![("Shows", true), (title, false)],
-        Some(state::ContextId::Tracks(_)) => vec![("Library", true), (title, false)],
-        None => vec![("Library", true), (title, false)],
+        Some(state::ContextId::Tracks(_)) => vec![("Home", true), (title, false)],
+        None => vec![("Home", true), (title, false)],
     };
     theme::breadcrumb(ui, &breadcrumb_segments);
 
@@ -859,6 +917,24 @@ pub fn render_tracks(
         })
     });
     drop(player);
+
+    if tracks.is_empty() && context_id.is_some() {
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 30.0);
+            ui.spinner();
+        });
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            ui.label(
+                egui::RichText::new("Loading tracks...")
+                    .size(16.0)
+                    .color(theme::text_dim()),
+            );
+        });
+        return sort_action;
+    }
 
     // Table header — clickable columns
     let header_color_default = theme::text_dim();
@@ -1588,7 +1664,7 @@ pub fn render_search(
                             } else {
                                 theme::bg_card()
                             };
-                            ui.painter().rect_filled(rect, 8.0, bg);
+    ui.painter().rect_filled(rect, theme::RADIUS_MEDIUM, bg);
 
                             // Artist circle
                             let circle_rect = egui::Rect::from_center_size(
@@ -1863,18 +1939,57 @@ fn search_grid_card(
         );
     }
 
+    let max_text_width = (width - 24.0).max(20.0);
+
+    let title_font = egui::FontId::proportional(13.0);
+    let truncated_title = {
+        let galley = ui.fonts(|f| f.layout_no_wrap(title.to_string(), title_font.clone(), theme::text_primary()));
+        if galley.rect.width() > max_text_width {
+            let mut s = title.to_string();
+            while s.len() > 1 {
+                s.pop();
+                let test = format!("{}…", s);
+                let g = ui.fonts(|f| f.layout_no_wrap(test, title_font.clone(), theme::text_primary()));
+                if g.rect.width() <= max_text_width {
+                    break;
+                }
+            }
+            format!("{}…", s)
+        } else {
+            title.to_string()
+        }
+    };
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
-        title,
-        egui::FontId::proportional(13.0),
+        &truncated_title,
+        title_font,
         theme::text_primary(),
     );
+
+    let subtitle_font = egui::FontId::proportional(11.0);
+    let truncated_subtitle = {
+        let galley = ui.fonts(|f| f.layout_no_wrap(subtitle.to_string(), subtitle_font.clone(), theme::text_dim()));
+        if galley.rect.width() > max_text_width {
+            let mut s = subtitle.to_string();
+            while s.len() > 1 {
+                s.pop();
+                let test = format!("{}…", s);
+                let g = ui.fonts(|f| f.layout_no_wrap(test, subtitle_font.clone(), theme::text_dim()));
+                if g.rect.width() <= max_text_width {
+                    break;
+                }
+            }
+            format!("{}…", s)
+        } else {
+            subtitle.to_string()
+        }
+    };
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
-        subtitle,
-        egui::FontId::proportional(11.0),
+        &truncated_subtitle,
+        subtitle_font,
         theme::text_dim(),
     );
 
@@ -1981,7 +2096,7 @@ fn category_card(
     } else {
         theme::bg_black()
     };
-    ui.painter().rect_filled(rect, egui::CornerRadius::same(8), bg);
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), bg);
 
     // Hover glow
     if response.hovered() {
@@ -2000,7 +2115,7 @@ fn category_card(
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
             ui.painter().rect_filled(icon_rect, 8.0, theme::bg_active());
             egui::Image::new(texture)
-                .corner_radius(8.0)
+                .corner_radius(theme::RADIUS_MEDIUM)
                 .paint_at(ui, icon_rect);
             icon_drawn = true;
         }
@@ -2246,12 +2361,12 @@ pub fn render_queue(
             .show(ui, |ui| {
                 for (i, item) in queue.queue.iter().enumerate() {
                     let row_height = 48.0;
-                    let (row_rect, response) = ui.allocate_exact_size(
+                    let (row_rect, _response) = ui.allocate_exact_size(
                         egui::vec2(ui.available_width(), row_height),
-                        egui::Sense::click(),
+                        egui::Sense::hover(),
                     );
 
-                    let bg = if response.hovered() {
+                    let bg = if _response.hovered() {
                         theme::bg_card()
                     } else {
                         egui::Color32::TRANSPARENT
@@ -2377,8 +2492,17 @@ impl SettingsTab {
 }
 
 fn settings_toggle(ui: &mut egui::Ui, label: &str, value: &mut bool) -> bool {
+    let row_height = 32.0;
+    let (row_rect, row_resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), row_height),
+        egui::Sense::click(),
+    );
+
     let toggle_size = egui::vec2(36.0, 20.0);
-    let (toggle_rect, toggle_resp) = ui.allocate_exact_size(toggle_size, egui::Sense::click());
+    let toggle_rect = egui::Rect::from_center_size(
+        egui::pos2(row_rect.left() + toggle_size.x / 2.0 + 4.0, row_rect.center().y),
+        toggle_size,
+    );
     let toggle_bg = if *value {
         theme::green()
     } else {
@@ -2396,13 +2520,25 @@ fn settings_toggle(ui: &mut egui::Ui, label: &str, value: &mut bool) -> bool {
         7.0,
         theme::foreground(),
     );
-    ui.add_space(8.0);
-    ui.label(
-        egui::RichText::new(label)
-            .size(13.0)
-            .color(theme::text_secondary()),
+
+    let text_rect = egui::Rect::from_min_size(
+        egui::pos2(toggle_rect.right() + 8.0, row_rect.top()),
+        egui::vec2(row_rect.width() - toggle_size.x - 16.0, row_height),
     );
-    toggle_resp.clicked()
+    ui.painter().text(
+        text_rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(13.0),
+        theme::text_secondary(),
+    );
+
+    if row_resp.clicked() {
+        *value = !*value;
+        true
+    } else {
+        false
+    }
 }
 
 fn settings_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, hint: &str) {
@@ -2573,7 +2709,7 @@ pub fn render_settings(
                 theme::bg_card()
             };
             ui.painter()
-                .rect_filled(btn_rect, egui::CornerRadius::same(6), bg);
+                .rect_filled(btn_rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), bg);
             ui.painter().text(
                 btn_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -2600,10 +2736,10 @@ pub fn render_settings(
                     theme::bg_card()
                 };
                 ui.painter()
-                    .rect_filled(reset_rect, egui::CornerRadius::same(6), reset_bg);
+                    .rect_filled(reset_rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), reset_bg);
                 ui.painter().rect_stroke(
                     reset_rect,
-                    egui::CornerRadius::same(6),
+                    egui::CornerRadius::same(theme::RADIUS_MEDIUM),
                     egui::Stroke::new(1.0, theme::divider()),
                     egui::StrokeKind::Outside,
                 );
@@ -2628,7 +2764,7 @@ pub fn render_settings(
                     theme::green()
                 };
                 ui.painter()
-                    .rect_filled(save_rect, egui::CornerRadius::same(6), save_bg);
+                    .rect_filled(save_rect, egui::CornerRadius::same(theme::RADIUS_MEDIUM), save_bg);
                 ui.painter().text(
                     save_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -3190,12 +3326,12 @@ fn render_settings_keybindings(
                                 );
                                 ui.painter().rect_filled(
                                     badge_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SMALL),
                                     theme::bg_input(),
                                 );
                                 ui.painter().rect_stroke(
                                     badge_rect,
-                                    egui::CornerRadius::same(4),
+                                    egui::CornerRadius::same(theme::RADIUS_SMALL),
                                     egui::Stroke::new(1.0, theme::divider()),
                                     egui::StrokeKind::Outside,
                                 );
@@ -3492,12 +3628,6 @@ pub fn render_lyrics(
                             (theme::lyrics_upcoming(), 16.0, false)
                         };
 
-                        let font_id = if is_bold {
-                            egui::FontId::proportional(size)
-                        } else {
-                            egui::FontId::proportional(size)
-                        };
-
                         let line_height = size * 1.6;
 
                         let (line_rect, _response) = ui.allocate_exact_size(
@@ -3505,28 +3635,28 @@ pub fn render_lyrics(
                             egui::Sense::hover(),
                         );
 
-                        let rich_text = egui::RichText::new(text)
-                            .size(size)
-                            .color(color);
-
-                        if is_bold {
-                            let rich_text = rich_text.strong();
-                            ui.painter().text(
-                                line_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                rich_text.text(),
-                                font_id,
-                                color,
-                            );
+                        let rich_text = if is_bold {
+                            egui::RichText::new(text)
+                                .size(size)
+                                .color(color)
+                                .strong()
                         } else {
-                            ui.painter().text(
-                                line_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                text,
-                                font_id,
-                                color,
-                            );
-                        }
+                            egui::RichText::new(text)
+                                .size(size)
+                                .color(color)
+                        };
+
+                        let label = egui::Label::new(rich_text)
+                            .selectable(false);
+
+                        ui.allocate_new_ui(
+                            egui::UiBuilder::new()
+                                .max_rect(line_rect)
+                                .layout(egui::Layout::centered_and_justified(egui::Direction::TopDown)),
+                            |ui| {
+                                ui.add(label);
+                            },
+                        );
                     }
 
                     // Bottom padding
