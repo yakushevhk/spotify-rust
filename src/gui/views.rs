@@ -252,20 +252,108 @@ pub fn render_shows(
     }
 
     if shows_empty {
-        ui.add_space(60.0);
-        ui.horizontal(|ui| {
-            ui.add_space(ui.available_width() / 2.0 - 30.0);
-            ui.spinner();
-        });
-        ui.add_space(16.0);
-        ui.horizontal(|ui| {
-            ui.add_space(ui.available_width() / 2.0 - 80.0);
-            ui.label(
-                egui::RichText::new("Loading shows...")
-                    .size(16.0)
-                    .color(theme::text_dim()),
-            );
-        });
+        if shows_loading {
+            // Still loading - show spinner
+            ui.add_space(60.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 30.0);
+                ui.spinner();
+            });
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 80.0);
+                ui.label(
+                    egui::RichText::new("Loading shows...")
+                        .size(16.0)
+                        .color(theme::text_dim()),
+                );
+            });
+        } else {
+            // Actually empty - show helpful message
+            ui.add_space(80.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 24.0);
+                ui.label(
+                    egui::RichText::new(theme::ICON_SHOWS)
+                        .size(48.0)
+                        .color(theme::text_muted()),
+                );
+            });
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 100.0);
+                ui.label(
+                    egui::RichText::new("No saved shows")
+                        .size(18.0)
+                        .strong()
+                        .color(theme::text_primary()),
+                );
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 140.0);
+                ui.label(
+                    egui::RichText::new("Discover podcasts and follow shows to see them here")
+                        .size(13.0)
+                        .color(theme::text_dim()),
+                );
+            });
+            ui.add_space(24.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 100.0);
+                // Browse shows button
+                let (browse_rect, browse_resp) = ui.allocate_exact_size(
+                    egui::vec2(100.0, 36.0),
+                    egui::Sense::click(),
+                );
+                let browse_bg = if browse_resp.hovered() {
+                    theme::green_hover()
+                } else {
+                    theme::green()
+                };
+                ui.painter().rect_filled(browse_rect, theme::RADIUS_MEDIUM, browse_bg);
+                ui.painter().text(
+                    browse_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Browse shows",
+                    egui::FontId::proportional(13.0),
+                    theme::bg_black(),
+                );
+                if browse_resp.clicked() {
+                    action = Action::OpenBrowseCategory("0JQ5DAqbMKFHCxg5H5r3T1".to_string(), "Podcasts".to_string());
+                }
+                
+                ui.add_space(12.0);
+                
+                // Search button
+                let (search_rect, search_resp) = ui.allocate_exact_size(
+                    egui::vec2(80.0, 36.0),
+                    egui::Sense::click(),
+                );
+                let search_bg = if search_resp.hovered() {
+                    theme::bg_hover()
+                } else {
+                    theme::bg_card()
+                };
+                ui.painter().rect_filled(search_rect, theme::RADIUS_MEDIUM, search_bg);
+                ui.painter().rect_stroke(
+                    search_rect,
+                    theme::RADIUS_MEDIUM,
+                    egui::Stroke::new(1.0, theme::divider()),
+                    egui::StrokeKind::Outside,
+                );
+                ui.painter().text(
+                    search_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Search",
+                    egui::FontId::proportional(13.0),
+                    theme::text_primary(),
+                );
+                if search_resp.clicked() {
+                    action = Action::Navigate(View::Search);
+                }
+            });
+        }
     } else {
         let data = state.data.read();
         egui::ScrollArea::vertical()
@@ -337,6 +425,12 @@ pub fn render_show_detail(
     context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
+
+    // Breadcrumb navigation for ShowDetail view
+    if let Some(ref show) = show {
+        let breadcrumb_segments = vec![("Library", true), ("Shows", true), (&show.name, false)];
+        theme::breadcrumb(ui, &breadcrumb_segments);
+    }
 
     // Back button
     ui.add_space(16.0);
@@ -2230,29 +2324,33 @@ pub fn render_browse_category_playlists(
 ) -> Action {
     let mut action = Action::None;
 
-        // Back button
-        ui.add_space(16.0);
-        ui.horizontal(|ui| {
-            ui.add_space(24.0);
-            let back_rect = ui
-                .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
-            let bg = if back_rect.1.hovered() {
-                theme::bg_hover()
-            } else {
-                theme::bg_card()
-            };
-            ui.painter().rect_filled(back_rect.0, theme::RADIUS_MEDIUM, bg);
-            ui.painter().text(
-                back_rect.0.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{2190} Back",
-                egui::FontId::proportional(13.0),
-                theme::text_primary(),
-            );
-            if back_rect.1.clicked() {
-                action = Action::BackToBrowse;
-            }
-        });
+    // Breadcrumb navigation for BrowseCategory view
+    let breadcrumb_segments = vec![("Browse", true), (category_name, false)];
+    theme::breadcrumb(ui, &breadcrumb_segments);
+
+    // Back button
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let back_rect = ui
+            .allocate_exact_size(egui::vec2(80.0, 32.0), egui::Sense::click());
+        let bg = if back_rect.1.hovered() {
+            theme::bg_hover()
+        } else {
+            theme::bg_card()
+        };
+        ui.painter().rect_filled(back_rect.0, theme::RADIUS_MEDIUM, bg);
+        ui.painter().text(
+            back_rect.0.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{2190} Back",
+            egui::FontId::proportional(13.0),
+            theme::text_primary(),
+        );
+        if back_rect.1.clicked() {
+            action = Action::BackToBrowse;
+        }
+    });
 
     theme::page_title(ui, category_name);
 
@@ -3747,6 +3845,10 @@ pub fn render_lyrics(
                     let viewport_height = ui.available_height().max(200.0);
                     ui.add_space(viewport_height / 2.0 - 40.0);
 
+                    // Calculate target scroll position for current line
+                    let line_height = 20.0 * 1.6; // base line height
+                    let _target_scroll_y = current_idx as f32 * line_height;
+
                     for (i, (_ts, text)) in lines.iter().enumerate() {
                         let (color, size, is_bold) = if i < current_idx {
                             (theme::lyrics_played(), 16.0, false)
@@ -3756,12 +3858,22 @@ pub fn render_lyrics(
                             (theme::lyrics_upcoming(), 16.0, false)
                         };
 
-                        let line_height = size * 1.6;
+                        let current_line_height = size * 1.6;
 
                         let (line_rect, _response) = ui.allocate_exact_size(
-                            egui::vec2(ui.available_width(), line_height),
+                            egui::vec2(ui.available_width(), current_line_height),
                             egui::Sense::hover(),
                         );
+
+                        // Auto-scroll current line to center
+                        if i == current_idx {
+                            let line_center = line_rect.center().y;
+                            let viewport_center = ui.min_rect().min.y + viewport_height / 2.0;
+                            let scroll_delta = line_center - viewport_center;
+                            if scroll_delta.abs() > 5.0 {
+                                ui.scroll_to_rect(line_rect, Some(egui::Align::Center));
+                            }
+                        }
 
                         let rich_text = if is_bold {
                             egui::RichText::new(text)
@@ -3863,6 +3975,12 @@ pub fn render_artist(
     context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
     let mut action = Action::None;
+
+    // Breadcrumb navigation for Artist view
+    if let Some(crate::state::Context::Artist { artist, .. }) = artist_context {
+        let breadcrumb_segments = vec![("Library", true), ("Artists", true), (&artist.name, false)];
+        theme::breadcrumb(ui, &breadcrumb_segments);
+    }
 
     let ctx = match artist_context {
         Some(crate::state::Context::Artist { artist, top_tracks, albums, related_artists }) => {

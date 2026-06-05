@@ -3,13 +3,16 @@ use eframe::egui;
 use crate::gui::{theme, Action, View};
 use crate::state::{self, SharedState};
 
-fn parent_view(view: &View) -> &View {
+/// Get the parent view for highlighting in sidebar
+/// This determines which sidebar item should be highlighted based on current view
+fn parent_view(view: &View) -> View {
     match view {
-        View::Tracks => &View::Library,
-        View::ShowDetail => &View::Shows,
-        View::BrowseCategory { .. } => &View::Browse,
-        View::Artist => &View::Library,
-        other => other,
+        View::Tracks => View::Library,
+        View::ShowDetail => View::Shows,
+        View::BrowseCategory { .. } => View::Browse,
+        View::Artist => View::Library,
+        // Main views map to themselves
+        View::Library | View::Search | View::Browse | View::Shows | View::Queue | View::Lyrics | View::Settings | View::Help | View::Logs => view.clone(),
     }
 }
 
@@ -64,6 +67,95 @@ pub fn render(
     });
     ui.allocate_space(egui::vec2(ui.available_width(), 16.0));
 
+    // Now Playing section
+    if is_authenticated && !collapsed {
+        let player = state.player.read();
+        if let Some(ref playback) = player.playback {
+            if let Some(ref item) = playback.item {
+                let (track_name, artist_name) = match item {
+                    rspotify::model::PlayableItem::Track(t) => {
+                        let artists: Vec<_> = t.artists.iter().map(|a| a.name.as_str()).collect();
+                        (t.name.clone(), artists.join(", "))
+                    }
+                    rspotify::model::PlayableItem::Episode(e) => {
+                        (e.name.clone(), e.show.name.clone())
+                    }
+                    _ => (String::new(), String::new()),
+                };
+                
+                if !track_name.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(16.0);
+                        ui.label(
+                            egui::RichText::new("Now Playing")
+                                .size(11.0)
+                                .color(theme::text_dim()),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    
+                    let (np_rect, np_resp) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width() - 32.0, 56.0),
+                        egui::Sense::click(),
+                    );
+                    let np_bg = if np_resp.hovered() {
+                        theme::bg_hover()
+                    } else {
+                        theme::bg_card()
+                    };
+                    ui.painter().rect_filled(np_rect, theme::RADIUS_MEDIUM, np_bg);
+                    
+                    // Green left accent when playing
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(np_rect.min, egui::vec2(3.0, np_rect.height())),
+                        theme::RADIUS_SMALL,
+                        theme::green(),
+                    );
+                    
+                    // Track name
+                    ui.painter().text(
+                        np_rect.left_center() + egui::vec2(16.0, -10.0),
+                        egui::Align2::LEFT_CENTER,
+                        &track_name,
+                        egui::FontId::proportional(13.0),
+                        theme::text_primary(),
+                    );
+                    
+                    // Artist name
+                    ui.painter().text(
+                        np_rect.left_center() + egui::vec2(16.0, 10.0),
+                        egui::Align2::LEFT_CENTER,
+                        &artist_name,
+                        egui::FontId::proportional(11.0),
+                        theme::text_dim(),
+                    );
+                    
+                    if np_resp.clicked() {
+                        // Navigate to current track context
+                        action = Action::NavigateToCurrentTrack;
+                    }
+                    
+                    ui.add_space(8.0);
+                    theme::divider_line(ui);
+                }
+            }
+        }
+    } else if is_authenticated && collapsed {
+        // Just show a small indicator when collapsed
+        let player = state.player.read();
+        if player.playback.is_some() {
+            ui.horizontal(|ui| {
+                ui.add_space(16.0);
+                ui.label(
+                    egui::RichText::new(theme::ICON_PLAY)
+                        .size(14.0)
+                        .color(theme::green()),
+                );
+            });
+            ui.add_space(4.0);
+        }
+    }
+
     // Sign In button (when not authenticated)
     if !is_authenticated {
         let (signin_rect, signin_resp) = ui
@@ -108,8 +200,10 @@ pub fn render(
         (View::Help, theme::ICON_HELP, "Help"),
     ];
 
+    let active_view = parent_view(current_view);
     for (view, icon, label) in &nav {
-        if theme::nav_item(ui, icon, label, *parent_view(current_view) == *view, collapsed).clicked() {
+        let is_selected = active_view == *view;
+        if theme::nav_item(ui, icon, label, is_selected, collapsed).clicked() {
             action = Action::Navigate(view.clone());
         }
     }

@@ -147,6 +147,7 @@ enum Action {
     OpenShows,
     OpenShowDetail(state::Show),
     OpenShowFromSearch(state::Show),
+    NavigateToCurrentTrack,
     None,
 }
 
@@ -218,6 +219,17 @@ pub struct SpotifyApp {
     waveform_cache: Option<(String, usize, Vec<f32>)>,
     selected_artist_track: Option<usize>,
     search_debounce_state: crate::gui::views::SearchDebounceState,
+    
+    // Track selection persistence per context
+    selected_track_per_context: std::collections::HashMap<String, usize>,
+    
+    // Search results caching
+    last_search_query: String,
+    last_search_results: Option<crate::state::SearchResults>,
+    
+    // Settings unsaved changes dialog
+    show_settings_confirm_dialog: bool,
+    pending_view_navigation: Option<View>,
 }
 
 impl SpotifyApp {
@@ -311,6 +323,11 @@ impl SpotifyApp {
             waveform_cache: None,
             selected_artist_track: None,
             search_debounce_state: crate::gui::views::SearchDebounceState::default(),
+            selected_track_per_context: std::collections::HashMap::new(),
+            last_search_query: String::new(),
+            last_search_results: None,
+            show_settings_confirm_dialog: false,
+            pending_view_navigation: None,
         }
     }
 
@@ -580,16 +597,63 @@ impl SpotifyApp {
                 self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
+            Action::NavigateToCurrentTrack => {
+                // Navigate to the context of the currently playing track
+                let player = self.state.player.read();
+                if let Some(ref playback) = player.playback {
+                    if let Some(ref context) = playback.context {
+                        let uri = context.uri.clone();
+                        drop(player);
+                        
+                        // Parse context URI and navigate appropriately
+                        if uri.contains(":playlist:") {
+                            self.navigate_to_view(View::Tracks);
+                        } else if uri.contains(":album:") {
+                            self.navigate_to_view(View::Tracks);
+                        } else if uri.contains(":artist:") {
+                            self.navigate_to_view(View::Artist);
+                        } else if uri.contains(":show:") {
+                            self.navigate_to_view(View::ShowDetail);
+                        } else {
+                            self.navigate_to_view(View::Queue);
+                        }
+                    } else {
+                        drop(player);
+                        self.navigate_to_view(View::Queue);
+                    }
+                } else {
+                    drop(player);
+                }
+            }
             Action::None => {}
         }
     }
 
     fn navigate_to_view(&mut self, view: View) {
         if view != self.current_view {
-            self.view_history.push(self.current_view.clone());
-            self.forward_history.clear();
+            // Check for unsaved settings changes
+            if self.current_view == View::Settings && self.settings_dirty {
+                self.pending_view_navigation = Some(view);
+                self.show_settings_confirm_dialog = true;
+                return;
+            }
+            
+            // Don't add modal/popup views to history
+            if !self.is_modal_view(&self.current_view) {
+                self.view_history.push(self.current_view.clone());
+                self.forward_history.clear();
+            }
         }
         self.current_view = view;
+    }
+
+    /// Check if a view is a modal/popup that shouldn't be added to history
+    fn is_modal_view(&self, view: &View) -> bool {
+        matches!(view, 
+            View::Help | 
+            View::Logs |
+            View::Settings
+        )
     }
 
     fn go_back(&mut self) {
@@ -1572,6 +1636,66 @@ impl eframe::App for SpotifyApp {
             });
         self.handle_action(action);
 
+        // Top panel — back/forward navigation buttons
+        egui::TopBottomPanel::top("header_bar")
+            .resizable(false)
+            .exact_height(48.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    
+                    // Back button
+                    let can_go_back = !self.view_history.is_empty();
+                    let back_btn_size = egui::vec2(32.0, 32.0);
+                    let (back_rect, back_resp) = ui.allocate_exact_size(back_btn_size, egui::Sense::click());
+                    let back_bg = if !can_go_back {
+                        theme::bg_dark()
+                    } else if back_resp.hovered() {
+                        theme::bg_hover()
+                    } else {
+                        theme::bg_card()
+                    };
+                    ui.painter().rect_filled(back_rect, theme::RADIUS_MEDIUM, back_bg);
+                    let back_icon_color = if can_go_back { theme::text_primary() } else { theme::text_muted() };
+                    ui.painter().text(
+                        back_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        theme::ICON_BACK,
+                        egui::FontId::proportional(16.0),
+                        back_icon_color,
+                    );
+                    if back_resp.clicked() && can_go_back {
+                        self.go_back();
+                    }
+                    
+                    ui.add_space(8.0);
+                    
+                    // Forward button
+                    let can_go_forward = !self.forward_history.is_empty();
+                    let fwd_btn_size = egui::vec2(32.0, 32.0);
+                    let (fwd_rect, fwd_resp) = ui.allocate_exact_size(fwd_btn_size, egui::Sense::click());
+                    let fwd_bg = if !can_go_forward {
+                        theme::bg_dark()
+                    } else if fwd_resp.hovered() {
+                        theme::bg_hover()
+                    } else {
+                        theme::bg_card()
+                    };
+                    ui.painter().rect_filled(fwd_rect, theme::RADIUS_MEDIUM, fwd_bg);
+                    let fwd_icon_color = if can_go_forward { theme::text_primary() } else { theme::text_muted() };
+                    ui.painter().text(
+                        fwd_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{2192}", // Right arrow
+                        egui::FontId::proportional(16.0),
+                        fwd_icon_color,
+                    );
+                    if fwd_resp.clicked() && can_go_forward {
+                        self.navigate_forward();
+                    }
+                });
+            });
+
         // Keyboard shortcuts (disabled when text input is focused)
         if !ctx.wants_keyboard_input() {
             // Check for raw key events to feed into the key sequence state machine
@@ -1888,6 +2012,11 @@ impl eframe::App for SpotifyApp {
             }
         }
 
+        // Render Settings confirm dialog
+        if self.show_settings_confirm_dialog {
+            self.render_settings_confirm_dialog(ctx);
+        }
+
         // Render Create Playlist popup
         if self.show_create_playlist_popup {
             self.render_create_playlist_popup(ctx);
@@ -2012,6 +2141,183 @@ impl SpotifyApp {
         self.send_request(ClientRequest::Player(
             PlayerRequest::StartPlayback(playback, None),
         ));
+    }
+
+    fn render_settings_confirm_dialog(&mut self, ctx: &egui::Context) {
+        let dialog_width = 360.0;
+        let dialog_height = 180.0;
+        let screen = ctx.screen_rect();
+        let dialog_pos = egui::pos2(
+            screen.center().x - dialog_width / 2.0,
+            screen.center().y - dialog_height / 2.0,
+        );
+
+        let mut close = false;
+        let mut save = false;
+        let mut discard = false;
+
+        // Overlay background
+        egui::Area::new(egui::Id::new("settings_confirm_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen.min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                ui.painter().rect_filled(
+                    overlay_rect,
+                    0,
+                    theme::with_alpha(theme::bg_black(), 150),
+                );
+            });
+
+        egui::Area::new(egui::Id::new("settings_confirm_dialog"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(dialog_pos)
+            .show(ctx, |ui| {
+                let frame = theme::glass_frame()
+                    .inner_margin(egui::Margin::same(24));
+
+                frame.show(ui, |ui| {
+                    ui.set_min_width(dialog_width - 48.0);
+
+                    // Title
+                    ui.label(
+                        egui::RichText::new("Save changes?")
+                            .size(18.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                    ui.add_space(8.0);
+
+                    // Message
+                    ui.label(
+                        egui::RichText::new("You have unsaved changes in Settings.\nDo you want to save them before leaving?")
+                            .size(13.0)
+                            .color(theme::text_secondary()),
+                    );
+                    ui.add_space(24.0);
+
+                    // Buttons
+                    ui.horizontal(|ui| {
+                        // Cancel button
+                        let (cancel_rect, cancel_resp) = ui
+                            .allocate_exact_size(egui::vec2(90.0, 36.0), egui::Sense::click());
+                        let cancel_bg = if cancel_resp.hovered() {
+                            theme::bg_hover()
+                        } else {
+                            theme::bg_card()
+                        };
+                        ui.painter().rect_filled(
+                            cancel_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            cancel_bg,
+                        );
+                        ui.painter().rect_stroke(
+                            cancel_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            egui::Stroke::new(1.0, theme::divider()),
+                            egui::StrokeKind::Outside,
+                        );
+                        ui.painter().text(
+                            cancel_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Cancel",
+                            egui::FontId::proportional(13.0),
+                            theme::text_primary(),
+                        );
+                        if cancel_resp.clicked() {
+                            close = true;
+                        }
+
+                        ui.add_space(12.0);
+
+                        // Discard button
+                        let (discard_rect, discard_resp) = ui
+                            .allocate_exact_size(egui::vec2(90.0, 36.0), egui::Sense::click());
+                        let discard_bg = if discard_resp.hovered() {
+                            theme::bg_hover()
+                        } else {
+                            theme::bg_card()
+                        };
+                        ui.painter().rect_filled(
+                            discard_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            discard_bg,
+                        );
+                        ui.painter().rect_stroke(
+                            discard_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            egui::Stroke::new(1.0, theme::divider()),
+                            egui::StrokeKind::Outside,
+                        );
+                        ui.painter().text(
+                            discard_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Discard",
+                            egui::FontId::proportional(13.0),
+                            theme::text_primary(),
+                        );
+                        if discard_resp.clicked() {
+                            discard = true;
+                        }
+
+                        ui.add_space(12.0);
+
+                        // Save button
+                        let (save_rect, save_resp) = ui
+                            .allocate_exact_size(egui::vec2(90.0, 36.0), egui::Sense::click());
+                        let save_bg = if save_resp.hovered() {
+                            theme::green_hover()
+                        } else {
+                            theme::green()
+                        };
+                        ui.painter().rect_filled(
+                            save_rect,
+                            egui::CornerRadius::same(theme::RADIUS_MEDIUM),
+                            save_bg,
+                        );
+                        ui.painter().text(
+                            save_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Save",
+                            egui::FontId::proportional(13.0),
+                            theme::bg_black(),
+                        );
+                        if save_resp.clicked() {
+                            save = true;
+                        }
+                    });
+                });
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+
+        // Handle close
+        if close {
+            self.show_settings_confirm_dialog = false;
+            self.pending_view_navigation = None;
+        }
+
+        // Handle discard
+        if discard {
+            self.settings_editing = self.settings_original.clone();
+            self.settings_dirty = false;
+            self.show_settings_confirm_dialog = false;
+            if let Some(view) = self.pending_view_navigation.take() {
+                self.navigate_to_view(view);
+            }
+        }
+
+        // Handle save
+        if save {
+            self.save_settings();
+            self.show_settings_confirm_dialog = false;
+            if let Some(view) = self.pending_view_navigation.take() {
+                self.navigate_to_view(view);
+            }
+        }
     }
 
     fn render_create_playlist_popup(&mut self, ctx: &egui::Context) {
