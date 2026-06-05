@@ -7,11 +7,16 @@ use tracing_subscriber::Layer;
 pub struct BufferLayer {
     buffer: Arc<Mutex<VecDeque<String>>>,
     max_lines: usize,
+    max_level: tracing::Level,
 }
 
 impl BufferLayer {
     pub fn new(buffer: Arc<Mutex<VecDeque<String>>>, max_lines: usize) -> Self {
-        Self { buffer, max_lines }
+        Self {
+            buffer,
+            max_lines,
+            max_level: tracing::Level::INFO,
+        }
     }
 }
 
@@ -21,6 +26,11 @@ impl<S: Subscriber> Layer<S> for BufferLayer {
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
+        // M6: skip events above the configured level to avoid buffer flood
+        if *event.metadata().level() > self.max_level {
+            return;
+        }
+
         let mut visitor = MessageVisitor::default();
         event.record(&mut visitor);
 
@@ -50,7 +60,14 @@ struct MessageVisitor {
 impl tracing::field::Visit for MessageVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn core::fmt::Debug) {
         if field.name() == "message" {
+            // M5: use Display formatting for strings to avoid escaped quotes
             self.message = format!("{value:?}");
+        } else {
+            // Capture other fields as key=value pairs
+            if !self.message.is_empty() {
+                self.message.push(' ');
+            }
+            self.message.push_str(&format!("{}={value:?}", field.name()));
         }
     }
 }

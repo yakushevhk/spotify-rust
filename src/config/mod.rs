@@ -25,9 +25,9 @@ pub use theme::{Theme, Palette};
 
 use crate::auth::{NCSPOT_CLIENT_ID, SPOTIFY_CLIENT_ID};
 
-static CONFIGS: OnceLock<Configs> = OnceLock::new();
+static CONFIGS: OnceLock<parking_lot::Mutex<Configs>> = OnceLock::new();
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Configs {
     pub app_config: AppConfig,
     pub keymap_config: KeymapConfig,
@@ -448,7 +448,7 @@ impl Default for LayoutConfig {
 }
 
 impl LayoutConfig {
-    fn check_values(&self) -> anyhow::Result<()> {
+    pub fn check_values(&self) -> anyhow::Result<()> {
         if self.library.album_percent + self.library.playlist_percent > 99 {
             anyhow::bail!("Invalid library layout: summation of album_percent and playlist_percent cannot be greater than 99!");
         }
@@ -534,13 +534,25 @@ pub fn get_cache_folder_path() -> Result<PathBuf> {
     }
 }
 
-pub fn get_config() -> &'static Configs {
-    CONFIGS.get().expect("configs is already initialized")
+pub fn get_config() -> Configs {
+    CONFIGS
+        .get()
+        .expect("configs is already initialized")
+        .lock()
+        .clone()
 }
 pub fn set_config(configs: Configs) {
-    CONFIGS
-        .set(configs)
-        .expect("configs should be initialized only once");
+    CONFIGS.get_or_init(|| parking_lot::Mutex::new(configs));
+}
+
+/// Reload configuration from disk. Called after settings are saved in the GUI.
+pub fn reload_config() -> anyhow::Result<()> {
+    let config_folder = get_config_folder_path()?;
+    let cache_folder = get_cache_folder_path()?;
+    let new_configs = Configs::new(&config_folder, &cache_folder)?;
+    let lock = CONFIGS.get().expect("configs is already initialized");
+    *lock.lock() = new_configs;
+    Ok(())
 }
 
 // Apply a CLI config override to the application config.

@@ -11,10 +11,20 @@ const MAX_TEXTURES: usize = 256;
 pub struct ImageCache {
     textures: HashMap<String, egui::TextureHandle>,
     access_order: VecDeque<String>,
-    download_tx: mpsc::Sender<(String, PathBuf)>,
-    _download_thread: std::thread::JoinHandle<()>,
+    download_tx: Option<mpsc::Sender<(String, PathBuf)>>,
+    download_thread: Option<std::thread::JoinHandle<()>>,
     in_flight: HashSet<String>,
     done_rx: mpsc::Receiver<String>,
+}
+
+impl Drop for ImageCache {
+    fn drop(&mut self) {
+        // Close the channel so the download thread exits its loop
+        drop(self.download_tx.take());
+        if let Some(handle) = self.download_thread.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 impl ImageCache {
@@ -29,7 +39,10 @@ impl ImageCache {
                     Ok(rt) => rt,
                     Err(_) => return,
                 };
-                let http = reqwest::Client::new();
+                let http = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(15))
+                    .build()
+                    .unwrap_or_default();
                 while let Ok((url, path)) = rx.recv() {
                     if path.exists() {
                         let _ = done_tx.send(url);
@@ -48,10 +61,15 @@ impl ImageCache {
                         if let Some(parent) = path.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        std::fs::write(&path, &bytes)?;
+                        // M25: write to temp file then rename to avoid TOCTOU
+                        let tmp = path.with_extension("tmp");
+                        std::fs::write(&tmp, &bytes)?;
+                        std::fs::rename(&tmp, &path)?;
                         Ok::<(), anyhow::Error>(())
                     });
-                    let _ = result;
+                    if let Err(e) = &result {
+                        tracing::warn!("Image download failed for {url}: {e:#}");
+                    }
                     let _ = done_tx.send(url);
                 }
             })
@@ -60,8 +78,8 @@ impl ImageCache {
         Self {
             textures: HashMap::new(),
             access_order: VecDeque::new(),
-            download_tx: tx,
-            _download_thread: handle,
+            download_tx: Some(tx),
+            download_thread: Some(handle),
             in_flight: HashSet::new(),
             done_rx,
         }
@@ -80,9 +98,9 @@ impl ImageCache {
             return;
         }
         self.in_flight.insert(url.to_string());
-        let _ = self
-            .download_tx
-            .send((url.to_string(), path.to_path_buf()));
+        if let Some(ref tx) = self.download_tx {
+            let _ = tx.send((url.to_string(), path.to_path_buf()));
+        }
     }
 
     pub fn get_texture(
@@ -136,8 +154,7 @@ pub fn album_cover_path(album: &state::Album) -> Option<PathBuf> {
     let artist = album.artists.first()?;
     let id_str = album.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = format!("{}-{}-cover-{}.jpg", album.name, artist.name, id_prefix)
-        .replace('/', "");
+    let filename = sanitize_filename(&format!("{}-{}-cover-{}.jpg", album.name, artist.name, id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -149,7 +166,7 @@ pub fn album_cover_path(album: &state::Album) -> Option<PathBuf> {
 pub fn playlist_cover_path(playlist: &state::Playlist) -> Option<PathBuf> {
     let id_str = playlist.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = format!("playlist-{}-cover.jpg", id_prefix).replace('/', "");
+    let filename = sanitize_filename(&format!("playlist-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -161,7 +178,7 @@ pub fn playlist_cover_path(playlist: &state::Playlist) -> Option<PathBuf> {
 pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
     let id_str = artist.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = format!("artist-{}-cover.jpg", id_prefix).replace('/', "");
+    let filename = sanitize_filename(&format!("artist-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -173,7 +190,7 @@ pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
 pub fn show_cover_path(show: &state::Show) -> Option<PathBuf> {
     let id_str = show.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = format!("show-{}-cover.jpg", id_prefix).replace('/', "");
+    let filename = sanitize_filename(&format!("show-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -187,11 +204,23 @@ pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
         return None;
     }
     let id_prefix = &category.id[..category.id.len().min(6)];
-    let filename = format!("category-{}-icon.jpg", id_prefix).replace('/', "");
+    let filename = sanitize_filename(&format!("category-{}-icon.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
             .join("image")
             .join(filename),
     )
+}
+
+/// Sanitize a filename by replacing characters that are unsafe on any platform
+/// (Windows: \ : * ? " < > |, plus NUL; Unix: /).
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect()
 }

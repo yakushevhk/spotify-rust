@@ -79,8 +79,11 @@ fn init_logging(
     let env_filter = tracing_subscriber::EnvFilter::try_from_env("RUST_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("spotify_player_gui=info,librespot=info"));
 
-    let log_file = std::fs::File::create(log_folder.join(format!("{log_prefix}.log")))
-        .context("failed to create log file")?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_folder.join(format!("{log_prefix}.log")))
+        .context("failed to create/open log file")?;
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
@@ -95,21 +98,38 @@ fn init_logging(
     Ok(())
 }
 
+// Architecture note (M8): `start_app` runs inside `#[tokio::main]` so the
+// OAuth browser flow can use async.  `eframe::run_native` is a blocking call
+// that takes over the main thread for the GUI event loop.  This is intentional
+// – the tokio runtime stays alive behind the scenes (spawned tasks keep
+// running) while the GUI drives the UI on the main thread.
 #[tokio::main]
 async fn start_app(state: &state::SharedState) -> Result<()> {
-    let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(256);
+    let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(1024);
 
-    eprintln!("Opening browser for Spotify login (step 1/2)...");
+    let configs = config::get_config();
+    // Only show "step 1" when a user-provided client_id is configured (ncspot
+    // default does not open a separate browser for PKCE auth).
+    let has_user_client = configs.app_config.get_user_client_id()?.is_some();
+    if has_user_client {
+        eprintln!("Opening browser for Spotify login...");
+    }
     let client = client::AppClient::new()
         .await
         .context("construct app client")?;
-    eprintln!("Opening browser for Spotify login (step 2/2)...");
+    eprintln!("Authenticating with Spotify...");
     client
         .new_session(Some(state), true)
         .await
         .context("initialize new Spotify session")?;
 
-    init_spotify(&client_pub).context("Failed to initialize the Spotify data")?;
+    // Note (M14): eprintln! is used above because tracing is not yet
+    // initialized.  After init_logging() runs, all output should use
+    // tracing macros instead.
+    if let Err(err) = init_spotify(&client_pub) {
+        tracing::error!("{:#}", err);
+        return Err(err).context("Failed to initialize the Spotify data");
+    }
 
     // client event handler task
     let client_handler = tokio::task::spawn({
@@ -161,7 +181,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
             return;
         }
         tracing::info!("Received shutdown signal, cleaning up...");
-        signal_state.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        signal_state.running.store(false, std::sync::atomic::Ordering::Release);
     });
 
     // Launch the GUI
@@ -184,7 +204,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     .map_err(|e| anyhow::anyhow!("GUI error: {e}"))?;
 
     // Signal background threads to shut down cleanly
-    state.running.store(false, std::sync::atomic::Ordering::SeqCst);
+    state.running.store(false, std::sync::atomic::Ordering::Release);
 
     // Shutdown spawned tasks
     client_handler.abort();
@@ -227,11 +247,13 @@ fn main() -> Result<()> {
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
     if !cache_audio_folder.exists() {
-        std::fs::create_dir_all(&cache_audio_folder)?;
+        std::fs::create_dir_all(&cache_audio_folder)
+            .with_context(|| format!("failed to create {}", cache_audio_folder.display()))?;
     }
     let cache_image_folder = cache_folder.join("image");
     if !cache_image_folder.exists() {
-        std::fs::create_dir_all(&cache_image_folder)?;
+        std::fs::create_dir_all(&cache_image_folder)
+            .with_context(|| format!("failed to create {}", cache_image_folder.display()))?;
     }
 
     {
@@ -242,7 +264,8 @@ fn main() -> Result<()> {
         config::set_config(configs);
     }
 
-    let log_folder = config::get_config()
+    let configs = config::get_config();
+    let log_folder = configs
         .app_config
         .log_folder
         .as_deref()

@@ -64,7 +64,7 @@ impl AppClient {
     /// Construct a new client
     pub async fn new() -> Result<Self> {
         let configs = config::get_config();
-        let auth_config = AuthConfig::new(configs)?;
+        let auth_config = AuthConfig::new(&configs)?;
 
         let mut user_client = configs.app_config.get_user_client_id()?.clone().map(|id| {
             let creds = rspotify::Credentials { id, secret: None };
@@ -367,7 +367,9 @@ impl AppClient {
                 // because `TransferPlayback` doesn't require an active playback
                 self.user_client()?.transfer_playback(&device_id, Some(force_play)).await?;
                 tracing::info!("Transferred playback to device with id={}", device_id);
-                return Ok(None);
+                // #63: don't clear buffered_playback here; the caller should
+                // trigger update_playback after transfer to refresh state.
+                return Ok(playback);
             }
             PlayerRequest::StartPlayback(p, shuffle) => {
                 if let (Some(shuffle), Some(playback)) = (shuffle, playback.as_mut()) {
@@ -852,6 +854,18 @@ impl AppClient {
     }
 
     pub fn update_playback(&self, state: &SharedState) {
+        // #15: cooldown — skip if last dispatch was < 1s ago to prevent
+        // API flooding from rapid slider moves etc.
+        static LAST_DISPATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let last = LAST_DISPATCH.swap(now_ms, std::sync::atomic::Ordering::AcqRel);
+        if now_ms.saturating_sub(last) < 1000 {
+            return;
+        }
+
         let client = self.clone();
         let state = state.clone();
         tokio::task::spawn(async move {
@@ -1287,56 +1301,72 @@ impl AppClient {
 
     /// Search for items (tracks, artists, albums, playlists) matching a given query
     pub async fn search(&self, query: &str) -> Result<SearchResults> {
+        // #29: use tokio::join! instead of try_join! so a single failure
+        // doesn't cancel all in-flight requests.
         let (
             track_result,
             artist_result,
             album_result,
             playlist_result,
             show_result,
-        ) = tokio::try_join!(
+        ) = tokio::join!(
             self.search_specific_type(query, rspotify::model::SearchType::Track),
             self.search_specific_type(query, rspotify::model::SearchType::Artist),
             self.search_specific_type(query, rspotify::model::SearchType::Album),
             self.search_specific_type(query, rspotify::model::SearchType::Playlist),
             self.search_specific_type(query, rspotify::model::SearchType::Show)
-        )?;
-
-        let (tracks, artists, albums, playlists, shows) = (
-            match track_result {
-                rspotify::model::SearchResult::Tracks(p) => p
-                    .items
-                    .into_iter()
-                    .filter_map(Track::try_from_full_track)
-                    .collect(),
-                _ => anyhow::bail!("expect a track search result"),
-            },
-            match artist_result {
-                rspotify::model::SearchResult::Artists(p) => {
-                    p.items.into_iter().map(std::convert::Into::into).collect()
-                }
-                _ => anyhow::bail!("expect an artist search result"),
-            },
-            match album_result {
-                rspotify::model::SearchResult::Albums(p) => p
-                    .items
-                    .into_iter()
-                    .filter_map(Album::try_from_simplified_album)
-                    .collect(),
-                _ => anyhow::bail!("expect an album search result"),
-            },
-            match playlist_result {
-                rspotify::model::SearchResult::Playlists(p) => {
-                    p.items.into_iter().map(std::convert::Into::into).collect()
-                }
-                _ => anyhow::bail!("expect a playlist search result"),
-            },
-            match show_result {
-                rspotify::model::SearchResult::Shows(p) => {
-                    p.items.into_iter().map(std::convert::Into::into).collect()
-                }
-                _ => anyhow::bail!("expect a show search result"),
-            },
         );
+
+        let tracks = match track_result {
+            Ok(rspotify::model::SearchResult::Tracks(p)) => {
+                p.items.into_iter().filter_map(Track::try_from_full_track).collect()
+            }
+            Ok(_) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("Track search failed: {e:#}");
+                Vec::new()
+            }
+        };
+        let artists = match artist_result {
+            Ok(rspotify::model::SearchResult::Artists(p)) => {
+                p.items.into_iter().map(std::convert::Into::into).collect()
+            }
+            Ok(_) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("Artist search failed: {e:#}");
+                Vec::new()
+            }
+        };
+        let albums = match album_result {
+            Ok(rspotify::model::SearchResult::Albums(p)) => {
+                p.items.into_iter().filter_map(Album::try_from_simplified_album).collect()
+            }
+            Ok(_) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("Album search failed: {e:#}");
+                Vec::new()
+            }
+        };
+        let playlists = match playlist_result {
+            Ok(rspotify::model::SearchResult::Playlists(p)) => {
+                p.items.into_iter().map(std::convert::Into::into).collect()
+            }
+            Ok(_) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("Playlist search failed: {e:#}");
+                Vec::new()
+            }
+        };
+        let shows = match show_result {
+            Ok(rspotify::model::SearchResult::Shows(p)) => {
+                p.items.into_iter().map(std::convert::Into::into).collect()
+            }
+            Ok(_) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("Show search failed: {e:#}");
+                Vec::new()
+            }
+        };
 
         Ok(SearchResults {
             tracks,
@@ -2262,8 +2292,12 @@ impl AppClient {
 
         if saved {
             tracing::info!("Saving the retrieved image into {}", path.display());
-            let mut file = std::fs::File::create(path)?;
+            // #25: write to a temp file then atomically rename to avoid
+            // TOCTOU races and partial reads by other threads.
+            let tmp = path.with_extension("tmp");
+            let mut file = std::fs::File::create(&tmp)?;
             file.write_all(&bytes)?;
+            std::fs::rename(&tmp, path)?;
         }
 
         Ok(bytes.to_vec())

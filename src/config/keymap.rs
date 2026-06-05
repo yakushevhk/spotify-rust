@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use crate::key::{CommandBinding, CommandCategory, CommandId, KeyBinding};
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct KeymapConfig {
     #[serde(default)]
     pub keymaps: Vec<Keymap>,

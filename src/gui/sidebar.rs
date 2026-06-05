@@ -117,9 +117,19 @@ pub fn render(
     }
     ui.add_space(4.0);
 
-    {
+    // Read all needed data once to avoid multiple lock acquisitions per frame (L121-196)
+    let (playlists_snapshot, albums_snapshot, shows_snapshot, artists_snapshot) = {
         let data = state.data.read();
-        for (i, item) in data.user_data.playlists.iter().enumerate() {
+        (
+            data.user_data.playlists.clone(),
+            data.user_data.saved_albums.clone(),
+            data.user_data.saved_shows.clone(),
+            data.user_data.followed_artists.clone(),
+        )
+    };
+
+    {
+        for (i, item) in playlists_snapshot.iter().enumerate() {
             match item {
                 state::PlaylistFolderItem::Playlist(playlist) => {
                     if theme::list_item(ui, &playlist.name, &playlist.owner.0, false).clicked() {
@@ -150,8 +160,7 @@ pub fn render(
     theme::section_header(ui, "ALBUMS");
 
     {
-        let data = state.data.read();
-        for (i, album) in data.user_data.saved_albums.iter().enumerate() {
+        for (i, album) in albums_snapshot.iter().enumerate() {
             let sub = format!(
                 "{} · {}",
                 album
@@ -175,8 +184,7 @@ pub fn render(
     theme::section_header(ui, "SHOWS");
 
     {
-        let data = state.data.read();
-        for show in data.user_data.saved_shows.iter() {
+        for show in shows_snapshot.iter() {
             if theme::list_item(ui, &show.name, &show.publisher, false).clicked() {
                 action = Action::OpenShowDetail(show.clone());
             }
@@ -190,8 +198,7 @@ pub fn render(
     theme::section_header(ui, "ARTISTS");
 
     {
-        let data = state.data.read();
-        for artist in data.user_data.followed_artists.iter() {
+        for artist in artists_snapshot.iter() {
             if theme::list_item(ui, &artist.name, "", false).clicked() {
                 action = Action::OpenArtist(artist.clone());
             }
@@ -201,30 +208,35 @@ pub fn render(
     ui.allocate_space(egui::vec2(ui.available_width(), 8.0));
     theme::divider_line(ui);
 
-    // Keyboard hints
+    // Keyboard hints — two-column layout with fixed widths
     ui.add_space(4.0);
     let hints: &[(&str, &str)] = &[
         ("Space", "Play/Pause"),
         ("j / k", "Navigate"),
         ("gg / G", "First / Last"),
         ("Enter", "Play selected"),
-        ("?  ", "Help"),
+        ("?", "Help"),
         ("Esc", "Back"),
         ("Ctrl+i/d", "Volume"),
-        ("l  ", "Lyrics"),
-        ("z  ", "Queue"),
-        ("gs ", "Search"),
+        ("l", "Lyrics"),
+        ("z", "Queue"),
+        ("gs", "Search"),
     ];
     for (key, desc) in hints {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.label(
-                egui::RichText::new(*key)
-                    .size(11.0)
-                    .color(theme::green())
-                    .monospace(),
+            ui.allocate_ui_with_layout(
+                egui::vec2(70.0, 16.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.label(
+                        egui::RichText::new(*key)
+                            .size(11.0)
+                            .color(theme::green())
+                            .monospace(),
+                    );
+                },
             );
-            ui.add_space(4.0);
             ui.label(
                 egui::RichText::new(*desc)
                     .size(11.0)

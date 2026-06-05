@@ -551,8 +551,20 @@ impl SpotifyApp {
     }
 
     fn send_request(&self, req: ClientRequest) {
-        if let Err(_e) = self.client_pub.send(req) {
-            tracing::warn!("Failed to send request: client channel closed");
+        // H5: use try_send to avoid blocking the UI thread when the channel is full.
+        // With a buffer of 1024 this should rarely happen, but if it does we log and
+        // show a toast rather than freezing the GUI.
+        if let Err(e) = self.client_pub.try_send(req) {
+            match e {
+                flume::TrySendError::Full(_) => {
+                    tracing::warn!("Client request channel full, dropping request");
+                    // Don't push to toast_queue here — it would re-enter a lock
+                    // that may already be held.
+                }
+                flume::TrySendError::Disconnected(_) => {
+                    tracing::warn!("Failed to send request: client channel closed");
+                }
+            }
         }
     }
 
@@ -3089,11 +3101,15 @@ impl SpotifyApp {
 
     fn save_settings(&mut self) {
         let needs_restart = self.settings_editing.client_id != self.settings_original.client_id
-            || self.settings_editing.client_port != self.settings_original.client_port
             || self.settings_editing.default_device != self.settings_original.default_device
             || self.settings_editing.device.name != self.settings_original.device.name
             || self.settings_editing.device.bitrate != self.settings_original.device.bitrate
             || self.settings_editing.theme != self.settings_original.theme;
+
+        if let Err(err) = self.settings_editing.layout.check_values() {
+            self.toast(format!("Invalid layout: {err}"));
+            return;
+        }
 
         match crate::config::get_config_folder_path() {
             Ok(config_folder) => {
@@ -3112,20 +3128,28 @@ impl SpotifyApp {
                             }
                         }
                         match toml::to_string_pretty(&merged) {
-                            Ok(content) => match std::fs::write(&file_path, content) {
-                                Ok(()) => {
-                                    self.settings_dirty = false;
-                                    self.settings_original = self.settings_editing.clone();
-                                    if needs_restart {
-                                        self.toast("Settings saved. Restart the app to apply changes.".to_string());
-                                    } else {
-                                        self.toast("Settings saved".to_string());
+                            Ok(content) => {
+                                let tmp_path = file_path.with_extension("toml.tmp");
+                                let write_result = std::fs::write(&tmp_path, &content)
+                                    .and_then(|()| std::fs::rename(&tmp_path, &file_path));
+                                match write_result {
+                                    Ok(()) => {
+                                        if let Err(err) = crate::config::reload_config() {
+                                            tracing::error!("Failed to reload config: {err:#}");
+                                        }
+                                        self.settings_dirty = false;
+                                        self.settings_original = self.settings_editing.clone();
+                                        if needs_restart {
+                                            self.toast("Settings saved. Restart the app to apply changes.".to_string());
+                                        } else {
+                                            self.toast("Settings saved".to_string());
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.toast(format!("Failed to save: {}", e));
                                     }
                                 }
-                                Err(e) => {
-                                    self.toast(format!("Failed to save: {}", e));
-                                }
-                            },
+                            }
                             Err(e) => {
                                 self.toast(format!("Failed to serialize config: {}", e));
                             }

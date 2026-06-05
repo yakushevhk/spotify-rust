@@ -23,6 +23,9 @@ pub async fn start_client_handler(
     client: &super::AppClient,
     client_sub: &flume::Receiver<ClientRequest>,
 ) {
+    // #16: limit concurrent handler tasks to prevent unbounded spawning
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
+
     loop {
         match client_sub.recv_async().await {
             Ok(request) => {
@@ -35,16 +38,18 @@ pub async fn start_client_handler(
                 let state = state.clone();
                 let client = client.clone();
                 let span = tracing::info_span!("client_request", request = ?request);
+                let permit = semaphore.clone().acquire_owned().await.unwrap();
 
                 tokio::task::spawn(
                     async move {
+                        let _permit = permit; // held until task completes
                         if let Err(err) = client.handle_request(&state, request).await {
                             let msg = format!("Request failed: {err:#}");
                             tracing::error!("{msg}");
                             state.toast_queue.lock().push_back(msg);
-                            let mut data = state.data.write();
-                            data.shows_loading = false;
-                            data.browse.categories_loading = false;
+                            // #34: don't blindly clear loading flags here —
+                            // each request handler is responsible for resetting
+                            // its own flags on both success and failure paths.
                         }
                     }
                     .instrument(span),
@@ -128,7 +133,8 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
     let configs = config::get_config();
     let running = state.running.clone();
 
-    let refresh_duration = Duration::from_millis(100);
+    // M10: use 500ms idle interval instead of 100ms
+    let refresh_duration = Duration::from_millis(500);
     let playback_refresh_duration =
         Duration::from_millis(configs.app_config.playback_refresh_duration_in_ms);
     let mut handler_state = PlayerEventHandlerState {
@@ -137,7 +143,8 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
         last_queue_check: Instant::now(),
     };
 
-    while running.load(Ordering::Relaxed) {
+    // M11: use Acquire ordering for consistency with Release in main.rs
+    while running.load(Ordering::Acquire) {
         // periodically refresh the playback state (if enabled in config)
         if configs.app_config.playback_refresh_duration_in_ms > 0
             && handler_state.last_playback_refresh_timer.elapsed() >= playback_refresh_duration

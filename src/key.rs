@@ -163,7 +163,7 @@ impl KeySequenceState {
                     c.to_string()
                 }
                 Some(c) => {
-                    format_modified_key(c, modifiers.ctrl, modifiers.shift)
+                    format_modified_key_with_alt(c, modifiers.ctrl, modifiers.shift, modifiers.alt, modifiers.mac_cmd)
                 }
                 None => {
                     format_special_key(key, modifiers)
@@ -392,6 +392,34 @@ fn format_modified_key(key: char, ctrl: bool, shift: bool) -> String {
     let mut s = String::new();
     if ctrl {
         s.push_str("C-");
+    }
+    if shift {
+        s.push_str("S-");
+    }
+    if key == ' ' {
+        s.push_str("Space");
+    } else {
+        s.push(key);
+    }
+    s
+}
+
+fn format_modified_key_with_alt(
+    key: char,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    mac_cmd: bool,
+) -> String {
+    let mut s = String::new();
+    if ctrl {
+        s.push_str("C-");
+    }
+    if alt {
+        s.push_str("A-");
+    }
+    if mac_cmd {
+        s.push_str("M-");
     }
     if shift {
         s.push_str("S-");

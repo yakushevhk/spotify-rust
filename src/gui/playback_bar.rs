@@ -130,20 +130,77 @@ pub fn render(
                     );
                 }
 
-                // Track name with subtle hover effect
+                // Track name with truncation to prevent overflow
+                let track_name_rect = egui::Rect::from_min_size(
+                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 12.0),
+                    egui::vec2(track_info_width - theme::PLAYBACK_ART_SIZE - 28.0, 20.0),
+                );
+                let track_name_galley = ui.painter().layout_no_wrap(
+                    name.clone(),
+                    egui::FontId::proportional(14.0),
+                    theme::text_primary(),
+                );
+                let truncated_name = if track_name_galley.size().x > track_name_rect.width() {
+                    // Truncate with ellipsis
+                    let mut s = name.clone();
+                    while s.len() > 1 {
+                        s.pop();
+                        let test = format!("{s}...");
+                        let galley = ui.painter().layout_no_wrap(
+                            test.clone(),
+                            egui::FontId::proportional(14.0),
+                            theme::text_primary(),
+                        );
+                        if galley.size().x <= track_name_rect.width() {
+                            s = test;
+                            break;
+                        }
+                    }
+                    s
+                } else {
+                    name
+                };
                 ui.painter().text(
-                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 20.0),
+                    track_name_rect.left_center(),
                     egui::Align2::LEFT_CENTER,
-                    &name,
+                    &truncated_name,
                     egui::FontId::proportional(14.0),
                     theme::text_primary(),
                 );
 
-                // Artists
+                // Artists with truncation
+                let artist_rect = egui::Rect::from_min_size(
+                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 36.0),
+                    egui::vec2(track_info_width - theme::PLAYBACK_ART_SIZE - 28.0, 18.0),
+                );
+                let artist_galley = ui.painter().layout_no_wrap(
+                    artists_str.clone(),
+                    egui::FontId::proportional(12.0),
+                    theme::text_dim(),
+                );
+                let truncated_artist = if artist_galley.size().x > artist_rect.width() {
+                    let mut s = artists_str;
+                    while s.len() > 1 {
+                        s.pop();
+                        let test = format!("{s}...");
+                        let galley = ui.painter().layout_no_wrap(
+                            test.clone(),
+                            egui::FontId::proportional(12.0),
+                            theme::text_dim(),
+                        );
+                        if galley.size().x <= artist_rect.width() {
+                            s = test;
+                            break;
+                        }
+                    }
+                    s
+                } else {
+                    artists_str
+                };
                 ui.painter().text(
-                    track_rect.min + egui::vec2(theme::PLAYBACK_ART_SIZE + 12.0, 44.0),
+                    artist_rect.left_center(),
                     egui::Align2::LEFT_CENTER,
-                    &artists_str,
+                    &truncated_artist,
                     egui::FontId::proportional(12.0),
                     theme::text_dim(),
                 );

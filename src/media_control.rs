@@ -125,7 +125,7 @@ pub fn start_event_watcher(
     let running = state.running.clone();
     let refresh_duration = std::time::Duration::from_secs(1);
     let mut info = String::new();
-    while running.load(Ordering::Relaxed) {
+    while running.load(Ordering::Acquire) {
         if let Err(e) = update_control_metadata(state, &mut controls, &mut info) {
             tracing::warn!("Media control update error: {e}");
         }
