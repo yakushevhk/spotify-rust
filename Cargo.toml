@@ -46,6 +46,7 @@ rustls = { version = "0.23.37", default-features = false, features = ["ring"] }
 futures = "0.3.32"
 fs2 = "0.4"
 fuzzy-matcher = { version = "0.3.7", optional = true }
+tempfile = "3.14"
 
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 

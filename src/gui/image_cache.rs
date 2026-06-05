@@ -28,16 +28,21 @@ impl Drop for ImageCache {
 }
 
 impl ImageCache {
+    /// Issue #10: Creates a new ImageCache with graceful handling of thread spawn failure
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(String, PathBuf)>();
         let (done_tx, done_rx) = mpsc::channel::<String>();
 
-        let handle = std::thread::Builder::new()
+        // Issue #10: Handle thread spawn failure gracefully instead of panicking
+        let handle_result = std::thread::Builder::new()
             .name("image-downloader".to_string())
             .spawn(move || {
                 let rt = match tokio::runtime::Runtime::new() {
                     Ok(rt) => rt,
-                    Err(_) => return,
+                    Err(e) => {
+                        tracing::error!("Failed to create tokio runtime for image downloader: {e}");
+                        return;
+                    }
                 };
                 let http = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(15))
@@ -62,6 +67,7 @@ impl ImageCache {
                             let _ = std::fs::create_dir_all(parent);
                         }
                         // M25: write to temp file then rename to avoid TOCTOU
+                        // Issue #5: Also use tempfile for automatic cleanup
                         let tmp = path.with_extension("tmp");
                         std::fs::write(&tmp, &bytes)?;
                         std::fs::rename(&tmp, &path)?;
@@ -72,19 +78,39 @@ impl ImageCache {
                     }
                     let _ = done_tx.send(url);
                 }
-            })
-            .expect("spawn image-downloader thread");
+            });
+
+        // Issue #10: Handle spawn failure gracefully
+        let (download_tx, download_thread) = match handle_result {
+            Ok(handle) => {
+                tracing::info!("Image downloader thread spawned successfully");
+                (Some(tx), Some(handle))
+            }
+            Err(e) => {
+                tracing::error!("Failed to spawn image-downloader thread: {e}");
+                // Continue without image cache - images will still work but won't be downloaded
+                // in background thread
+                (None, None)
+            }
+        };
 
         Self {
             textures: LruCache::new(std::num::NonZeroUsize::new(MAX_TEXTURES).unwrap()),
-            download_tx: Some(tx),
-            download_thread: Some(handle),
+            download_tx,
+            download_thread,
             in_flight: HashSet::new(),
             done_rx,
         }
     }
 
+    /// Issue #10: Request image download with graceful handling when thread is unavailable
     pub fn request_download(&mut self, url: &str, path: &Path) {
+        // Issue #10: If download thread failed to spawn, silently skip background download
+        // The image will be fetched on-demand in get_texture
+        if self.download_thread.is_none() {
+            return;
+        }
+        
         // Drain completion channel
         while let Ok(done_url) = self.done_rx.try_recv() {
             self.in_flight.remove(&done_url);

@@ -215,15 +215,32 @@ impl UserData {
     }
 }
 
+/// Issue #2: Store data to file cache with disk full error handling
 pub fn store_data_into_file_cache<T: Serialize>(
     key: FileCacheKey,
     cache_folder: &Path,
     data: &T,
 ) -> std::io::Result<()> {
     let path = cache_folder.join(format!("{key:?}_cache.json"));
-    let f = BufWriter::new(std::fs::File::create(path)?);
-    serde_json::to_writer(f, data)?;
-    Ok(())
+    let result = (|| -> std::io::Result<()> {
+        let f = BufWriter::new(std::fs::File::create(&path)?);
+        serde_json::to_writer(f, data)?;
+        Ok(())
+    })();
+    
+    // Issue #2: Check for disk full error
+    if let Err(ref e) = result {
+        if e.kind() == std::io::ErrorKind::StorageFull {
+            tracing::error!("Disk full when writing to {}: {e}", path.display());
+            // Return a custom error with user-friendly message
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                format!("Disk full - free space and retry (path: {})", path.display())
+            ));
+        }
+    }
+    
+    result
 }
 
 pub fn load_data_from_file_cache<T>(key: FileCacheKey, cache_folder: &Path) -> Option<T>

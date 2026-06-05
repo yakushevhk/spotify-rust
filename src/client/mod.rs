@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-use std::io::Write;
+use std::io;
 
 use anyhow::Context as _;
 use anyhow::Result;
@@ -25,6 +25,17 @@ use parking_lot::Mutex;
 
 use reqwest::StatusCode;
 use rspotify::{http::Query, prelude::*};
+
+// Lock hierarchy documentation to prevent deadlocks (Issue #8):
+// When multiple locks need to be acquired, ALWAYS follow this order:
+// 1. state.ui (Mutex<UIState>)
+// 2. state.player (RwLock<PlayerState>)
+// 3. state.data (RwLock<AppData>)
+// 4. state.toast_queue (Mutex<VecDeque<String>>)
+// 5. stream_conn (Mutex<Option<Spirc>>) - only when feature = "streaming"
+//
+// Never acquire locks in a different order, and never hold multiple locks
+// while performing async operations or blocking I/O.
 
 mod handlers;
 mod request;
@@ -286,13 +297,26 @@ impl AppClient {
                         .context("connect to a session after re-auth")?;
                 } else {
                     // Network/transport error: retry with same credentials using exponential backoff
+                    // Issue #1: Add max total timeout of 60 seconds for retry loop
                     tracing::warn!(
                         "Session connect failed with network error, retrying with backoff: {err:#}"
                     );
+                    let start_time = std::time::Instant::now();
+                    let max_total_timeout = std::time::Duration::from_secs(60);
                     let mut connected = false;
                     for attempt in 0..3u32 {
+                        // Check if we've exceeded total timeout
+                        if start_time.elapsed() >= max_total_timeout {
+                            tracing::error!("Session connection retry exceeded 60s total timeout");
+                            anyhow::bail!("session.connect failed: exceeded 60s total timeout");
+                        }
                         let delay = std::time::Duration::from_secs(1 << attempt);
                         tokio::time::sleep(delay).await;
+                        // Check timeout again after sleep
+                        if start_time.elapsed() >= max_total_timeout {
+                            tracing::error!("Session connection retry exceeded 60s total timeout");
+                            anyhow::bail!("session.connect failed: exceeded 60s total timeout");
+                        }
                         match session.connect(creds_backup.clone(), true).await {
                             Ok(()) => {
                                 connected = true;
@@ -897,14 +921,29 @@ impl AppClient {
     pub fn update_playback(&self, state: &SharedState) {
         // #15: cooldown — skip if last dispatch was < 1s ago to prevent
         // API flooding from rapid slider moves etc.
+        // Issue #4: Use compare-and-swap to fix race condition
         static LAST_DISPATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        let last = LAST_DISPATCH.swap(now_ms, std::sync::atomic::Ordering::AcqRel);
-        if now_ms.saturating_sub(last) < 1000 {
-            return;
+        
+        // Use compare_exchange to atomically check and update timestamp
+        // This prevents race condition between check and swap
+        loop {
+            let last = LAST_DISPATCH.load(std::sync::atomic::Ordering::Acquire);
+            if now_ms.saturating_sub(last) < 1000 {
+                return; // Too soon, another thread already updated
+            }
+            match LAST_DISPATCH.compare_exchange(
+                last,
+                now_ms,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            ) {
+                Ok(_) => break, // We won the race, proceed
+                Err(_) => continue, // Another thread updated, retry
+            }
         }
 
         let client = self.clone();
@@ -1824,6 +1863,7 @@ impl AppClient {
     }
 
     /// Make a GET HTTP request to the Spotify server with retry logic
+    /// Issue #9: Parses X-RateLimit-Remaining header for preemptive backoff
     async fn http_get<T>(&self, url: &str, payload: &Query<'_>) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
@@ -1832,11 +1872,32 @@ impl AppClient {
 
         let mut access_token = self.token().await.context("get token")?;
         let mut last_err = None;
+        
+        // Token bucket for rate limiting (Issue #9)
+        static RATE_LIMIT_REMAINING: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(10);
+        static RATE_LIMIT_RESET_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
         for attempt in 0..4u32 {
             if attempt > 0 {
                 let delay = std::time::Duration::from_secs(1 << (attempt - 1));
                 tokio::time::sleep(delay).await;
+            }
+            
+            // Issue #9: Preemptive backoff if rate limit is low
+            let remaining = RATE_LIMIT_REMAINING.load(std::sync::atomic::Ordering::Acquire);
+            let reset_time = RATE_LIMIT_RESET_TIME.load(std::sync::atomic::Ordering::Acquire);
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            
+            if remaining < 3 && reset_time > now_ms {
+                // Rate limit is low, add small delay before making request
+                let backoff_ms = (reset_time - now_ms).min(5000) / 10; // Max 500ms
+                if backoff_ms > 0 {
+                    tracing::debug!("Preemptive rate limit backoff: {backoff_ms}ms (remaining={remaining})");
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                }
             }
 
             let response = self
@@ -1851,6 +1912,25 @@ impl AppClient {
                 .await?;
 
             let status = response.status();
+            let headers = response.headers();
+            
+            // Issue #9: Parse rate limit headers
+            if let Some(remaining_header) = headers.get("X-RateLimit-Remaining") {
+                if let Ok(remaining_str) = remaining_header.to_str() {
+                    if let Ok(remaining_val) = remaining_str.parse::<i64>() {
+                        RATE_LIMIT_REMAINING.store(remaining_val, std::sync::atomic::Ordering::Release);
+                    }
+                }
+            }
+            
+            if let Some(reset_header) = headers.get("X-RateLimit-Reset") {
+                if let Ok(reset_str) = reset_header.to_str() {
+                    if let Ok(reset_val) = reset_str.parse::<u64>() {
+                        // Convert seconds to milliseconds
+                        RATE_LIMIT_RESET_TIME.store(reset_val * 1000, std::sync::atomic::Ordering::Release);
+                    }
+                }
+            }
 
             if status == StatusCode::UNAUTHORIZED {
                 tracing::warn!("Got 401 for {url}, re-authenticating...");
@@ -1872,8 +1952,7 @@ impl AppClient {
             }
 
             if status == StatusCode::TOO_MANY_REQUESTS {
-                let retry_after = response
-                    .headers()
+                let retry_after = headers
                     .get(reqwest::header::RETRY_AFTER)
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.parse::<u64>().ok())
@@ -2344,6 +2423,7 @@ impl AppClient {
 
     /// Retrieve an image from a `url` or a cached `path`.
     /// If `saved` is specified, the retrieved image is saved to the cached `path`.
+    /// Issue #5: Uses tempfile crate for automatic cleanup on failure.
     async fn retrieve_image(
         &self,
         url: &str,
@@ -2373,12 +2453,29 @@ impl AppClient {
 
         if saved {
             tracing::info!("Saving the retrieved image into {}", path.display());
-            // #25: write to a temp file then atomically rename to avoid
-            // TOCTOU races and partial reads by other threads.
-            let tmp = path.with_extension("tmp");
-            let mut file = std::fs::File::create(&tmp)?;
-            file.write_all(&bytes)?;
-            std::fs::rename(&tmp, path)?;
+            // Issue #5: Use tempfile with automatic cleanup to prevent temp file leakage
+            let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            let _extension = path.extension().and_then(|s| s.to_str()).unwrap_or("tmp");
+            
+            let temp_file = tempfile::NamedTempFile::with_prefix_in(
+                format!("{}.", file_stem),
+                parent,
+            )?;
+            
+            // Write data to temp file
+            std::io::copy(&mut bytes.as_ref(), &mut temp_file.as_file())?;
+            
+            // Atomically persist the temp file to the final path
+            // On failure, temp file is automatically deleted
+            match temp_file.persist(path) {
+                Ok(_) => {},
+                Err(e) => {
+                    tracing::error!("Failed to persist temp file to {}: {e}", path.display());
+                    // Explicitly clean up temp file on error (though persist already does this)
+                    return Err(e.error.into());
+                }
+            }
         }
 
         Ok(bytes.to_vec())

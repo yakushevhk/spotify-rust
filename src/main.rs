@@ -220,14 +220,40 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
         }
     };
 
-    // Signal handler for clean shutdown on Ctrl+C / SIGTERM
+    // Issue #7: Signal handler for clean shutdown on Ctrl+C (SIGINT) and SIGTERM
     let signal_state = state.clone();
     tokio::spawn(async move {
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            tracing::error!("Failed to listen for Ctrl+C: {e}");
-            return;
+        // Create signal handlers for both SIGINT and SIGTERM (Unix only)
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Failed to create SIGTERM handler: {e}");
+                    return;
+                }
+            };
+            
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("Received Ctrl+C (SIGINT), cleaning up...");
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("Received SIGTERM, cleaning up...");
+                }
+            }
         }
-        tracing::info!("Received shutdown signal, cleaning up...");
+        
+        #[cfg(not(unix))]
+        {
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                tracing::error!("Failed to listen for Ctrl+C: {e}");
+                return;
+            }
+            tracing::info!("Received Ctrl+C, cleaning up...");
+        }
+        
         signal_state.running.store(false, std::sync::atomic::Ordering::Release);
     });
 

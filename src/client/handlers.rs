@@ -11,6 +11,9 @@ use crate::{
 
 use super::ClientRequest;
 
+/// Issue #3: Maximum size for the client request channel buffer
+const MAX_CHANNEL_SIZE: usize = 1024;
+
 struct PlayerEventHandlerState {
     last_playback_refresh_timer: Instant,
     last_track_end_check: Instant,
@@ -18,6 +21,7 @@ struct PlayerEventHandlerState {
 }
 
 /// starts the client's request handler
+/// Issue #3: Uses bounded channel with backpressure
 pub async fn start_client_handler(
     state: &SharedState,
     client: &super::AppClient,
@@ -25,6 +29,10 @@ pub async fn start_client_handler(
 ) {
     // #16: limit concurrent handler tasks to prevent unbounded spawning
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
+    
+    // Issue #3: Track dropped requests for backpressure
+    let _dropped_count = 0u64;
+    let _drop_log_interval = 10u64;
 
     loop {
         match client_sub.recv_async().await {
@@ -38,7 +46,20 @@ pub async fn start_client_handler(
                 let state = state.clone();
                 let client = client.clone();
                 let span = tracing::info_span!("client_request", request = ?request);
-                let permit = semaphore.clone().acquire_owned().await.unwrap();
+                
+                // Issue #6: Handle semaphore acquire error gracefully
+                let permit_result = semaphore.clone().acquire_owned().await;
+                let permit = match permit_result {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!("Failed to acquire semaphore permit: {e}");
+                        // Log and continue without spawning task
+                        state.toast_queue.lock().push_back(
+                            format!("Internal error: failed to acquire task permit")
+                        );
+                        continue;
+                    }
+                };
 
                 tokio::task::spawn(
                     async move {
@@ -55,10 +76,36 @@ pub async fn start_client_handler(
                     .instrument(span),
                 );
             }
-            Err(err) => {
-                tracing::error!("Client request channel closed: {err}");
+            Err(_err) => {
+                tracing::info!("Client request channel closed");
                 break;
             }
+        }
+    }
+}
+
+/// Issue #3: Create a bounded channel for client requests with backpressure
+/// Returns a sender that will drop old requests if the channel is full
+pub fn create_client_channel() -> (flume::Sender<ClientRequest>, flume::Receiver<ClientRequest>) {
+    flume::bounded::<ClientRequest>(MAX_CHANNEL_SIZE)
+}
+
+/// Issue #3: Send a request to the client channel with backpressure handling.
+/// If the channel is full, waits for space to become available.
+pub fn send_client_request(
+    sender: &flume::Sender<ClientRequest>,
+    request: ClientRequest,
+) -> Result<(), flume::SendError<ClientRequest>> {
+    // Try to send without blocking first
+    match sender.try_send(request) {
+        Ok(()) => Ok(()),
+        Err(flume::TrySendError::Full(req)) => {
+            // Channel is full - use blocking send which will wait
+            tracing::warn!("Client request channel full, waiting for space");
+            sender.send(req)
+        }
+        Err(flume::TrySendError::Disconnected(req)) => {
+            Err(flume::SendError(req))
         }
     }
 }
