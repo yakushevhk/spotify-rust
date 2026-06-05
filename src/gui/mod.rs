@@ -1,3 +1,34 @@
+//! GUI module built with egui
+//!
+//! This module contains all GUI-related code using the egui immediate mode
+//! GUI library. The main application struct is `SpotifyApp`.
+//!
+//! # Module Structure
+//!
+//! - `SpotifyApp` - Main application implementing `eframe::App`
+//! - `View` enum - Different views (Library, Tracks, Search, etc.)
+//! - `views.rs` - View rendering implementations
+//! - `sidebar.rs` - Navigation sidebar
+//! - `playback_bar.rs` - Playback controls
+//! - `command_palette.rs` - Quick command access
+//! - `context_menu.rs` - Right-click menus
+//! - `image_cache.rs` - Album art caching
+//! - `theme.rs` - Theme application
+//!
+//! # Views
+//!
+//! - `Library` - User's library (playlists, albums, artists)
+//! - `Tracks` - Track list for a context
+//! - `Search` - Search interface
+//! - `Browse` - Browse categories
+//! - `Queue` - Playback queue
+//! - `Lyrics` - Track lyrics
+//! - `Artist` - Artist page
+//! - `Shows` - Podcasts
+//! - `Settings` - Application settings
+//! - `Help` - Keyboard shortcuts help
+//! - `Logs` - Application logs
+
 mod command_palette;
 mod context_menu;
 mod image_cache;

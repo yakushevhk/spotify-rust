@@ -1,7 +1,25 @@
+//! UI utilities and streaming support
+//!
+//! This module contains UI utility functions and optional streaming support
+//! for audio visualization.
+//!
+//! # Features
+//!
+//! - `streaming` - Enables audio visualization via FFT
+
 pub mod utils;
 
 #[cfg(feature = "streaming")]
 pub mod streaming {
+    //! Audio streaming and visualization support
+    //!
+    //! This module provides audio visualization by intercepting audio samples
+    //! and computing FFT frequency bands.
+    //!
+    //! # Visualization
+    //!
+    //! The visualization uses 128 frequency bands updated in real-time
+    //! during audio playback.
     use parking_lot::Mutex;
     use std::sync::Arc;
 

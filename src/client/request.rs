@@ -1,3 +1,25 @@
+//! Request types for client communication
+//!
+//! This module defines the request types used to communicate between the GUI
+//! and the client handler. All requests are sent via a channel and processed
+//! asynchronously.
+//!
+//! # Request Flow
+//!
+//! ```
+//! GUI Thread -> Channel -> Client Handler Task -> Spotify API
+//! ```
+//!
+//! # Example
+//!
+//! ```rust
+//! // Send a playback request
+//! client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack))?;
+//!
+//! // Send a search request
+//! client_pub.send(ClientRequest::Search("radiohead".to_string()))?;
+//! ```
+
 use crate::state::{
     AlbumId, Category, ContextId, Item, ItemId, PlayableId, Playback, PlaylistId, TrackId,
 };
@@ -5,6 +27,22 @@ use crate::state::{
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 /// A request that modifies the player's playback
+///
+/// These requests control the playback state and are sent via
+/// `ClientRequest::Player(PlayerRequest)`.
+///
+/// # Examples
+///
+/// ```rust
+/// // Toggle play/pause
+/// client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause))?;
+///
+/// // Next track
+/// client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack))?;
+///
+/// // Set volume to 75%
+/// client_pub.send(ClientRequest::Player(PlayerRequest::Volume(75)))?;
+/// ```
 pub enum PlayerRequest {
     NextTrack,
     PreviousTrack,
@@ -29,6 +67,29 @@ pub enum PlayerRequest {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 /// A request to the client
+///
+/// These requests are sent from the GUI to the client handler via a channel.
+/// The client handler processes them asynchronously and updates state accordingly.
+///
+/// # Examples
+///
+/// ```rust
+/// // Get user playlists
+/// client_pub.send(ClientRequest::GetUserPlaylists)?;
+///
+/// // Search for tracks
+/// client_pub.send(ClientRequest::Search("radiohead".to_string()))?;
+///
+/// // Add track to queue
+/// client_pub.send(ClientRequest::AddPlayableToQueue(
+///     PlayableId::Track(track_id)
+/// ))?;
+/// ```
+///
+/// # Error Handling
+///
+/// Errors are logged and may trigger toast notifications. The channel
+/// has a buffer of 1024 requests; use `try_send` to avoid blocking.
 pub enum ClientRequest {
     GetCurrentUser,
     GetDevices,

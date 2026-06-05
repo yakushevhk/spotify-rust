@@ -1,3 +1,54 @@
+//! Theme configuration module
+//!
+//! This module defines the theme system for the application.
+//! Themes can be customized via `theme.toml`.
+//!
+//! # Color Fields
+//!
+//! ## Background Colors
+//! - `background` - Main background
+//! - `bg_dark` - Darker background
+//! - `bg_card` - Card background
+//! - `bg_hover` - Hover state
+//! - `bg_active` - Active state
+//! - `bg_elevated` - Elevated surfaces
+//! - `bg_input` - Input fields
+//! - `bg_selected` - Selected items
+//!
+//! ## Text Colors
+//! - `text_primary` - Primary text
+//! - `text_secondary` - Secondary text
+//! - `text_dim` - Dimmed text
+//! - `text_muted` - Muted text
+//! - `text_hint` - Hint text
+//!
+//! ## Accent Colors
+//! - `accent` - Primary accent (Spotify green)
+//! - `accent_hover` - Accent hover state
+//! - `accent_dark` - Darker accent
+//!
+//! ## Semantic Colors
+//! - `success` - Success states
+//! - `error` - Error states
+//! - `warning` - Warning states
+//!
+//! ## Lyrics Colors
+//! - `lyrics_current` - Currently playing line
+//! - `lyrics_played` - Already played lines
+//! - `lyrics_upcoming` - Upcoming lines
+//! - `lyrics_bg` - Lyrics background
+//!
+//! # Example Theme
+//!
+//! ```toml
+//! [[themes]]
+//! name = "MyTheme"
+//! [palette]
+//! background = "#121212"
+//! foreground = "#ffffff"
+//! accent = "#1ed760"
+//! ```
+
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]

@@ -1,3 +1,35 @@
+//! State management module
+//!
+//! This module manages all application state, including:
+//! - UI state (current view, selections)
+//! - Player state (playback, devices, queue)
+//! - Application data (playlists, albums, cache)
+//!
+//! # State Access Pattern
+//!
+//! The state uses a shared state pattern with `Arc<State>`:
+//!
+//! ```rust
+//! // UI State - Mutex for exclusive access
+//! let ui = state.ui.lock();
+//!
+//! // Player State - RwLock for read-heavy access
+//! let player = state.player.read();
+//! let mut player = state.player.write();
+//!
+//! // Data - RwLock for read-heavy access
+//! let data = state.data.read();
+//! ```
+//!
+//! # Lock Hierarchy
+//!
+//! To prevent deadlocks, always acquire locks in this order:
+//! 1. `state.ui` (Mutex)
+//! 2. `state.player` (RwLock)
+//! 3. `state.data` (RwLock)
+//! 4. `state.toast_queue` (Mutex)
+//! 5. `stream_conn` (Mutex) - streaming feature only
+
 mod constant;
 mod data;
 mod model;

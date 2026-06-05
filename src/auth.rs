@@ -1,3 +1,45 @@
+//! Authentication module
+//!
+//! This module handles OAuth authentication with Spotify using the PKCE flow.
+//! It supports both cached credentials and interactive browser-based authentication.
+//!
+//! # Authentication Flow
+//!
+//! 1. Check for cached credentials in `~/.cache/spotify-player/credentials.json`
+//! 2. If found and valid, use them
+//! 3. If not found or invalid, open browser for OAuth flow
+//! 4. User authenticates with Spotify
+//! 5. Access token is cached for future use
+//!
+//! # Security
+//!
+//! - Credentials are stored with restrictive permissions (0o600)
+//! - Cache directory has 0o700 permissions
+//! - Uses PKCE for secure authentication without client secret
+//!
+//! # OAuth Scopes
+//!
+//! The application requests the following scopes:
+//! - `user-read-playback-state` - Read playback state
+//! - `user-modify-playback-state` - Control playback
+//! - `streaming` - Stream audio
+//! - `playlist-read-private` - Read private playlists
+//! - `playlist-modify-private` - Modify private playlists
+//! - `playlist-modify-public` - Modify public playlists
+//! - `user-follow-read` - Read followed artists
+//! - `user-follow-modify` - Follow/unfollow artists
+//! - `user-library-read` - Read saved tracks/albums
+//! - `user-library-modify` - Save/remove tracks
+//! - `user-top-read` - Read top tracks/artists
+//! - `user-read-recently-played` - Read recently played
+//!
+//! # Example
+//!
+//! ```rust
+//! let auth_config = AuthConfig::new(&configs)?;
+//! let creds = get_creds(&auth_config, true, true).await?;
+//! ```
+
 use crate::config;
 use anyhow::{Context, Result};
 use librespot_core::{authentication::Credentials, cache::Cache, config::SessionConfig, Session};

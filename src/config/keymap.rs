@@ -1,3 +1,42 @@
+//! Keymap configuration module
+//!
+//! This module handles keyboard shortcut configuration.
+//! Custom keybindings can be defined in `keymap.toml`.
+//!
+//! # Key Sequence Format
+//!
+//! ## Single Keys
+//! - `j`, `k` - Single character keys
+//! - `Space`, `Enter`, `Escape` - Special keys
+//!
+//! ## Modifier Keys
+//! - `C-x` - Ctrl + key (e.g., `C-f`)
+//! - `S-x` - Shift + key (e.g., `S-g`)
+//! - `C-S-x` - Ctrl + Shift + key
+//!
+//! ## Multi-key Sequences
+//! - `g g` - Press 'g' twice
+//! - `g t` - Press 'g' then 't'
+//!
+//! ## Special Keys
+//! - `Space`, `Enter`, `Escape`, `Tab`
+//! - `BackTab`, `Backspace`
+//! - `Home`, `End`, `PageUp`, `PageDown`
+//! - `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`
+//! - `F1` through `F12`
+//!
+//! # Example keymap.toml
+//!
+//! ```toml
+//! [[keymaps]]
+//! key_sequence = "C-p"
+//! command = "play_pause"
+//!
+//! [[keymaps]]
+//! key_sequence = "g s"
+//! command = "page_search"
+//! ```
+
 use serde::Deserialize;
 
 use crate::key::{CommandBinding, CommandCategory, CommandId, KeyBinding};

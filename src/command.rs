@@ -1,3 +1,27 @@
+//! Command system for user actions
+//!
+//! This module defines the command types used throughout the application.
+//! Commands are resolved from key sequences and executed by the GUI.
+//!
+//! # Command Categories
+//!
+//! - **Navigation** - Moving through the UI (up, down, page up, etc.)
+//! - **Playback** - Controlling playback (play, pause, next, etc.)
+//! - **Sorting** - Sorting tracks and library items
+//! - **Pages** - Switching between views
+//! - **Actions** - Context menu actions and operations
+//! - **Popup** - Browse popups
+//! - **Theme** - Theme switching
+//!
+//! # Example
+//!
+//! ```rust
+//! // Resolve a command from a key sequence
+//! if let Some((cmd, count)) = resolve_command(&command_id, 1) {
+//!     execute_command(cmd, count);
+//! }
+//! ```
+
 use crate::key::CommandId;
 
 #[derive(Clone, Debug)]

@@ -1,3 +1,32 @@
+//! Client module for Spotify API communication
+//!
+//! This module handles all communication with Spotify, including:
+//! - Authentication and session management
+//! - Playback control
+//! - Library data fetching
+//! - Search and browse
+//! - Device management
+//!
+//! # Architecture
+//!
+//! The client uses a dual-client architecture:
+//! 1. **librespot** - For streaming and low-level Spotify protocol
+//! 2. **rspotify** - For Web API calls via OAuth PKCE
+//!
+//! # Threading
+//!
+//! Client requests are processed asynchronously by a dedicated Tokio task
+//! that receives requests via a channel from the GUI thread.
+//!
+//! # Lock Hierarchy
+//!
+//! When multiple locks need to be acquired, ALWAYS follow this order:
+//! 1. `state.ui` (`Mutex<UIState>`)
+//! 2. `state.player` (`RwLock<PlayerState>`)
+//! 3. `state.data` (`RwLock<AppData>`)
+//! 4. `state.toast_queue` (`Mutex<VecDeque<String>>`)
+//! 5. `stream_conn` (`Mutex<Option<Spirc>>`) - streaming feature only
+
 use std::collections::HashSet;
 use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
@@ -1060,7 +1089,7 @@ impl AppClient {
     /// Get Spotify's available browse playlists of a given category
     /// 
     /// Note: This uses a custom HTTP implementation instead of `rspotify::category_playlists_manual`
-    /// as a workaround for https://github.com/ramsayleung/rspotify/issues/535
+    /// as a workaround for <https://github.com/ramsayleung/rspotify/issues/535>
     pub async fn browse_category_playlists(&self, category_id: &str) -> Result<Vec<Playlist>> {
         #[derive(Deserialize, Debug)]
         struct BrowseCategoryPlaylistsResponse {

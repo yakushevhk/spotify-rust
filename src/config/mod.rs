@@ -1,3 +1,30 @@
+//! Configuration management module
+//!
+//! This module handles all configuration loading and management:
+//! - Application settings (`app.toml`)
+//! - Theme configuration (`theme.toml`)
+//! - Keymap configuration (`keymap.toml`)
+//!
+//! # Configuration Files
+//!
+//! Configuration files are stored in `~/.config/spotify-player/`:
+//! - `app.toml` - Application settings
+//! - `theme.toml` - Custom color themes
+//! - `keymap.toml` - Keyboard shortcuts
+//!
+//! # Configuration Loading
+//!
+//! Configurations are loaded once at startup and can be reloaded:
+//!
+//! ```rust
+//! // Load configurations
+//! let configs = Configs::new(&config_folder, &cache_folder)?;
+//! config::set_config(configs);
+//!
+//! // Reload after changes
+//! config::reload_config()?;
+//! ```
+
 pub mod keymap;
 pub mod theme;
 
