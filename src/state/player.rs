@@ -17,6 +17,7 @@ pub struct PlayerState {
     pub queue: Option<rspotify::model::CurrentUserQueue>,
 
     /// The currently playing Tracks context (for contexts not tracked by Spotify's playback, e.g. liked/top tracks)
+    #[allow(dead_code)]
     pub currently_playing_tracks_id: Option<TracksId>,
 
     /// App-managed custom queue for full playlist/album playback.
@@ -125,6 +126,7 @@ impl PlayerState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn playing_context_id(&self) -> Option<ContextId> {
         match self.playback {
             Some(ref playback) => match playback.context {
@@ -218,8 +220,8 @@ mod tests {
         let result = state.playing_context_id();
         // Note: This requires the custom_queue to have a source_context
         // which it does, so result should be Some
-        if result.is_some() {
-            assert_eq!(result.unwrap().uri(), "user:liked_tracks");
+        if let Some(r) = result {
+            assert_eq!(r.uri(), "user:liked_tracks");
         }
         // If result is None, the test passes (implementation may vary)
     }
@@ -227,16 +229,18 @@ mod tests {
     /// Test playing_context_id from currently_playing_tracks_id
     #[test]
     fn test_playing_context_id_from_tracks_id() {
-        let mut state = PlayerState::default();
-        state.currently_playing_tracks_id = Some(TracksId {
-            uri: "user:top_tracks".to_string(),
-            kind: "Top Tracks".to_string(),
-        });
+        let state = PlayerState {
+            currently_playing_tracks_id: Some(TracksId {
+                uri: "user:top_tracks".to_string(),
+                kind: "Top Tracks".to_string(),
+            }),
+            ..Default::default()
+        };
 
         let context = state.playing_context_id();
         // When there's no playback context, currently_playing_tracks_id should be used
-        if context.is_some() {
-            assert_eq!(context.unwrap().uri(), "user:top_tracks");
+        if let Some(c) = context {
+            assert_eq!(c.uri(), "user:top_tracks");
         }
         // If context is None, the test passes (implementation may vary)
     }
@@ -285,17 +289,18 @@ mod tests {
     /// Test buffered_playback metadata
     #[test]
     fn test_buffered_playback() {
-        let mut state = PlayerState::default();
-        
-        state.buffered_playback = Some(PlaybackMetadata {
-            device_name: "Test Device".to_string(),
-            device_id: Some("device_id".to_string()),
-            volume: Some(50),
-            is_playing: true,
-            repeat_state: rspotify::model::RepeatState::Off,
-            shuffle_state: false,
-            mute_state: None,
-        });
+        let state = PlayerState {
+            buffered_playback: Some(PlaybackMetadata {
+                device_name: "Test Device".to_string(),
+                device_id: Some("device_id".to_string()),
+                volume: Some(50),
+                is_playing: true,
+                repeat_state: rspotify::model::RepeatState::Off,
+                shuffle_state: false,
+                mute_state: None,
+            }),
+            ..Default::default()
+        };
         
         assert!(state.buffered_playback.is_some());
         let pb = state.buffered_playback.unwrap();
@@ -306,17 +311,18 @@ mod tests {
     /// Test buffered_playback with mute state
     #[test]
     fn test_buffered_playback_mute() {
-        let mut state = PlayerState::default();
-        
-        state.buffered_playback = Some(PlaybackMetadata {
-            device_name: "Test Device".to_string(),
-            device_id: Some("device_id".to_string()),
-            volume: Some(0),
-            is_playing: true,
-            repeat_state: rspotify::model::RepeatState::Off,
-            shuffle_state: false,
-            mute_state: Some(50), // Previously was 50, now muted
-        });
+        let state = PlayerState {
+            buffered_playback: Some(PlaybackMetadata {
+                device_name: "Test Device".to_string(),
+                device_id: Some("device_id".to_string()),
+                volume: Some(0),
+                is_playing: true,
+                repeat_state: rspotify::model::RepeatState::Off,
+                shuffle_state: false,
+                mute_state: Some(50),
+            }),
+            ..Default::default()
+        };
         
         let pb = state.buffered_playback.unwrap();
         assert_eq!(pb.mute_state, Some(50));

@@ -1,6 +1,7 @@
 use crate::config::Theme;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct UIState {
     pub is_running: bool,
     pub theme: Theme,
@@ -15,4 +16,5 @@ impl Default for UIState {
     }
 }
 
+#[allow(dead_code)]
 pub type UIStateGuard<'a> = parking_lot::MutexGuard<'a, UIState>;

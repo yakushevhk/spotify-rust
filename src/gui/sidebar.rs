@@ -285,7 +285,7 @@ pub fn render(
                         ui.painter().text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            &playlist.name.chars().next().unwrap_or('\u{266B}').to_string(),
+                            playlist.name.chars().next().unwrap_or('\u{266B}').to_string(),
                             egui::FontId::proportional(14.0),
                             if resp.hovered() { theme::text_primary() } else { theme::text_secondary() },
                         );

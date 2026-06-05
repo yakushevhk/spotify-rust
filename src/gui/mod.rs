@@ -41,6 +41,7 @@ use eframe::egui;
 use rspotify::prelude::Id;
 
 // Accessibility: Initialize reduced motion on startup
+#[allow(dead_code)]
 fn init_accessibility() {
     theme::init_reduced_motion();
 }
@@ -87,6 +88,7 @@ pub enum AuthStep {
     Idle,
     Step1, // Getting Client ID
     Step2, // OAuth in progress
+    #[allow(dead_code)]
     Complete,
 }
 
@@ -116,7 +118,7 @@ impl SortState {
     pub fn compare(&self, a: &state::Track, b: &state::Track) -> std::cmp::Ordering {
         let ord = match self.column {
             // Use cached lowercase values for sorting (avoids O(n log n) allocations)
-            SortColumn::Title => a.name_lower_ref().cmp(&b.name_lower_ref()),
+            SortColumn::Title => a.name_lower_ref().cmp(b.name_lower_ref()),
             SortColumn::Artist => a.artists_info_lower_ref().cmp(&b.artists_info_lower_ref()),
             SortColumn::Album => a.album_info_lower_ref().cmp(&b.album_info_lower_ref()),
             SortColumn::Duration => a.duration.cmp(&b.duration),
@@ -175,97 +177,12 @@ enum Action {
     ContextMenuNavigateShow(state::Show),
     OpenCreatePlaylist,
     OpenAuthModal,
+    #[allow(dead_code)]
     OpenShows,
     OpenShowDetail(state::Show),
     OpenShowFromSearch(state::Show),
     NavigateToCurrentTrack,
     None,
-}
-
-/// Navigation state management (extracted from SpotifyApp)
-pub struct NavigationState {
-    pub view_history: Vec<View>,
-    pub forward_history: Vec<View>,
-    pub current_view: View,
-}
-
-impl NavigationState {
-    pub fn new() -> Self {
-        Self {
-            view_history: Vec::new(),
-            forward_history: Vec::new(),
-            current_view: View::Library,
-        }
-    }
-}
-
-/// Popup visibility state management (extracted from SpotifyApp)
-pub struct PopupManager {
-    pub show_device_popup: bool,
-    pub show_create_playlist_popup: bool,
-    pub show_add_to_playlist_popup: bool,
-    pub show_theme_switcher: bool,
-    pub show_command_palette: bool,
-    pub show_onboarding: bool,
-    pub show_auth_modal: bool,
-    pub show_browse_playlists_popup: bool,
-    pub show_browse_artists_popup: bool,
-    pub show_browse_albums_popup: bool,
-    pub show_in_page_search: bool,
-    pub show_settings_confirm_dialog: bool,
-}
-
-impl PopupManager {
-    pub fn new() -> Self {
-        Self {
-            show_device_popup: false,
-            show_create_playlist_popup: false,
-            show_add_to_playlist_popup: false,
-            show_theme_switcher: false,
-            show_command_palette: false,
-            show_onboarding: false,
-            show_auth_modal: false,
-            show_browse_playlists_popup: false,
-            show_browse_artists_popup: false,
-            show_browse_albums_popup: false,
-            show_in_page_search: false,
-            show_settings_confirm_dialog: false,
-        }
-    }
-}
-
-/// Settings editor state management (extracted from SpotifyApp)
-pub struct SettingsEditor {
-    pub settings_editing: crate::config::AppConfig,
-    pub settings_original: crate::config::AppConfig,
-    pub settings_dirty: bool,
-}
-
-impl SettingsEditor {
-    pub fn new(config: &crate::config::AppConfig) -> Self {
-        Self {
-            settings_editing: config.clone(),
-            settings_original: config.clone(),
-            settings_dirty: false,
-        }
-    }
-}
-
-/// View state management (extracted from SpotifyApp)
-pub struct ViewState {
-    pub selected_track: Option<usize>,
-    pub context_tracks: Vec<crate::state::Track>,
-    pub scroll_states: std::collections::HashMap<String, usize>,
-}
-
-impl ViewState {
-    pub fn new() -> Self {
-        Self {
-            selected_track: None,
-            context_tracks: Vec::new(),
-            scroll_states: std::collections::HashMap::new(),
-        }
-    }
 }
 
 pub struct SpotifyApp {
@@ -338,10 +255,13 @@ pub struct SpotifyApp {
     search_debounce_state: crate::gui::views::SearchDebounceState,
     
     // Track selection persistence per context
+    #[allow(dead_code)]
     selected_track_per_context: std::collections::HashMap<String, usize>,
     
     // Search results caching
+    #[allow(dead_code)]
     last_search_query: String,
+    #[allow(dead_code)]
     last_search_results: Option<crate::state::SearchResults>,
     
     // Settings unsaved changes dialog
@@ -465,21 +385,19 @@ impl SpotifyApp {
                     self.forward_history.clear();
                 }
                 let data = self.state.data.read();
-                if let Some(item) = data.user_data.playlists.get(idx) {
-                    if let state::PlaylistFolderItem::Playlist(playlist) = item {
-                        let id = playlist.id.clone();
-                        let name = playlist.name.clone();
-                        drop(data);
-                        self.context_title = name;
-                        self.selected_track = None;
-                        self.context_tracks.clear();
-                        self.sort_state = None;
-                    self.current_context_id = Some(state::ContextId::Playlist(id.clone()));
-                    self.send_request(ClientRequest::GetContext(
-                        state::ContextId::Playlist(id),
-                    ));
-                    self.current_view = View::Tracks;
-                    }
+                if let Some(state::PlaylistFolderItem::Playlist(playlist)) = data.user_data.playlists.get(idx) {
+                    let id = playlist.id.clone();
+                    let name = playlist.name.clone();
+                    drop(data);
+                    self.context_title = name;
+                    self.selected_track = None;
+                    self.context_tracks.clear();
+                    self.sort_state = None;
+                self.current_context_id = Some(state::ContextId::Playlist(id.clone()));
+                self.send_request(ClientRequest::GetContext(
+                    state::ContextId::Playlist(id),
+                ));
+                self.current_view = View::Tracks;
                 }
             }
             Action::OpenAlbum(idx) => {
@@ -725,9 +643,7 @@ impl SpotifyApp {
                         drop(player);
                         
                         // Parse context URI and navigate appropriately
-                        if uri.contains(":playlist:") {
-                            self.navigate_to_view(View::Tracks);
-                        } else if uri.contains(":album:") {
+                        if uri.contains(":playlist:") || uri.contains(":album:") {
                             self.navigate_to_view(View::Tracks);
                         } else if uri.contains(":artist:") {
                             self.navigate_to_view(View::Artist);
@@ -812,6 +728,7 @@ impl SpotifyApp {
         }
     }
 
+    #[allow(dead_code, clippy::result_large_err)]
     fn send_request_with_retry(&self, req: ClientRequest) -> Result<(), flume::TrySendError<ClientRequest>> {
         self.client_pub.try_send(req)
     }
@@ -1033,7 +950,7 @@ impl SpotifyApp {
                     }
                     SortCommand::ByAddedDate => {
                         // Sort by added_at (falling back to track order)
-                        self.context_tracks.sort_by(|a, b| a.added_at.cmp(&b.added_at));
+                        self.context_tracks.sort_by_key(|a| a.added_at);
                         self.toast("Sorted by added date".to_string());
                     }
                     SortCommand::Reverse => {
@@ -1129,20 +1046,18 @@ impl SpotifyApp {
                 ActionCommand::ShowActionsOnCurrent => {
                     let player = self.state.player.read();
                     if let Some(ref playback) = player.playback {
-                        if let Some(ref item) = playback.item {
-                            if let rspotify::model::PlayableItem::Track(t) = item {
-                                let track = crate::state::Track::try_from_full_track(t.clone());
-                                if let Some(track) = track {
-                                    let center = egui::pos2(400.0, 400.0);
-                                    self.context_menu.open(
-                                        context_menu::ContextTarget::Track {
-                                            track,
-                                            index: 0,
-                                            playlist_id: None,
-                                        },
-                                        center,
-                                    );
-                                }
+                        if let Some(rspotify::model::PlayableItem::Track(t)) = &playback.item {
+                            let track = crate::state::Track::try_from_full_track(t.clone());
+                            if let Some(track) = track {
+                                let center = egui::pos2(400.0, 400.0);
+                                self.context_menu.open(
+                                    context_menu::ContextTarget::Track {
+                                        track,
+                                        index: 0,
+                                        playlist_id: None,
+                                    },
+                                    center,
+                                );
                             }
                         }
                     }
@@ -1198,43 +1113,39 @@ impl SpotifyApp {
                             self.toast("Searching for radio...".to_string());
                         }
                     }
-                }
+}
                 ActionCommand::MovePlaylistItemUp => {
-                    if let Some(idx) = self.selected_track {
-                        if idx > 0 && idx < self.context_tracks.len() {
-                            if let Some(ref ctx_id) = self.current_context_id {
-                                if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
-                                    self.send_request(ClientRequest::ReorderPlaylistItems {
-                                        playlist_id: playlist_id.clone(),
-                                        insert_index: idx.saturating_sub(1),
-                                        range_start: idx,
-                                        range_length: Some(1),
-                                        snapshot_id: None,
-                                    });
-                                    self.context_tracks.swap(idx, idx - 1);
-                                    self.selected_track = Some(idx - 1);
-                                    self.toast("Moved up".to_string());
-                                }
+                    if let Some(state::ContextId::Playlist(playlist_id)) = self.current_context_id.as_ref() {
+                        if let Some(idx) = self.selected_track {
+                            if idx > 0 && idx < self.context_tracks.len() {
+                                self.send_request(ClientRequest::ReorderPlaylistItems {
+                                    playlist_id: playlist_id.clone(),
+                                    insert_index: idx.saturating_sub(1),
+                                    range_start: idx,
+                                    range_length: Some(1),
+                                    snapshot_id: None,
+                                });
+                                self.context_tracks.swap(idx, idx - 1);
+                                self.selected_track = Some(idx - 1);
+                                self.toast("Moved up".to_string());
                             }
                         }
                     }
                 }
                 ActionCommand::MovePlaylistItemDown => {
-                    if let Some(idx) = self.selected_track {
-                        if idx + 1 < self.context_tracks.len() {
-                            if let Some(ref ctx_id) = self.current_context_id {
-                                if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
-                                    self.send_request(ClientRequest::ReorderPlaylistItems {
-                                        playlist_id: playlist_id.clone(),
-                                        insert_index: idx + 2,
-                                        range_start: idx,
-                                        range_length: Some(1),
-                                        snapshot_id: None,
-                                    });
-                                    self.context_tracks.swap(idx, idx + 1);
-                                    self.selected_track = Some(idx + 1);
-                                    self.toast("Moved down".to_string());
-                                }
+                    if let Some(state::ContextId::Playlist(playlist_id)) = self.current_context_id.as_ref() {
+                        if let Some(idx) = self.selected_track {
+                            if idx + 1 < self.context_tracks.len() {
+                                self.send_request(ClientRequest::ReorderPlaylistItems {
+                                    playlist_id: playlist_id.clone(),
+                                    insert_index: idx + 2,
+                                    range_start: idx,
+                                    range_length: Some(1),
+                                    snapshot_id: None,
+                                });
+                                self.context_tracks.swap(idx, idx + 1);
+                                self.selected_track = Some(idx + 1);
+                                self.toast("Moved down".to_string());
                             }
                         }
                     }
@@ -1249,15 +1160,15 @@ impl SpotifyApp {
                 }
             },
             Command::Popup(popup) => match popup {
-                crate::command::PopupCommand::BrowseUserPlaylists => {
+                crate::command::PopupCommand::Playlists => {
                     self.show_browse_playlists_popup = true;
                     self.browse_popup_filter.clear();
                 }
-                crate::command::PopupCommand::BrowseUserFollowedArtists => {
+                crate::command::PopupCommand::FollowedArtists => {
                     self.show_browse_artists_popup = true;
                     self.browse_popup_filter.clear();
                 }
-                crate::command::PopupCommand::BrowseUserSavedAlbums => {
+                crate::command::PopupCommand::SavedAlbums => {
                     self.show_browse_albums_popup = true;
                     self.browse_popup_filter.clear();
                 }
@@ -1514,11 +1425,9 @@ impl eframe::App for SpotifyApp {
         if self.current_view == View::ShowDetail && self.podcast_episodes.is_empty() {
             if let Some(ref ctx_id) = self.podcast_context_id {
                 let data = self.state.data.read();
-                if let Some(ctx) = data.caches.context.get(&ctx_id.uri()) {
-                    if let state::Context::Show { show, episodes } = ctx {
-                        self.podcast_detail_show = Some(show.clone());
-                        self.podcast_episodes = episodes.clone();
-                    }
+                if let Some(state::Context::Show { show, episodes }) = data.caches.context.get(&ctx_id.uri()) {
+                    self.podcast_detail_show = Some(show.clone());
+                    self.podcast_episodes = episodes.clone();
                 }
             }
         }
@@ -2199,10 +2108,10 @@ impl eframe::App for SpotifyApp {
         }
 
         // Settings save: Ctrl+S (works even when text input is focused)
-        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
-            if self.current_view == View::Settings && self.settings_dirty {
-                self.save_settings();
-            }
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S))
+            && self.current_view == View::Settings && self.settings_dirty
+        {
+            self.save_settings();
         }
 
         // Command Palette: ':' trigger (only when no text input focused)
@@ -3568,6 +3477,7 @@ impl SpotifyApp {
         }
     }
 
+    #[allow(dead_code)]
     fn toast_error(&mut self, message: String) {
         self.toast_messages.push(ToastMessage::new(message, true));
         if self.toast_messages.len() > 10 {

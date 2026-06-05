@@ -72,7 +72,7 @@ pub fn render_library(
                 let gap = 12.0;
                 let total_gaps = gap * 2.0;
                 let padding = 24.0;
-                let card_width = ((avail_width - padding - total_gaps) / 3.0).max(120.0).min(280.0);
+                let card_width = ((avail_width - padding - total_gaps) / 3.0).clamp(120.0, 280.0);
                 quick_card(ui, theme::ICON_LIKED, "Liked Tracks", "Your favorite songs", card_width, || {
                     action = Action::OpenLikedTracks;
                 });
@@ -115,7 +115,7 @@ pub fn render_library(
             match library_sort_order {
                 crate::gui::LibrarySortOrder::Alphabetical => {
                     // Use cached lowercase names for sorting
-                    playlists.sort_by(|a, b| a.name_lower_ref().cmp(&b.name_lower_ref()));
+                    playlists.sort_by_key(|a| a.name_lower_ref());
                 }
                 crate::gui::LibrarySortOrder::RecentlyAdded => {
                     // C7: API order is already reverse-chronological (most recently added first).
@@ -131,7 +131,7 @@ pub fn render_library(
             // Responsive grid: calculate columns based on available width
             let avail_width = ui.available_width();
             let num_cols = theme::responsive_grid_columns(avail_width);
-            let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).min(200.0).max(100.0);
+            let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
             egui::Grid::new("playlists_grid")
                 .num_columns(num_cols)
                 .spacing([16.0, 16.0])
@@ -190,7 +190,7 @@ pub fn render_library(
             // Responsive grid: calculate columns based on available width
             let avail_width = ui.available_width();
             let num_cols = theme::responsive_grid_columns(avail_width);
-            let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).min(200.0).max(100.0);
+            let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
             egui::Grid::new("albums_grid")
                 .num_columns(num_cols)
                 .spacing([16.0, 16.0])
@@ -366,7 +366,7 @@ pub fn render_shows(
                 // Responsive grid: calculate columns based on available width
                 let avail_width = ui.available_width();
                 let num_cols = theme::responsive_grid_columns(avail_width);
-                let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).min(200.0).max(100.0);
+                let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
                 egui::Grid::new("shows_grid")
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
@@ -413,6 +413,7 @@ pub fn render_shows(
     action
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_show_detail(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -596,7 +597,7 @@ pub fn render_show_detail(
                 show.id.clone(),
             )));
         } else {
-            let _ = client_pub.send(ClientRequest::AddToLibrary(state::Item::Show(show.clone())));
+            let _ = client_pub.send(ClientRequest::AddToLibrary(Box::new(state::Item::Show(show.clone()))));
         }
     }
 
@@ -884,7 +885,7 @@ fn truncate_text_binary(
     const MAX_TRUNCATE_ITERATIONS: usize = 3;
     while lo < hi && iterations < MAX_TRUNCATE_ITERATIONS {
         iterations += 1;
-        let mid = (lo + hi + 1) / 2;
+        let mid = (lo + hi).div_ceil(2);
         let candidate: String = chars[..mid].iter().collect();
         let test = format!("{}\u{2026}", candidate);
         let g = ui.fonts(|f| f.layout_no_wrap(test, font.clone(), color));
@@ -907,7 +908,7 @@ fn grid_card(
     width: f32,
     on_click: impl FnOnce(),
 ) -> egui::Response {
-    let width = width.min(200.0).max(100.0);
+    let width = width.clamp(100.0, 200.0);
     let height = 200.0;
 
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
@@ -1013,6 +1014,7 @@ fn grid_card(
     response
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_tracks(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -1083,7 +1085,7 @@ pub fn render_tracks(
     let avail_width = ui.available_width() - 48.0; // Account for padding
     let num_col_width = 48.0; // Fixed width for # column
     let thumb_col_width = 48.0; // Fixed width for thumbnail
-    let time_col_width = (avail_width * 0.15).max(80.0).min(120.0); // 15% for time
+    let time_col_width = (avail_width * 0.15).clamp(80.0, 120.0); // 15% for time
     let title_col_width = (avail_width * 0.35).max(150.0); // 35% for title
     let artist_col_width = (avail_width * 0.25).max(100.0); // 25% for artist
     let album_col_width = (avail_width * 0.25).max(100.0); // 25% for album
@@ -1262,7 +1264,7 @@ pub fn render_tracks(
         let row_avail_width = ui.available_width() - 48.0;
         let num_col_width = 48.0;
         let thumb_col_width = 48.0;
-        let time_col_width = (row_avail_width * 0.15).max(80.0).min(120.0);
+        let time_col_width = (row_avail_width * 0.15).clamp(80.0, 120.0);
         let title_col_width = (row_avail_width * 0.35).max(150.0);
         let artist_col_width = (row_avail_width * 0.25).max(100.0);
         let album_col_width = (row_avail_width * 0.25).max(100.0);
@@ -1541,6 +1543,7 @@ pub fn render_tracks(
 
 use std::time::{Duration, Instant};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_search(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -1617,12 +1620,12 @@ pub fn render_search(
         }
 
         // Search button
-        if theme::secondary_button(ui, "Search").clicked() {
-            if !search_query.is_empty() {
-                debounce_state.pending_query = None;
-                debounce_state.is_searching = true;
-                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
-            }
+        if theme::secondary_button(ui, "Search").clicked()
+            && !search_query.is_empty()
+        {
+            debounce_state.pending_query = None;
+            debounce_state.is_searching = true;
+            let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
         }
     });
 
@@ -2389,7 +2392,7 @@ pub fn render_browse_category_playlists(
                 // Responsive grid for category playlists
                 let avail_width = ui.available_width();
                 let num_cols = theme::responsive_grid_columns(avail_width);
-                let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).min(200.0).max(100.0);
+                let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
                 egui::Grid::new("category_playlists_grid")
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
@@ -2848,6 +2851,7 @@ fn settings_slider_u16(ui: &mut egui::Ui, label: &str, value: &mut u16, min: u16
     ui.add_space(12.0);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_settings(
     ui: &mut egui::Ui,
     current_tab: &mut SettingsTab,

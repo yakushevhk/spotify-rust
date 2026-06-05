@@ -30,6 +30,7 @@ pub struct AppData {
     pub caches: MemoryCaches,
     pub browse: BrowseData,
     pub shows_loading: bool,
+    #[allow(dead_code)]
     pub library_loading: bool,
 }
 
@@ -103,6 +104,7 @@ impl AppData {
     }
 
     /// Get a list of tracks inside a given context
+    #[allow(dead_code)]
     pub fn context_tracks_mut(&mut self, id: &ContextId) -> Option<&mut Vec<Track>> {
         let c = self.caches.context.get_mut(&id.uri())?;
 
@@ -119,6 +121,7 @@ impl AppData {
         })
     }
 
+    #[allow(dead_code)]
     pub fn context_tracks(&self, id: &ContextId) -> Option<&Vec<Track>> {
         let c = self.caches.context.get(&id.uri())?;
         Some(match c {
@@ -164,6 +167,7 @@ impl UserData {
     ///
     /// If `folder_id` is provided, returns items in the given folder id.
     /// Otherwise, returns the all items.
+    #[allow(dead_code)]
     pub fn modifiable_playlist_items(&self, folder_id: Option<usize>) -> Vec<&PlaylistFolderItem> {
         match self.user {
             None => vec![],
@@ -191,6 +195,7 @@ impl UserData {
     }
 
     /// Get playlists items for the given folder id
+    #[allow(dead_code)]
     pub fn folder_playlists_items(&self, folder_id: usize) -> Vec<&PlaylistFolderItem> {
         self.playlists
             .iter()
@@ -202,11 +207,13 @@ impl UserData {
     }
 
     /// Check if a track is a liked track
+    #[allow(dead_code)]
     pub fn is_liked_track(&self, track: &Track) -> bool {
         self.saved_tracks.contains_key(&track.id.uri())
     }
 
     /// Check if a playlist is followed
+    #[allow(dead_code)]
     pub fn is_followed_playlist(&self, playlist: &Playlist) -> bool {
         self.playlists.iter().any(|x| match x {
             PlaylistFolderItem::Playlist(p) => p.id == playlist.id,

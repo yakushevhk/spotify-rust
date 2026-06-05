@@ -10,6 +10,7 @@ use crate::config::theme::Palette;
 pub static REDUCED_MOTION: OnceLock<RwLock<bool>> = OnceLock::new();
 
 /// Initialize reduced motion from environment
+#[allow(dead_code)]
 pub fn init_reduced_motion() {
     let reduced = std::env::var("PREFERS_REDUCED_MOTION")
         .map(|v| v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("1"))
@@ -26,6 +27,7 @@ pub fn is_reduced_motion() -> bool {
 }
 
 /// Set reduced motion preference
+#[allow(dead_code)]
 pub fn set_reduced_motion(enabled: bool) {
     if let Some(lock) = REDUCED_MOTION.get() {
         *lock.write() = enabled;
@@ -36,8 +38,11 @@ pub fn set_reduced_motion(enabled: bool) {
 pub const FOCUS_RING_WIDTH: f32 = 2.0;
 
 /// Tab index ordering for navigation
+#[allow(dead_code)]
 pub const TABINDEX_SIDEBAR: i32 = 100;
+#[allow(dead_code)]
 pub const TABINDEX_MAIN: i32 = 200;
+#[allow(dead_code)]
 pub const TABINDEX_PLAYBACK: i32 = 300;
 
 static PALETTE: OnceLock<RwLock<GuiPalette>> = OnceLock::new();
@@ -54,6 +59,7 @@ pub struct GuiPalette {
     pub bg_card: egui::Color32,
     pub bg_hover: egui::Color32,
     pub bg_active: egui::Color32,
+    #[allow(dead_code)]
     pub bg_elevated: egui::Color32,
     pub bg_input: egui::Color32,
     pub bg_selected: egui::Color32,
@@ -67,6 +73,7 @@ pub struct GuiPalette {
     pub border: egui::Color32,
     pub divider: egui::Color32,
 
+    #[allow(dead_code)]
     pub success: egui::Color32,
     pub error: egui::Color32,
     pub warning: egui::Color32,
@@ -404,11 +411,13 @@ pub fn set_palette(name: &str) {
 }
 
 // === Layout constants ===
+#[allow(dead_code)]
 pub const SIDEBAR_WIDTH: f32 = 280.0;
 pub const SIDEBAR_WIDTH_MIN: f32 = 200.0;
 pub const SIDEBAR_WIDTH_MAX: f32 = 320.0;
 pub const SIDEBAR_COLLAPSE_THRESHOLD: f32 = 900.0;
 pub const PLAYBACK_BAR_HEIGHT: f32 = 100.0;
+#[allow(dead_code)]
 pub const ICON_SIZE: f32 = 24.0;
 pub const PLAYBACK_ART_SIZE: f32 = 80.0;
 pub const TRACK_THUMB_SIZE: f32 = 36.0;
@@ -426,6 +435,7 @@ pub const ICON_BROWSE: &str = "\u{2630}";
 pub const ICON_SHOWS: &str = "\u{1F3A7}";
 pub const ICON_SETTINGS: &str = "\u{2699}";
 pub const ICON_HELP: &str = "\u{003F}";
+#[allow(dead_code)]
 pub const ICON_LOGS: &str = "\u{1F4DD}";
 pub const ICON_QUEUE: &str = "\u{2630}";
 pub const ICON_LIKED: &str = "\u{2665}";
@@ -447,9 +457,13 @@ pub const ICON_LYRICS: &str = "\u{1F3A4}";
 pub const ICON_ARTIST: &str = "\u{1F3A4}";
 pub const ICON_MORE: &str = "\u{22EF}";
 pub const ICON_BACK: &str = "\u{2190}";
+#[allow(dead_code)]
 pub const ICON_EDIT: &str = "\u{270E}";
+#[allow(dead_code)]
 pub const ICON_CLOSE: &str = "\u{2715}";
+#[allow(dead_code)]
 pub const ICON_COLLAPSE: &str = "\u{25C0}";
+#[allow(dead_code)]
 pub const ICON_EXPAND: &str = "\u{25B6}";
 
 /// Calculate responsive sidebar width based on window width
@@ -461,29 +475,38 @@ pub fn responsive_sidebar_width(window_width: f32) -> (f32, bool) {
 
 // === Spacing Constants ===
 /// Extra small spacing (4.0)
+#[allow(dead_code)]
 pub const SPACING_XS: f32 = 4.0;
-/// Small spacing (8.0)
+
+#[allow(dead_code)]
 pub const SPACING_SM: f32 = 8.0;
-/// Medium spacing (16.0)
+
+#[allow(dead_code)]
 pub const SPACING_MD: f32 = 16.0;
-/// Large spacing (24.0)
+
+#[allow(dead_code)]
 pub const SPACING_LG: f32 = 24.0;
-/// Extra large spacing (32.0)
+
+#[allow(dead_code)]
 pub const SPACING_XL: f32 = 32.0;
 
 // === Card Dimensions ===
 /// Standard card width (200.0)
+#[allow(dead_code)]
 pub const CARD_WIDTH: f32 = 200.0;
-/// Standard card height (240.0)
+
+#[allow(dead_code)]
 pub const CARD_HEIGHT: f32 = 240.0;
 
 // === Color accessor functions ===
 // These replace the old constants. Every call reads from the global palette.
 
+#[allow(dead_code)]
 #[inline] pub fn background() -> egui::Color32 { get_palette().background }
 #[inline] pub fn foreground() -> egui::Color32 { get_palette().foreground }
 #[inline] pub fn accent() -> egui::Color32 { get_palette().accent }
 #[inline] pub fn accent_hover() -> egui::Color32 { get_palette().accent_hover }
+#[allow(dead_code)]
 #[inline] pub fn accent_dark() -> egui::Color32 { get_palette().accent_dark }
 
 // Short aliases matching old constant names for minimal diff
@@ -492,6 +515,7 @@ pub const CARD_HEIGHT: f32 = 240.0;
 #[inline] pub fn bg_card() -> egui::Color32 { get_palette().bg_card }
 #[inline] pub fn bg_hover() -> egui::Color32 { get_palette().bg_hover }
 #[inline] pub fn bg_active() -> egui::Color32 { get_palette().bg_active }
+#[allow(dead_code)]
 #[inline] pub fn bg_elevated() -> egui::Color32 { get_palette().bg_elevated }
 #[inline] pub fn bg_input() -> egui::Color32 { get_palette().bg_input }
 #[inline] pub fn bg_selected() -> egui::Color32 { get_palette().bg_selected }
@@ -509,8 +533,10 @@ pub const CARD_HEIGHT: f32 = 240.0;
 #[inline] pub fn border() -> egui::Color32 { get_palette().border }
 #[inline] pub fn divider() -> egui::Color32 { get_palette().divider }
 
+#[allow(dead_code)]
 #[inline] pub fn success() -> egui::Color32 { get_palette().success }
 #[inline] pub fn error_color() -> egui::Color32 { get_palette().error }
+#[allow(dead_code)]
 #[inline] pub fn warning() -> egui::Color32 { get_palette().warning }
 
 #[inline] pub fn lyrics_current() -> egui::Color32 { get_palette().lyrics_current }
@@ -568,6 +594,7 @@ pub fn setup_theme(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
+#[allow(dead_code)]
 pub fn primary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let desired_size = egui::vec2(ui.available_width().min(160.0), 36.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
@@ -779,7 +806,7 @@ pub fn card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R)
 /// Calculate responsive number of grid columns based on available width
 /// Returns between 2 and 6 columns
 pub fn responsive_grid_columns(avail_width: f32) -> usize {
-    let num_cols = ((avail_width - 24.0) / 220.0).floor().max(2.0).min(6.0) as usize;
+    let num_cols = ((avail_width - 24.0) / 220.0).floor().clamp(2.0, 6.0) as usize;
     num_cols.max(2)
 }
 

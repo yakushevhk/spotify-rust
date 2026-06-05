@@ -113,7 +113,7 @@ pub enum ClientRequest {
         range_length: Option<usize>,
         snapshot_id: Option<String>,
     },
-    AddToLibrary(Item),
+    AddToLibrary(Box<Item>),
     DeleteFromLibrary(ItemId),
     Player(PlayerRequest),
     GetCurrentUserQueue,
@@ -128,5 +128,6 @@ pub enum ClientRequest {
         collab: bool,
         desc: String,
     },
+    #[allow(dead_code)]
     Logout,
 }

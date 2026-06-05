@@ -1,5 +1,6 @@
 mod auth;
 mod client;
+mod cli;
 mod command;
 mod config;
 mod key;
@@ -18,6 +19,7 @@ mod gui;
 mod media_control;
 
 use anyhow::{Context, Result};
+use clap::Parser;
 use parking_lot::Mutex;
 use std::{collections::VecDeque, sync::Arc};
 
@@ -294,8 +296,148 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
-    // Handle rustls install gracefully (M7)
+#[tokio::main]
+async fn main() -> Result<()> {
+    if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+        eprintln!("Warning: failed to install rustls default crypto provider: {e:?}");
+    }
+    
+    let cli_args = cli::CliArgs::parse();
+    
+    if let Some(command) = cli_args.command {
+        run_cli(command).await?;
+    } else if cli_args.daemon {
+        run_daemon().await?;
+    } else {
+        run_gui()?;
+    }
+    
+    Ok(())
+}
+
+async fn run_cli(command: cli::CliCommand) -> Result<()> {
+    let config_folder = config::get_config_folder_path()?;
+    if !config_folder.exists() {
+        std::fs::create_dir_all(&config_folder)?;
+    }
+    
+    let lock_path = config_folder.join(".lock");
+    fs2::FileExt::try_lock_shared(
+        &std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .context("failed to open lock file")?,
+    )
+    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    
+    let cache_folder = config::get_cache_folder_path()?;
+    let cache_audio_folder = cache_folder.join("audio");
+    if !cache_audio_folder.exists() {
+        std::fs::create_dir_all(&cache_audio_folder)
+            .with_context(|| format!("failed to create {}", cache_audio_folder.display()))?;
+    }
+    let cache_image_folder = cache_folder.join("image");
+    if !cache_image_folder.exists() {
+        std::fs::create_dir_all(&cache_image_folder)
+            .with_context(|| format!("failed to create {}", cache_image_folder.display()))?;
+    }
+    
+    {
+        let mut configs = config::Configs::new(&config_folder, &cache_folder)?;
+        if configs.app_config.log_folder.is_none() {
+            configs.app_config.log_folder = Some(cache_folder.clone());
+        }
+        config::set_config(configs);
+    }
+    
+    let configs = config::get_config();
+    let log_folder = configs
+        .app_config
+        .log_folder
+        .as_deref()
+        .expect("log_folder is set");
+    
+    let log_buffer: Arc<Mutex<VecDeque<String>>> =
+        Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
+    
+    init_logging(log_folder, log_buffer.clone())
+        .context("failed to initialize application's logging")?;
+    
+    tracing::info!("Starting Spotify Player CLI");
+    
+    let state = Arc::new(state::State::new(true, log_buffer));
+    let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(1024);
+    
+    cli::start_cli_headless(command, state, client_pub, client_sub).await?;
+    
+    Ok(())
+}
+
+async fn run_daemon() -> Result<()> {
+    let config_folder = config::get_config_folder_path()?;
+    if !config_folder.exists() {
+        std::fs::create_dir_all(&config_folder)?;
+    }
+    
+    let lock_path = config_folder.join(".lock");
+    fs2::FileExt::try_lock_shared(
+        &std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .context("failed to open lock file")?,
+    )
+    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    
+    let cache_folder = config::get_cache_folder_path()?;
+    let cache_audio_folder = cache_folder.join("audio");
+    if !cache_audio_folder.exists() {
+        std::fs::create_dir_all(&cache_audio_folder)
+            .with_context(|| format!("failed to create {}", cache_audio_folder.display()))?;
+    }
+    let cache_image_folder = cache_folder.join("image");
+    if !cache_image_folder.exists() {
+        std::fs::create_dir_all(&cache_image_folder)
+            .with_context(|| format!("failed to create {}", cache_image_folder.display()))?;
+    }
+    
+    {
+        let mut configs = config::Configs::new(&config_folder, &cache_folder)?;
+        if configs.app_config.log_folder.is_none() {
+            configs.app_config.log_folder = Some(cache_folder.clone());
+        }
+        config::set_config(configs);
+    }
+    
+    let configs = config::get_config();
+    let log_folder = configs
+        .app_config
+        .log_folder
+        .as_deref()
+        .expect("log_folder is set");
+    
+    let log_buffer: Arc<Mutex<VecDeque<String>>> =
+        Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
+    
+    init_logging(log_folder, log_buffer.clone())
+        .context("failed to initialize application's logging")?;
+    
+    tracing::info!("Starting Spotify Player Daemon");
+    
+    let state = Arc::new(state::State::new(true, log_buffer));
+    let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(1024);
+    
+    cli::start_daemon(state, client_pub, client_sub).await?;
+    
+    Ok(())
+}
+
+fn run_gui() -> Result<()> {
     if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
         eprintln!("Warning: failed to install rustls default crypto provider: {e:?}");
     }
@@ -307,9 +449,10 @@ fn main() -> Result<()> {
 
     // Multi-instance guard (C3)
     let lock_path = config_folder.join(".lock");
-    let _lock_file = fs2::FileExt::try_lock_shared(
+    fs2::FileExt::try_lock_shared(
         &std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(&lock_path)

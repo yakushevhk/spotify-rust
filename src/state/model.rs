@@ -101,6 +101,7 @@ pub enum ItemId {
     Track(TrackId<'static>),
     Album(AlbumId<'static>),
     Artist(ArtistId<'static>),
+    #[allow(dead_code)]
     Playlist(PlaylistId<'static>),
     Show(ShowId<'static>),
 }
@@ -182,15 +183,19 @@ pub struct Track {
     pub duration: std::time::Duration,
     pub explicit: bool,
     #[serde(skip)]
+    #[allow(dead_code)]
     pub added_at: u64,
     #[serde(skip)]
     /// Cached lowercase name for sorting (computed on first access)
+    #[allow(dead_code)]
     pub name_lower: Option<String>,
     #[serde(skip)]
     /// Cached lowercase artist info for sorting
+    #[allow(dead_code)]
     pub artists_info_lower: Option<String>,
     #[serde(skip)]
     /// Cached lowercase album info for sorting
+    #[allow(dead_code)]
     pub album_info_lower: Option<String>,
 }
 
@@ -202,17 +207,21 @@ pub struct Album {
     pub name: String,
     pub artists: Vec<Artist>,
     pub typ: Option<rspotify::model::AlbumType>,
+    #[allow(dead_code)]
     pub added_at: u64,
     #[serde(default)]
     pub cover_url: Option<String>,
     #[serde(skip)]
     /// Cached lowercase name for sorting
+    #[allow(dead_code)]
     pub name_lower: Option<String>,
     #[serde(skip)]
     /// Cached artists display string (pre-computed)
+    #[allow(dead_code)]
     pub artists_display: Option<String>,
     #[serde(skip)]
     /// Cached image path (computed once)
+    #[allow(dead_code)]
     pub image_path: Option<std::path::PathBuf>,
 }
 
@@ -245,9 +254,11 @@ pub struct Playlist {
     pub cover_url: Option<String>,
     #[serde(skip)]
     /// Cached lowercase name for sorting
+    #[allow(dead_code)]
     pub name_lower: Option<String>,
     #[serde(skip)]
     /// Cached image path (computed once)
+    #[allow(dead_code)]
     pub image_path: Option<std::path::PathBuf>,
 }
 
@@ -262,6 +273,40 @@ pub struct Show {
     pub description: String,
     #[serde(default)]
     pub cover_url: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
+pub struct SimplifiedShow {
+    #[serde(default)]
+    pub available_markets: Vec<String>,
+    #[serde(default)]
+    pub copyrights: Vec<rspotify::model::Copyright>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub explicit: bool,
+    pub external_urls: std::collections::HashMap<String, String>,
+    pub href: String,
+    pub id: ShowId<'static>,
+    #[serde(default)]
+    pub images: Vec<rspotify::model::Image>,
+    #[serde(default)]
+    pub is_externally_hosted: Option<bool>,
+    #[serde(default)]
+    pub languages: Vec<String>,
+    #[serde(default)]
+    pub media_type: String,
+    pub name: String,
+    #[serde(default)]
+    pub publisher: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct SavedShow {
+    #[allow(dead_code)]
+    pub added_at: String,
+    pub show: SimplifiedShow,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -372,6 +417,7 @@ impl Track {
     }
 
     /// gets cached lowercase name for sorting (computes if not cached)
+    #[allow(dead_code)]
     pub fn name_lower_cached(&mut self) -> String {
         if self.name_lower.is_none() {
             self.name_lower = Some(self.name.to_ascii_lowercase());
@@ -380,6 +426,7 @@ impl Track {
     }
 
     /// gets cached lowercase artist info for sorting (computes if not cached)
+    #[allow(dead_code)]
     pub fn artists_info_lower_cached(&mut self) -> String {
         if self.artists_info_lower.is_none() {
             self.artists_info_lower = Some(self.artists_info().to_ascii_lowercase());
@@ -388,6 +435,7 @@ impl Track {
     }
 
     /// gets cached lowercase album info for sorting (computes if not cached)
+    #[allow(dead_code)]
     pub fn album_info_lower_cached(&mut self) -> String {
         if self.album_info_lower.is_none() {
             self.album_info_lower = Some(self.album_info().to_ascii_lowercase());
@@ -396,6 +444,7 @@ impl Track {
     }
 
     /// gets cached lowercase name for sorting (immutable version)
+    #[allow(dead_code)]
     pub fn name_lower_ref(&self) -> &str {
         self.name_lower.as_deref().unwrap_or(self.name.as_str())
     }
@@ -576,6 +625,7 @@ impl From<rspotify::model::SavedAlbum> for Album {
 
 impl Album {
     /// gets cached lowercase name for sorting (immutable version)
+    #[allow(dead_code)]
     pub fn name_lower_ref(&self) -> String {
         self.name_lower.clone().unwrap_or_else(|| self.name.to_ascii_lowercase())
     }
@@ -711,6 +761,18 @@ impl Playlist {
 
 impl From<rspotify::model::SimplifiedShow> for Show {
     fn from(show: rspotify::model::SimplifiedShow) -> Self {
+        Self {
+            id: show.id,
+            name: show.name,
+            publisher: show.publisher,
+            description: show.description,
+            cover_url: show.images.first().map(|img| img.url.clone()),
+        }
+    }
+}
+
+impl From<SimplifiedShow> for Show {
+    fn from(show: SimplifiedShow) -> Self {
         Self {
             id: show.id,
             name: show.name,

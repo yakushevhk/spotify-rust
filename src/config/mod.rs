@@ -31,7 +31,9 @@ pub mod theme;
 const DEFAULT_CONFIG_FOLDER: &str = ".config/spotify-player";
 const DEFAULT_CACHE_FOLDER: &str = ".cache/spotify-player";
 const APP_CONFIG_FILE: &str = "app.toml";
+#[allow(dead_code)]
 const THEME_CONFIG_FILE: &str = "theme.toml";
+#[allow(dead_code)]
 const KEYMAP_CONFIG_FILE: &str = "keymap.toml";
 
 use anyhow::{anyhow, Result};
@@ -271,6 +273,7 @@ const ALLOWED_COMMANDS: &[&str] = &[
 ];
 
 impl Command {
+    #[allow(dead_code)]
     pub fn new<C, A>(command: C, args: &[A]) -> Self
     where
         C: std::fmt::Display,
@@ -868,8 +871,10 @@ mod tests {
     /// Test AppConfig::session_config with proxy
     #[test]
     fn test_app_config_session_config_with_proxy() {
-        let mut config = AppConfig::default();
-        config.proxy = Some("http://proxy.example.com:8080".to_string());
+        let config = AppConfig {
+            proxy: Some("http://proxy.example.com:8080".to_string()),
+            ..Default::default()
+        };
         
         let session_config = config.session_config();
         assert!(session_config.proxy.is_some());

@@ -209,9 +209,7 @@ pub fn show_cover_path(show: &state::Show) -> Option<PathBuf> {
 }
 
 pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
-    if category.icon_url.is_none() {
-        return None;
-    }
+    category.icon_url.as_ref()?;
     let id_prefix = &category.id[..category.id.len().min(6)];
     let filename = sanitize_filename(&format!("category-{}-icon.jpg", id_prefix));
     Some(

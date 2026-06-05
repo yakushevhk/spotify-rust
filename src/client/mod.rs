@@ -37,7 +37,7 @@ use crate::{
     state::{
         store_data_into_file_cache, Album, AlbumId, Artist, ArtistId, Category, Context, ContextId,
         Device, FileCacheKey, Item, ItemId, MemoryCaches, Playback, PlaybackMetadata, Playlist,
-        PlaylistFolderItem, PlaylistId, SearchResults, SharedState, Show, ShowId, Track, TrackId,
+        PlaylistFolderItem, PlaylistId, SavedShow, SearchResults, SharedState, Show, ShowId, Track, TrackId,
         UserId, TTL_CACHE_DURATION, USER_LIKED_TRACKS_URI, USER_RECENTLY_PLAYED_TRACKS_URI,
         USER_TOP_TRACKS_URI,
     },
@@ -403,7 +403,9 @@ impl AppClient {
     }
 
     /// Check if the current session is valid and if invalid, create a new session
+    /// Also validates the user_client OAuth token and refreshes if needed
     pub async fn check_valid_session(&self, state: &SharedState) -> Result<()> {
+        // Check librespot streaming session
         if self.spotify.session().await.is_invalid() {
             let _guard = self.reauth_lock.lock().await;
             // Re-check after acquiring the lock in case another task already fixed it
@@ -419,6 +421,51 @@ impl AppClient {
                 }
             }
         }
+        
+        // Check and refresh user_client OAuth token if needed
+        // This is critical for CLI commands that use user_client() directly
+        if let Some(user_client) = &self.user_client {
+            // Get the token Arc and lock it separately to avoid borrow issues
+            let token_arc = user_client.get_token();
+            let token_guard = token_arc.lock().await
+                .map_err(|e| anyhow::anyhow!("Token mutex poisoned: {e:?}"))?;
+            
+            let needs_refresh = match token_guard.as_ref() {
+                None => true,
+                Some(token) => {
+                    // Check if token is expired or about to expire (within 60 seconds)
+                    token.expires_at.is_none_or(|expires_at| {
+                        chrono::Utc::now() >= expires_at - chrono::Duration::seconds(60)
+                    })
+                }
+            };
+            
+            drop(token_guard);
+            
+            if needs_refresh {
+                tracing::info!("User client token expired or expiring soon, refreshing...");
+                let _guard = self.reauth_lock.lock().await;
+                
+                // Try auto_reauth first
+                if let Err(err) = user_client.auto_reauth().await {
+                    tracing::warn!("Auto reauth failed: {err:#}, attempting manual refresh");
+                    
+                    // If auto_reauth fails, try refresh_token
+                    if let Err(refresh_err) = user_client.refresh_token().await {
+                        tracing::error!("Token refresh failed: {refresh_err:#}");
+                        
+                        // Both failed - may need full re-authentication
+                        // For CLI, we can't re-prompt, so propagate the error
+                        return Err(anyhow::anyhow!(
+                            "Failed to refresh user client token. Please re-authenticate by running the GUI or clearing cache: {refresh_err:#}"
+                        ));
+                    }
+                }
+                
+                tracing::info!("User client token successfully refreshed");
+            }
+        }
+        
         Ok(())
     }
 
@@ -863,7 +910,7 @@ impl AppClient {
                     .await?;
             }
             ClientRequest::AddToLibrary(item) => {
-                self.add_to_library(state, item).await?;
+                self.add_to_library(state, *item).await?;
             }
             ClientRequest::DeleteFromLibrary(id) => {
                 self.delete_from_library(state, id).await?;
@@ -1264,12 +1311,12 @@ impl AppClient {
         Ok(albums.into_iter().map(Album::from).collect())
     }
 
-    /// Get all saved shows of the current user
+/// Get all saved shows of the current user
     pub async fn current_user_saved_shows(&self) -> Result<Vec<Show>> {
         let shows = self
-            .all_paging_items::<rspotify::model::Show>(
+            .all_paging_items::<SavedShow>(
                 &format!("{SPOTIFY_API_ENDPOINT}/me/shows"),
-                0, // we don't know the total number of saved shows beforehand
+                0,
             )
             .await?;
 
@@ -2781,7 +2828,7 @@ mod tests {
     /// Test hash_filename produces different values for different inputs
     #[test]
     fn test_hash_filename_uniqueness() {
-        let names = vec![
+        let names = [
             "image1.png",
             "image2.png",
             "test.jpg",

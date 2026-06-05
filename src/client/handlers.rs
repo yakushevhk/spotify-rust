@@ -12,6 +12,7 @@ use crate::{
 use super::ClientRequest;
 
 /// Issue #3: Maximum size for the client request channel buffer
+#[allow(dead_code)]
 const MAX_CHANNEL_SIZE: usize = 1024;
 
 struct PlayerEventHandlerState {
@@ -55,7 +56,7 @@ pub async fn start_client_handler(
                         tracing::error!("Failed to acquire semaphore permit: {e}");
                         // Log and continue without spawning task
                         state.toast_queue.lock().push_back(
-                            format!("Internal error: failed to acquire task permit")
+                            "Internal error: failed to acquire task permit".to_string()
                         );
                         continue;
                     }
@@ -86,12 +87,14 @@ pub async fn start_client_handler(
 
 /// Issue #3: Create a bounded channel for client requests with backpressure
 /// Returns a sender that will drop old requests if the channel is full
+#[allow(dead_code)]
 pub fn create_client_channel() -> (flume::Sender<ClientRequest>, flume::Receiver<ClientRequest>) {
     flume::bounded::<ClientRequest>(MAX_CHANNEL_SIZE)
 }
 
 /// Issue #3: Send a request to the client channel with backpressure handling.
 /// If the channel is full, waits for space to become available.
+#[allow(dead_code)]
 pub fn send_client_request(
     sender: &flume::Sender<ClientRequest>,
     request: ClientRequest,

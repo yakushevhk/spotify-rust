@@ -235,14 +235,14 @@ impl CustomQueue {
             self.batch_start = next;
             self.batch_end = (self.batch_start + self.max_batch_size).min(self.play_order.len());
             self.mark_batch_transition();
-            AdvanceResult::NewBatch(self.current_batch().unwrap().to_vec())
+            AdvanceResult::NewBatch(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
         } else if self.repeat == rspotify::model::RepeatState::Context {
             // End of queue with repeat-context — wrap to beginning.
             self.position = 0;
             self.batch_start = 0;
             self.batch_end = self.max_batch_size.min(self.play_order.len());
             self.mark_batch_transition();
-            AdvanceResult::NewBatch(self.current_batch().unwrap().to_vec())
+            AdvanceResult::NewBatch(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
         } else if self.autoplay {
             // End of queue, no repeat — autoplay is enabled, ask caller to
             // fetch radio tracks and append them.
@@ -261,7 +261,7 @@ impl CustomQueue {
                 self.batch_end = self.play_order.len();
                 self.batch_start = self.batch_end.saturating_sub(self.max_batch_size);
                 self.mark_batch_transition();
-                RetreatResult::PreviousBatch(self.current_batch().unwrap().to_vec())
+                RetreatResult::PreviousBatch(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
             } else {
                 RetreatResult::BeginningOfQueue
             }
@@ -276,7 +276,7 @@ impl CustomQueue {
                 self.batch_end = self.batch_start;
                 self.batch_start = self.batch_end.saturating_sub(self.max_batch_size);
                 self.mark_batch_transition();
-                RetreatResult::PreviousBatch(self.current_batch().unwrap().to_vec())
+                RetreatResult::PreviousBatch(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
             }
         }
     }
@@ -393,7 +393,7 @@ impl CustomQueue {
         self.batch_start = self.batch_end;
         self.batch_end = (self.batch_start + self.max_batch_size).min(self.play_order.len());
         self.mark_batch_transition();
-        Some(self.current_batch().unwrap().to_vec())
+        Some(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
     }
 
     /// Record that a batch transition just occurred (for consistency-check

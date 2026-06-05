@@ -17,7 +17,7 @@ fn generate_waveform_bars(width: usize, seed: u64) -> Vec<f32> {
     for i in 0..width {
         let x = i as f32 / width as f32;
         let base = 0.3
-            + 0.25 * (x * 6.28 + seed as f32 * 0.7).sin()
+            + 0.25 * (x * std::f32::consts::TAU + seed as f32 * 0.7).sin()
             + 0.15 * (x * 12.56 + seed as f32 * 1.3).sin()
             + 0.1 * (x * 18.84 + seed as f32 * 2.1).sin();
         bars.push(base.clamp(0.1, 0.9));
@@ -67,7 +67,7 @@ pub fn render(
 
         // === LEFT: Track info ===
         // Flexible width, takes remaining space after center and right
-        let track_info_width = (total_width * 0.25).max(200.0).min(320.0);
+        let track_info_width = (total_width * 0.25).clamp(200.0, 320.0);
         ui.allocate_space(egui::vec2(track_info_width, 0.0));
 
         let track_rect = ui
@@ -258,16 +258,16 @@ pub fn render(
 
         // === CENTER: Controls + Progress ===
         // Percentage-based width with min/max constraints
-        let center_width = (total_width * 0.40).max(300.0).min(500.0);
+        let center_width = (total_width * 0.40).clamp(300.0, 500.0);
         let available = ui.available_width();
-        let right_section_width = (total_width * 0.25).max(200.0).min(320.0);
+        let right_section_width = (total_width * 0.25).clamp(200.0, 320.0);
         let left_pad = ((available - center_width - right_section_width + 200.0) / 2.0).max(8.0);
         ui.allocate_space(egui::vec2(left_pad, 0.0));
 
         ui.vertical(|ui| {
             // Playback controls row
             ui.horizontal(|ui| {
-                let controls_width = (center_width * 0.65).max(200.0).min(320.0);
+                let controls_width = (center_width * 0.65).clamp(200.0, 320.0);
                 let pad = ((ui.available_width() - controls_width) / 2.0).max(0.0);
                 ui.add_space(pad);
 
@@ -367,44 +367,47 @@ pub fn render(
                     // Generate waveform bars (cached by track URI only - regenerate only when track changes)
                     let num_bars = (bar_width / 3.0) as usize;
                     let cache_key_uri = track_uri.clone();
-                    if waveform_cache.as_ref().map_or(true, |(uri, _, _)| *uri != cache_key_uri) {
+                    if waveform_cache.as_ref().is_none_or(|(uri, _, _)| *uri != cache_key_uri) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
                         *waveform_cache = Some((cache_key_uri, num_bars, bars));
                     }
-                    let waveform = &waveform_cache.as_ref().unwrap().2;
 
-                    let bar_gap = 1.0;
-                    let bar_w = (bar_width / num_bars as f32) - bar_gap;
                     let hover_pos = bar_response.hover_pos();
+                    
+                    if let Some((_, cached_num_bars, waveform)) = waveform_cache.as_ref() {
+                        let num_bars = *cached_num_bars;
+                        let bar_gap = 1.0;
+                        let bar_w = (bar_width / num_bars as f32) - bar_gap;
 
-                    for (i, &amplitude) in waveform.iter().enumerate() {
-                        let x = bar_rect.left() + i as f32 * (bar_w + bar_gap);
-                        let h = amplitude * bar_height * 0.8;
-                        let y_center = bar_rect.center().y;
-                        let bar = egui::Rect::from_center_size(
-                            egui::pos2(x + bar_w / 2.0, y_center),
-                            egui::vec2(bar_w, h),
-                        );
+                        for (i, &amplitude) in waveform.iter().enumerate() {
+                            let x = bar_rect.left() + i as f32 * (bar_w + bar_gap);
+                            let h = amplitude * bar_height * 0.8;
+                            let y_center = bar_rect.center().y;
+                            let bar = egui::Rect::from_center_size(
+                                egui::pos2(x + bar_w / 2.0, y_center),
+                                egui::vec2(bar_w, h),
+                            );
 
-                        let played = (i as f32 / num_bars as f32) < ratio;
+                            let played = (i as f32 / num_bars as f32) < ratio;
 
-                        let is_hovered = hover_pos
-                            .map(|pos| (x..=x + bar_w).contains(&pos.x))
-                            .unwrap_or(false);
+                            let is_hovered = hover_pos
+                                .map(|pos| (x..=x + bar_w).contains(&pos.x))
+                                .unwrap_or(false);
 
-                        let color = if played {
-                            if is_hovered {
-                                theme::accent_hover()
+                            let color = if played {
+                                if is_hovered {
+                                    theme::accent_hover()
+                                } else {
+                                    theme::accent()
+                                }
+                            } else if is_hovered {
+                                theme::lerp_color(theme::bg_active(), theme::text_dim(), 0.3)
                             } else {
-                                theme::accent()
-                            }
-                        } else if is_hovered {
-                            theme::lerp_color(theme::bg_active(), theme::text_dim(), 0.3)
-                        } else {
-                            theme::bg_active()
-                        };
+                                theme::bg_active()
+                            };
 
-                        ui.painter().rect_filled(bar, 1.0, color);
+                            ui.painter().rect_filled(bar, 1.0, color);
+                        }
                     }
 
                     // Hover time tooltip
@@ -516,7 +519,7 @@ pub fn render(
                 // Device name
                 ui.add_space(16.0);
                 ui.label(
-                    egui::RichText::new(format!("{}%", playback.device.volume_percent.unwrap_or(50) as u32))
+                    egui::RichText::new(format!("{}%", playback.device.volume_percent.unwrap_or(50)))
                         .size(11.0)
                         .color(theme::text_dim())
                         .monospace(),

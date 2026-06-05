@@ -69,7 +69,7 @@ impl KeymapConfig {
     /// Merge user keymap overrides into the default keybindings.
     /// For each user keymap entry whose command matches an existing binding,
     /// replace the keybindings of that binding.
-    pub fn apply_overrides(&self, defaults: &mut Vec<CommandBinding>) {
+    pub fn apply_overrides(&self, defaults: &mut [CommandBinding]) {
         for km in &self.keymaps {
             // K4: find all matching bindings, not just the first
             for binding in defaults.iter_mut().filter(|b| b.command.0 == km.command) {
@@ -132,7 +132,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
 
     // Single character key
     if s.len() == 1 {
-        return vec![KeyBinding::Key(s.chars().next().unwrap())];
+        return vec![KeyBinding::Key(s.chars().next().expect("s.len() == 1 guarantees at least one char"))];
     }
 
     vec![]

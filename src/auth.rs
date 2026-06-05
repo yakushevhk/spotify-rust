@@ -85,7 +85,8 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         AuthConfig {
-            cache: Cache::new(None::<String>, None, None, None).unwrap(),
+            cache: Cache::new(None::<String>, None, None, None)
+                .expect("failed to create default cache"),
             session_config: SessionConfig::default(),
             login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
         }

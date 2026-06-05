@@ -90,7 +90,7 @@ impl BaseClient for Spotify {
 
         // Check if another task already refreshed the token while we were waiting
         {
-            let existing = self.token.lock().await.unwrap();
+            let existing = self.token.lock().await.expect("rspotify mutex lock never fails");
             if let Some(ref tok) = *existing {
                 if let Some(expires_at) = tok.expires_at {
                     if chrono::Utc::now() < expires_at {
@@ -101,7 +101,7 @@ impl BaseClient for Spotify {
         }
 
         let session = self.session.lock().await.clone();
-        let old_token = self.token.lock().await.unwrap().clone();
+        let old_token = self.token.lock().await.expect("rspotify mutex lock never fails").clone();
 
         let Some(session) = session else {
             tracing::error!("No session available for token refresh");

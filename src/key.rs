@@ -135,10 +135,10 @@ impl KeySequenceState {
         keybindings: &[CommandBinding],
     ) -> (KeySequenceResult, Option<usize>) {
         // Check for timeout
-        if !self.pending_keys.is_empty() || self.count_prefix.is_some() {
-            if self.last_key_time.elapsed() > KEY_SEQUENCE_TIMEOUT {
-                self.reset();
-            }
+        if (!self.pending_keys.is_empty() || self.count_prefix.is_some())
+            && self.last_key_time.elapsed() > KEY_SEQUENCE_TIMEOUT
+        {
+            self.reset();
         }
 
         self.last_key_time = Instant::now();
@@ -231,14 +231,11 @@ impl KeySequenceState {
         // First, try exact sequence match
         for binding in keybindings {
             for kb in &binding.keybindings {
-                match kb {
-                    KeyBinding::Sequence(parts) => {
-                        let seq_str = parts.join(" ");
-                        if seq_str == self.pending_keys {
-                            return KeySequenceResult::Complete(binding.command.clone());
-                        }
+                if let KeyBinding::Sequence(parts) = kb {
+                    let seq_str = parts.join(" ");
+                    if seq_str == self.pending_keys {
+                        return KeySequenceResult::Complete(binding.command.clone());
                     }
-                    _ => {}
                 }
             }
         }
@@ -265,7 +262,7 @@ impl KeySequenceState {
                         match kb {
                             KeyBinding::Key(c) => {
                                 if self.pending_keys.len() == 1
-                                    && self.pending_keys.chars().next() == Some(*c)
+                                    && self.pending_keys.starts_with(*c)
                                 {
                                     return KeySequenceResult::Complete(binding.command.clone());
                                 }
@@ -276,11 +273,9 @@ impl KeySequenceState {
                                     return KeySequenceResult::Complete(binding.command.clone());
                                 }
                             }
-                            KeyBinding::Special(name) => {
-                                if self.pending_keys == *name {
+                            KeyBinding::Special(name) if self.pending_keys == *name => {
                                     return KeySequenceResult::Complete(binding.command.clone());
                                 }
-                            }
                             _ => {}
                         }
                     }

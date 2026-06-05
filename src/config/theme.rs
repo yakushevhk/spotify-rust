@@ -203,16 +203,8 @@ impl ThemeConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ThemeConfig {
     #[serde(default)]
     pub themes: Vec<Theme>,
-}
-
-impl Default for ThemeConfig {
-    fn default() -> Self {
-        Self {
-            themes: Vec::new(),
-        }
-    }
 }

@@ -56,6 +56,7 @@ pub type SharedState = Arc<State>;
 
 /// Application's state
 pub struct State {
+    #[allow(dead_code)]
     pub ui: Mutex<UIState>,
     // TODO: player and data see more writes than reads in typical usage,
     // making RwLock suboptimal. Consider replacing with parking_lot::Mutex
@@ -147,6 +148,7 @@ impl State {
     /// has occurred since).  Used by the UI to decide whether to allocate and
     /// render the audio-visualization area.
     #[cfg(feature = "streaming")]
+    #[allow(dead_code)]
     pub fn is_local_streaming_active(&self) -> bool {
         self.vis_bands.as_ref().is_some_and(|b| b.lock().is_active)
     }

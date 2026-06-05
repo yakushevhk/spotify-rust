@@ -18,6 +18,7 @@ pub enum Navigation {
 pub enum ContextTarget {
     Track {
         track: Track,
+        #[allow(dead_code)]
         index: usize,
         playlist_id: Option<state::PlaylistId<'static>>,
     },
@@ -42,6 +43,7 @@ pub struct MenuItem {
 #[derive(Clone, Debug)]
 pub enum MenuAction {
     AddToQueue(PlayableId<'static>),
+    #[allow(dead_code)]
     AddAlbumToQueue(state::AlbumId<'static>),
     AddToPlaylist(PlayableId<'static>),
     ToggleLiked(Track),
@@ -54,6 +56,7 @@ pub enum MenuAction {
     GoToShow(Show),
     GoToRadio(Track),
     FollowArtist(Artist),
+    #[allow(dead_code)]
     UnfollowArtist(state::ArtistId<'static>),
     AddShowToLibrary(Show),
     RemoveShowFromLibrary(state::ShowId<'static>),
@@ -85,6 +88,7 @@ pub struct ContextMenu {
     // Accessibility: keyboard navigation state
     pub keyboard_nav_enabled: bool,
     pub selected_item_index: Option<usize>,
+    #[allow(dead_code)]
     pub trigger_element_id: Option<egui::Id>,
 }
 
@@ -141,6 +145,7 @@ impl ContextMenu {
     }
 
     /// Open context menu with keyboard (Shift+F10)
+    #[allow(dead_code)]
     pub fn open_with_keyboard(&mut self, target: ContextTarget, position: egui::Pos2, trigger_id: egui::Id) {
         self.target = Some(target);
         self.position = position;
@@ -158,6 +163,7 @@ impl ContextMenu {
     }
 
     /// Check if Shift+F10 was pressed to open context menu
+    #[allow(dead_code)]
     pub fn check_keyboard_trigger(ctx: &egui::Context) -> bool {
         ctx.input(|i| {
             i.modifiers.shift && i.key_pressed(egui::Key::F10)
@@ -340,48 +346,35 @@ impl ContextMenu {
     }
 
     fn show_items(show: &Show) -> Vec<MenuItem> {
-        let mut items = Vec::new();
-
-        items.push(MenuItem {
-            icon: "\u{25B6}",
-            label: "Play",
-            destructive: false,
-            action: MenuAction::PlayContext(Playback::Context(
-                state::ContextId::Show(show.id.clone()),
-                None,
-            )),
-        });
-
-        items.push(MenuItem {
-            icon: "\u{2795}",
-            label: "Add to Library",
-            destructive: false,
-            action: MenuAction::AddShowToLibrary(show.clone()),
-        });
-
-        items.push(MenuItem {
-            icon: "\u{1F50D}",
-            label: "Go to Show",
-            destructive: false,
-            action: MenuAction::GoToShow(show.clone()),
-        });
-
-        items.push(MenuItem {
-            icon: "\u{1F5D1}",
-            label: "Unfollow",
-            destructive: true,
-            action: MenuAction::RemoveShowFromLibrary(show.id.clone()),
-        });
-
-        let uri = format!("https://open.spotify.com/show/{}", show.id.id());
-        items.push(MenuItem {
-            icon: "\u{1F517}",
-            label: "Copy Link",
-            destructive: false,
-            action: MenuAction::CopyLink(uri),
-        });
-
-        items
+        vec![
+            MenuItem {
+                icon: "\u{25B6}",
+                label: "Play",
+                destructive: false,
+                action: MenuAction::PlayContext(Playback::Context(
+                    state::ContextId::Show(show.id.clone()),
+                    None,
+                )),
+            },
+            MenuItem {
+                icon: "\u{2795}",
+                label: "Add to Library",
+                destructive: false,
+                action: MenuAction::AddShowToLibrary(show.clone()),
+            },
+            MenuItem {
+                icon: "\u{1F50D}",
+                label: "Go to Show",
+                destructive: false,
+                action: MenuAction::GoToShow(show.clone()),
+            },
+            MenuItem {
+                icon: "\u{1F5D1}",
+                label: "Unfollow",
+                destructive: true,
+                action: MenuAction::RemoveShowFromLibrary(show.id.clone()),
+            },
+        ]
     }
 
     fn episode_items(episode: &Episode, show: &Option<Show>) -> Vec<MenuItem> {
@@ -726,7 +719,7 @@ impl ContextMenu {
                     ui.set_min_width(dialog_width - 32.0);
 
                     ui.label(
-                        egui::RichText::new(title.clone())
+                        egui::RichText::new(title)
                             .size(15.0)
                             .strong()
                             .color(theme::text_primary()),
@@ -887,13 +880,13 @@ impl ContextMenu {
                     state.push_toast("Removed from Liked Songs".to_string());
                 } else {
                     let _ =
-                        client_pub.send(ClientRequest::AddToLibrary(Item::Track(track)));
+                        client_pub.send(ClientRequest::AddToLibrary(Box::new(Item::Track(track))));
                     state.push_toast("Added to Liked Songs".to_string());
                 }
                 None
             }
             MenuAction::AddAlbumToLibrary(album) => {
-                let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Album(album)));
+                let _ = client_pub.send(ClientRequest::AddToLibrary(Box::new(Item::Album(album))));
                 state.push_toast("Album saved to library".to_string());
                 None
             }
@@ -906,7 +899,7 @@ impl ContextMenu {
             }
             MenuAction::AddPlaylistToLibrary(playlist) => {
                 let _ =
-                    client_pub.send(ClientRequest::AddToLibrary(Item::Playlist(playlist)));
+                    client_pub.send(ClientRequest::AddToLibrary(Box::new(Item::Playlist(playlist))));
                 state.push_toast("Playlist saved to library".to_string());
                 None
             }
@@ -943,7 +936,7 @@ impl ContextMenu {
                     ));
                     state.push_toast("Unfollowed artist".to_string());
                 } else {
-                    let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Artist(artist)));
+                    let _ = client_pub.send(ClientRequest::AddToLibrary(Box::new(Item::Artist(artist))));
                     state.push_toast("Following artist".to_string());
                 }
                 None
@@ -956,7 +949,7 @@ impl ContextMenu {
                 None
             }
             MenuAction::AddShowToLibrary(show) => {
-                let _ = client_pub.send(ClientRequest::AddToLibrary(Item::Show(show)));
+                let _ = client_pub.send(ClientRequest::AddToLibrary(Box::new(Item::Show(show))));
                 state.push_toast("Show saved to library".to_string());
                 None
             }

@@ -120,9 +120,9 @@ pub enum ActionCommand {
 
 #[derive(Clone, Debug)]
 pub enum PopupCommand {
-    BrowseUserPlaylists,
-    BrowseUserFollowedArtists,
-    BrowseUserSavedAlbums,
+    Playlists,
+    FollowedArtists,
+    SavedAlbums,
 }
 
 /// Resolve a CommandId to a Command for execution
@@ -197,9 +197,9 @@ pub fn resolve_command(id: &CommandId, count: usize) -> Option<(Command, usize)>
         "switch_device" => Command::Action(ActionCommand::SwitchDevice),
 
         // Popup
-        "browse_user_playlists" => Command::Popup(PopupCommand::BrowseUserPlaylists),
-        "browse_user_followed_artists" => Command::Popup(PopupCommand::BrowseUserFollowedArtists),
-        "browse_user_saved_albums" => Command::Popup(PopupCommand::BrowseUserSavedAlbums),
+        "browse_user_playlists" => Command::Popup(PopupCommand::Playlists),
+        "browse_user_followed_artists" => Command::Popup(PopupCommand::FollowedArtists),
+        "browse_user_saved_albums" => Command::Popup(PopupCommand::SavedAlbums),
 
         // Theme
         "switch_theme" => Command::Theme(ThemeCommand::SwitchTheme),

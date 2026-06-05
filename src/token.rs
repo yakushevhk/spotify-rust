@@ -150,8 +150,7 @@ mod tests {
     #[tokio::test]
     async fn test_error_propagation_timeout() {
         // Simulate the error message that would be created
-        let last_err = Some("timeout when getting the token");
-        let error_msg = last_err.unwrap_or("timeout when getting the token");
+        let error_msg = "timeout when getting the token";
         assert_eq!(error_msg, "timeout when getting the token");
     }
 
