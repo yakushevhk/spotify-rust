@@ -23,30 +23,38 @@ pub async fn start_client_handler(
     client: &super::AppClient,
     client_sub: &flume::Receiver<ClientRequest>,
 ) {
-    while let Ok(request) = client_sub.recv_async().await {
-        if let Err(err) = client.check_valid_session(state).await {
-            tracing::error!("{err:#}");
-            state.toast_queue.lock().push_back(format!("Session error: {err:#}"));
-            continue;
-        }
-
-        let state = state.clone();
-        let client = client.clone();
-        let span = tracing::info_span!("client_request", request = ?request);
-
-        tokio::task::spawn(
-            async move {
-                if let Err(err) = client.handle_request(&state, request).await {
-                    let msg = format!("Request failed: {err:#}");
-                    tracing::error!("{msg}");
-                    state.toast_queue.lock().push_back(msg);
-                    let mut data = state.data.write();
-                    data.shows_loading = false;
-                    data.browse.categories_loading = false;
+    loop {
+        match client_sub.recv_async().await {
+            Ok(request) => {
+                if let Err(err) = client.check_valid_session(state).await {
+                    tracing::error!("{err:#}");
+                    state.toast_queue.lock().push_back(format!("Session error: {err:#}"));
+                    continue;
                 }
+
+                let state = state.clone();
+                let client = client.clone();
+                let span = tracing::info_span!("client_request", request = ?request);
+
+                tokio::task::spawn(
+                    async move {
+                        if let Err(err) = client.handle_request(&state, request).await {
+                            let msg = format!("Request failed: {err:#}");
+                            tracing::error!("{msg}");
+                            state.toast_queue.lock().push_back(msg);
+                            let mut data = state.data.write();
+                            data.shows_loading = false;
+                            data.browse.categories_loading = false;
+                        }
+                    }
+                    .instrument(span),
+                );
             }
-            .instrument(span),
-        );
+            Err(err) => {
+                tracing::error!("Client request channel closed: {err}");
+                break;
+            }
+        }
     }
 }
 
