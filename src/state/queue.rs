@@ -124,13 +124,16 @@ impl CustomQueue {
     // ── Accessors ──────────────────────────────────────────────────────
 
     /// The track URIs that make up the current batch sent to Spotify.
-    pub fn current_batch(&self) -> &[PlayableId<'static>] {
-        &self.play_order[self.batch_start..self.batch_end]
+    pub fn current_batch(&self) -> Option<&[PlayableId<'static>]> {
+        if self.batch_start >= self.play_order.len() || self.batch_start >= self.batch_end {
+            return None;
+        }
+        Some(&self.play_order[self.batch_start..self.batch_end])
     }
 
     /// The currently playing track.
-    pub fn current_track(&self) -> &PlayableId<'static> {
-        &self.play_order[self.position]
+    pub fn current_track(&self) -> Option<&PlayableId<'static>> {
+        self.play_order.get(self.position)
     }
 
     /// All tracks after the current position (for queue UI display).
@@ -200,12 +203,12 @@ impl CustomQueue {
 
     /// Whether the current track is the last in the current batch.
     pub fn is_at_batch_end(&self) -> bool {
-        self.position + 1 >= self.batch_end
+        !self.play_order.is_empty() && self.position + 1 >= self.batch_end
     }
 
     /// Whether the current track is the first in the current batch.
     pub fn is_at_batch_start(&self) -> bool {
-        self.position == self.batch_start
+        !self.play_order.is_empty() && self.position == self.batch_start
     }
 
     // ── Mutations ──────────────────────────────────────────────────────
@@ -232,14 +235,14 @@ impl CustomQueue {
             self.batch_start = next;
             self.batch_end = (self.batch_start + self.max_batch_size).min(self.play_order.len());
             self.mark_batch_transition();
-            AdvanceResult::NewBatch(self.current_batch().to_vec())
+            AdvanceResult::NewBatch(self.current_batch().unwrap().to_vec())
         } else if self.repeat == rspotify::model::RepeatState::Context {
             // End of queue with repeat-context — wrap to beginning.
             self.position = 0;
             self.batch_start = 0;
             self.batch_end = self.max_batch_size.min(self.play_order.len());
             self.mark_batch_transition();
-            AdvanceResult::NewBatch(self.current_batch().to_vec())
+            AdvanceResult::NewBatch(self.current_batch().unwrap().to_vec())
         } else if self.autoplay {
             // End of queue, no repeat — autoplay is enabled, ask caller to
             // fetch radio tracks and append them.
@@ -258,7 +261,7 @@ impl CustomQueue {
                 self.batch_end = self.play_order.len();
                 self.batch_start = self.batch_end.saturating_sub(self.max_batch_size);
                 self.mark_batch_transition();
-                RetreatResult::PreviousBatch(self.current_batch().to_vec())
+                RetreatResult::PreviousBatch(self.current_batch().unwrap().to_vec())
             } else {
                 RetreatResult::BeginningOfQueue
             }
@@ -273,7 +276,7 @@ impl CustomQueue {
                 self.batch_end = self.batch_start;
                 self.batch_start = self.batch_end.saturating_sub(self.max_batch_size);
                 self.mark_batch_transition();
-                RetreatResult::PreviousBatch(self.current_batch().to_vec())
+                RetreatResult::PreviousBatch(self.current_batch().unwrap().to_vec())
             }
         }
     }
@@ -390,7 +393,7 @@ impl CustomQueue {
         self.batch_start = self.batch_end;
         self.batch_end = (self.batch_start + self.max_batch_size).min(self.play_order.len());
         self.mark_batch_transition();
-        Some(self.current_batch().to_vec())
+        Some(self.current_batch().unwrap().to_vec())
     }
 
     /// Record that a batch transition just occurred (for consistency-check
@@ -425,8 +428,8 @@ mod tests {
         assert_eq!(q.position(), 0);
         assert_eq!(q.batch_start(), 0);
         assert_eq!(q.batch_end(), 5);
-        assert_eq!(q.current_batch().len(), 5);
-        assert_eq!(*q.current_track(), tracks[0]);
+        assert_eq!(q.current_batch().unwrap().len(), 5);
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
     }
 
     #[test]
@@ -437,7 +440,7 @@ mod tests {
         assert_eq!(q.position(), 3);
         assert_eq!(q.batch_start(), 3);
         assert_eq!(q.batch_end(), 8);
-        assert_eq!(*q.current_track(), tracks[3]);
+        assert_eq!(*q.current_track().unwrap(), tracks[3]);
     }
 
     #[test]
@@ -446,7 +449,7 @@ mod tests {
         let q = CustomQueue::new(tracks, 0, 10, None, false);
 
         assert_eq!(q.batch_end(), 3);
-        assert_eq!(q.current_batch().len(), 3);
+        assert_eq!(q.current_batch().unwrap().len(), 3);
     }
 
     #[test]
@@ -456,7 +459,7 @@ mod tests {
 
         assert_eq!(q.advance(), AdvanceResult::SameBatch);
         assert_eq!(q.position(), 1);
-        assert_eq!(*q.current_track(), tracks[1]);
+        assert_eq!(*q.current_track().unwrap(), tracks[1]);
     }
 
     #[test]
@@ -512,7 +515,7 @@ mod tests {
         let result = q.advance();
         assert!(matches!(result, AdvanceResult::NewBatch(_)));
         assert_eq!(q.position(), 0);
-        assert_eq!(*q.current_track(), tracks[0]);
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
     }
 
     #[test]
@@ -523,7 +526,7 @@ mod tests {
 
         assert_eq!(q.advance(), AdvanceResult::SameBatch);
         assert_eq!(q.position(), 0); // Didn't move.
-        assert_eq!(*q.current_track(), tracks[0]);
+        assert_eq!(*q.current_track().unwrap(), tracks[0]);
     }
 
     #[test]
@@ -538,7 +541,7 @@ mod tests {
 
         assert_eq!(q.retreat(), RetreatResult::SameBatch);
         assert_eq!(q.position(), 1);
-        assert_eq!(*q.current_track(), tracks[1]);
+        assert_eq!(*q.current_track().unwrap(), tracks[1]);
     }
 
     #[test]
@@ -638,7 +641,7 @@ mod tests {
         q.set_shuffle_mode(ShuffleMode::Shuffle);
 
         // Current track should be at front.
-        assert_eq!(*q.current_track(), tracks[3]);
+        assert_eq!(*q.current_track().unwrap(), tracks[3]);
         assert_eq!(q.position(), 0);
         // All original tracks should be present.
         assert_eq!(q.len(), 10);
@@ -657,7 +660,7 @@ mod tests {
 
         // Should be back in original order.
         assert_eq!(q.play_order, tracks);
-        assert_eq!(*q.current_track(), tracks[3]);
+        assert_eq!(*q.current_track().unwrap(), tracks[3]);
         assert_eq!(q.position(), 3);
     }
 }

@@ -7,6 +7,7 @@ pub use rspotify::model::{
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(untagged)]
@@ -310,7 +311,7 @@ impl Track {
                 name: track.name,
                 artists: from_simplified_artists_to_artists(track.artists),
                 album: None,
-                duration: track.duration.to_std().expect("valid chrono duration"),
+                duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: 0,
             })
@@ -334,7 +335,7 @@ impl Track {
                 name: track.name,
                 artists: from_simplified_artists_to_artists(track.artists),
                 album: Album::try_from_simplified_album(track.album),
-                duration: track.duration.to_std().expect("valid chrono duration"),
+                duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: added_at.map(|t| t.timestamp() as u64).unwrap_or_default(),
             })
@@ -483,7 +484,14 @@ fn from_simplified_artists_to_artists(
 ) -> Vec<Artist> {
     artists
         .into_iter()
-        .filter_map(Artist::try_from_simplified_artist)
+        .filter_map(|a| {
+            let has_id = a.id.is_some();
+            let result = Artist::try_from_simplified_artist(a);
+            if result.is_none() && !has_id {
+                tracing::warn!("Dropping artist with no ID from simplified artist list");
+            }
+            result
+        })
         .collect()
 }
 
@@ -509,9 +517,10 @@ impl From<rspotify::model::SimplifiedPlaylist> for Playlist {
 impl From<rspotify::model::FullPlaylist> for Playlist {
     fn from(playlist: rspotify::model::FullPlaylist) -> Self {
         // remove HTML tags from the description
-        let re = regex::Regex::new("(<.*?>|</.*?>)").expect("valid regex");
+        static RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new("(<.*?>|</.*?>)").unwrap());
         let desc = playlist.description.unwrap_or_default();
-        let desc = decode_html_entities(&re.replace_all(&desc, "")).to_string();
+        let desc = decode_html_entities(&RE.replace_all(&desc, "")).to_string();
 
         Self {
             id: playlist.id,
@@ -567,29 +576,31 @@ impl std::fmt::Display for Show {
 }
 
 
-impl From<rspotify::model::SimplifiedEpisode> for Episode {
-    fn from(episode: rspotify::model::SimplifiedEpisode) -> Self {
-        Self {
+impl TryFrom<rspotify::model::SimplifiedEpisode> for Episode {
+    type Error = ();
+    fn try_from(episode: rspotify::model::SimplifiedEpisode) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: episode.id,
             name: episode.name,
             description: episode.description,
-            duration: episode.duration.to_std().expect("valid chrono duration"),
+            duration: episode.duration.to_std().map_err(|_| ())?,
             show: None,
             release_date: episode.release_date,
-        }
+        })
     }
 }
 
-impl From<rspotify::model::FullEpisode> for Episode {
-    fn from(episode: rspotify::model::FullEpisode) -> Self {
-        Self {
+impl TryFrom<rspotify::model::FullEpisode> for Episode {
+    type Error = ();
+    fn try_from(episode: rspotify::model::FullEpisode) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: episode.id,
             name: episode.name,
             description: episode.description,
-            duration: episode.duration.to_std().expect("valid chrono duration"),
+            duration: episode.duration.to_std().map_err(|_| ())?,
             show: Some(episode.show.into()),
             release_date: episode.release_date,
-        }
+        })
     }
 }
 
@@ -675,12 +686,9 @@ impl From<librespot_metadata::lyrics::Lyrics> for Lyrics {
             .lyrics
             .lines
             .into_iter()
-            .map(|l| {
-                let t = chrono::Duration::milliseconds(
-                    l.start_time_ms.parse::<i64>().unwrap_or_default(),
-                );
-
-                (t, to_bidi_string(&l.words))
+            .filter_map(|l| {
+                let t = chrono::Duration::milliseconds(l.start_time_ms.parse::<i64>().ok()?);
+                Some((t, to_bidi_string(&l.words)))
             })
             .collect::<Vec<_>>();
         lines.sort_by_key(|l| l.0);

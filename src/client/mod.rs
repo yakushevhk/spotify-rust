@@ -301,6 +301,12 @@ impl AppClient {
                 saved_tracks: std::collections::HashMap::new(),
             };
             self.initialize_playback(state);
+            // Clear transient UI state that should not survive account switches
+            state.toast_queue.lock().clear();
+            #[cfg(feature = "streaming")]
+            if let Some(ref bands) = state.vis_bands {
+                bands.lock().is_active = false;
+            }
         }
 
         Ok(())
@@ -901,7 +907,7 @@ impl AppClient {
                             player
                                 .custom_queue
                                 .as_ref()
-                                .map(|q| q.current_track().uri())
+                                .and_then(|q| q.current_track().map(|t| t.uri()))
                         })
                 };
 
@@ -1734,7 +1740,7 @@ impl AppClient {
             )
             .await?
             .into_iter()
-            .map(std::convert::Into::into)
+            .filter_map(|e| crate::state::Episode::try_from(e).ok())
             .collect::<Vec<_>>();
 
         // converts `rspotify::model::FullShow` into `state::Show`
