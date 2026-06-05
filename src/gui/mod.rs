@@ -9,6 +9,11 @@ mod views;
 use eframe::egui;
 use rspotify::prelude::Id;
 
+// Accessibility: Initialize reduced motion on startup
+fn init_accessibility() {
+    theme::init_reduced_motion();
+}
+
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::command::{self, ActionCommand, Command, NavCommand, PageCommand, PlaybackCommand, SortCommand, ThemeCommand};
 use crate::config::keymap::default_keybindings;
@@ -3169,6 +3174,9 @@ impl SpotifyApp {
         // Track which toasts to dismiss
         let mut dismiss_indices: Vec<usize> = Vec::new();
         
+        // Accessibility: Track announcements for screen readers
+        let mut announcements: Vec<String> = Vec::new();
+        
         for i in 0..max_visible {
             if i >= self.toast_messages.len() {
                 break;
@@ -3179,6 +3187,13 @@ impl SpotifyApp {
                 screen.center().x - toast_width / 2.0,
                 y_pos,
             );
+
+            // Collect announcements for screen readers (aria-live region)
+            if !toast.is_error {
+                announcements.push(toast.message.clone());
+            } else {
+                announcements.push(format!("Error: {}", toast.message));
+            }
 
             let mut dismissed = false;
             egui::Area::new(egui::Id::new(format!("toast_{}", i)))
@@ -3200,17 +3215,19 @@ impl SpotifyApp {
                     frame.show(ui, |ui| {
                         ui.set_min_width(toast_width - 24.0);
                         ui.horizontal(|ui| {
-                            // Icon
+                            // Icon with aria-label for screen readers
                             let icon = if toast.is_error { "⚠️" } else { "✓" };
+                            let icon_label = if toast.is_error { "Error" } else { "Success" };
                             let icon_color = if toast.is_error { theme::error_color() } else { theme::green() };
                             ui.label(
                                 egui::RichText::new(icon)
                                     .size(14.0)
                                     .color(icon_color),
-                            );
+                            )
+                            .on_hover_text(icon_label);
                             ui.add_space(6.0);
                             
-                            // Message
+                            // Message with accessibility description
                             ui.label(
                                 egui::RichText::new(&toast.message)
                                     .size(13.0)
@@ -3218,7 +3235,7 @@ impl SpotifyApp {
                             );
                             
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                // Dismiss button
+                                // Dismiss button with aria-label
                                 if ui.add(
                                     egui::Button::new(
                                         egui::RichText::new("✕")
@@ -3227,7 +3244,9 @@ impl SpotifyApp {
                                     )
                                     .fill(egui::Color32::TRANSPARENT)
                                     .frame(false)
-                                ).clicked() {
+                                )
+                                .on_hover_text("Dismiss notification")
+                                .clicked() {
                                     dismissed = true;
                                 }
                             });
@@ -3238,6 +3257,24 @@ impl SpotifyApp {
             if dismissed {
                 dismiss_indices.push(i);
             }
+        }
+        
+        // Accessibility: Render live region for screen readers
+        // This creates an invisible area that announces toasts to screen readers
+        if !announcements.is_empty() {
+            egui::Area::new(egui::Id::new("toast_live_region"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(-1000.0, -1000.0)) // Off-screen
+                .interactable(false)
+                .show(ctx, |ui| {
+                    for announcement in announcements {
+                        ui.label(
+                            egui::RichText::new(announcement)
+                                .size(1.0) // Tiny but readable by screen readers
+                                .color(egui::Color32::TRANSPARENT),
+                        );
+                    }
+                });
         }
         
         // Remove dismissed toasts (in reverse order to maintain indices)

@@ -61,6 +61,19 @@ pub enum MenuAction {
     DeleteFromPlaylist(state::PlaylistId<'static>, state::TrackId<'static>),
 }
 
+impl MenuAction {
+    /// Check if this action is destructive (requires confirmation)
+    pub fn is_destructive(&self) -> bool {
+        matches!(
+            self,
+            MenuAction::RemoveAlbumFromLibrary(_)
+                | MenuAction::UnfollowArtist(_)
+                | MenuAction::RemoveShowFromLibrary(_)
+                | MenuAction::DeleteFromPlaylist(_, _)
+        )
+    }
+}
+
 pub struct ContextMenu {
     pub target: Option<ContextTarget>,
     pub position: egui::Pos2,
@@ -69,6 +82,10 @@ pub struct ContextMenu {
     pub loading_actions: std::collections::HashSet<String>,
     pub skip_confirmations: std::collections::HashSet<String>,
     pub show_dont_ask_again: bool,
+    // Accessibility: keyboard navigation state
+    pub keyboard_nav_enabled: bool,
+    pub selected_item_index: Option<usize>,
+    pub trigger_element_id: Option<egui::Id>,
 }
 
 impl ContextMenu {
@@ -81,6 +98,9 @@ impl ContextMenu {
             loading_actions: std::collections::HashSet::new(),
             skip_confirmations: std::collections::HashSet::new(),
             show_dont_ask_again: false,
+            keyboard_nav_enabled: false,
+            selected_item_index: None,
+            trigger_element_id: None,
         }
     }
 
@@ -116,11 +136,32 @@ impl ContextMenu {
         self.target = Some(target);
         self.position = position;
         self.confirm_action = None;
+        self.keyboard_nav_enabled = false;
+        self.selected_item_index = None;
+    }
+
+    /// Open context menu with keyboard (Shift+F10)
+    pub fn open_with_keyboard(&mut self, target: ContextTarget, position: egui::Pos2, trigger_id: egui::Id) {
+        self.target = Some(target);
+        self.position = position;
+        self.confirm_action = None;
+        self.keyboard_nav_enabled = true;
+        self.selected_item_index = Some(0); // Select first item
+        self.trigger_element_id = Some(trigger_id);
     }
 
     pub fn close(&mut self) {
         self.target = None;
         self.confirm_action = None;
+        self.keyboard_nav_enabled = false;
+        self.selected_item_index = None;
+    }
+
+    /// Check if Shift+F10 was pressed to open context menu
+    pub fn check_keyboard_trigger(ctx: &egui::Context) -> bool {
+        ctx.input(|i| {
+            i.modifiers.shift && i.key_pressed(egui::Key::F10)
+        })
     }
 
     fn track_items(track: &Track, playlist_id: &Option<state::PlaylistId<'static>>) -> Vec<MenuItem> {
@@ -445,6 +486,33 @@ impl ContextMenu {
                 );
             });
 
+        // Handle keyboard navigation
+        let mut keyboard_action: Option<MenuAction> = None;
+        if self.keyboard_nav_enabled {
+            ctx.input(|i| {
+                // Arrow down - next item
+                if i.key_pressed(egui::Key::ArrowDown) {
+                    self.selected_item_index = self.selected_item_index.map(|idx| {
+                        (idx + 1).min(items.len() - 1)
+                    });
+                }
+                // Arrow up - previous item
+                if i.key_pressed(egui::Key::ArrowUp) {
+                    self.selected_item_index = self.selected_item_index.map(|idx| {
+                        idx.saturating_sub(1)
+                    });
+                }
+                // Enter or Space - select item
+                if i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space) {
+                    if let Some(idx) = self.selected_item_index {
+                        if idx < items.len() {
+                            keyboard_action = Some(items[idx].action.clone());
+                        }
+                    }
+                }
+            });
+        }
+
         egui::Area::new(egui::Id::new("context_menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
@@ -455,14 +523,20 @@ impl ContextMenu {
                 frame.show(ui, |ui| {
                     ui.set_min_width(menu_width - 12.0);
 
-                    for item in &items {
+                    for (idx, item) in items.iter().enumerate() {
                         let (item_rect, response) = ui
                             .allocate_exact_size(
                                 egui::vec2(ui.available_width(), item_height),
                                 egui::Sense::click(),
                             );
 
-                        let bg = if response.hovered() {
+                        // Handle keyboard selection highlighting
+                        let is_selected = self.keyboard_nav_enabled 
+                            && self.selected_item_index == Some(idx);
+                        
+                        let bg = if is_selected {
+                            theme::bg_active()
+                        } else if response.hovered() {
                             theme::bg_hover()
                         } else {
                             egui::Color32::TRANSPARENT
@@ -470,9 +544,14 @@ impl ContextMenu {
                         ui.painter()
                             .rect_filled(item_rect, egui::CornerRadius::same(theme::RADIUS_SMALL), bg);
 
+                        // Draw focus ring for keyboard selection
+                        if is_selected {
+                            theme::draw_focus_ring(ui.painter(), item_rect, theme::RADIUS_SMALL, true);
+                        }
+
                         let text_color = if item.destructive {
                             theme::error_color()
-                        } else if response.hovered() {
+                        } else if response.hovered() || is_selected {
                             theme::text_primary()
                         } else {
                             theme::text_secondary()
@@ -494,32 +573,55 @@ impl ContextMenu {
                             text_color,
                         );
 
-                if response.clicked() && !self.is_action_loading(&item.action) {
-                    if item.destructive && !self.should_skip_confirmation(&item.action) {
-                        self.confirm_action = Some(item.action.clone());
-                        // Get item name for confirmation message
-                        self.confirm_item_name = match &target {
-                            ContextTarget::Track { track, .. } => Some(track.name.clone()),
-                            ContextTarget::Album(album) => Some(album.name.clone()),
-                            ContextTarget::Artist(artist) => Some(artist.name.clone()),
-                            ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
-                            ContextTarget::Show(show) => Some(show.name.clone()),
-                            ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
-                        };
-                        self.show_dont_ask_again = false;
-                    } else {
-                        self.set_action_loading(&item.action, true);
-                        action_to_execute = Some(item.action.clone());
-                        should_close = true;
-                    }
-                }
+                        if response.clicked() && !self.is_action_loading(&item.action) {
+                            if item.destructive && !self.should_skip_confirmation(&item.action) {
+                                self.confirm_action = Some(item.action.clone());
+                                // Get item name for confirmation message
+                                self.confirm_item_name = match &target {
+                                    ContextTarget::Track { track, .. } => Some(track.name.clone()),
+                                    ContextTarget::Album(album) => Some(album.name.clone()),
+                                    ContextTarget::Artist(artist) => Some(artist.name.clone()),
+                                    ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
+                                    ContextTarget::Show(show) => Some(show.name.clone()),
+                                    ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
+                                };
+                                self.show_dont_ask_again = false;
+                            } else {
+                                self.set_action_loading(&item.action, true);
+                                action_to_execute = Some(item.action.clone());
+                                should_close = true;
+                            }
+                        }
                     }
                 });
 
+                // Escape closes menu
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     should_close = true;
                 }
             });
+
+        // Handle keyboard-triggered actions
+        if let Some(action) = keyboard_action {
+            if !self.is_action_loading(&action) {
+                if action.is_destructive() && !self.should_skip_confirmation(&action) {
+                    self.confirm_action = Some(action);
+                    self.confirm_item_name = match &target {
+                        ContextTarget::Track { track, .. } => Some(track.name.clone()),
+                        ContextTarget::Album(album) => Some(album.name.clone()),
+                        ContextTarget::Artist(artist) => Some(artist.name.clone()),
+                        ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
+                        ContextTarget::Show(show) => Some(show.name.clone()),
+                        ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
+                    };
+                    self.show_dont_ask_again = false;
+                } else {
+                    self.set_action_loading(&action, true);
+                    action_to_execute = Some(action);
+                    should_close = true;
+                }
+            }
+        }
 
         let mut click_outside = false;
         ctx.input(|i| {

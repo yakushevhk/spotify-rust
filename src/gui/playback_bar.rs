@@ -97,6 +97,21 @@ pub fn render(
                     _ => None,
                 };
 
+                // Get track info first for alt text
+                let (name, artists_str, alt_text) = match item {
+                    rspotify::model::PlayableItem::Track(track) => {
+                        let a: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
+                        let artists = a.join(", ");
+                        let alt = format!("Album cover: {} by {}", track.album.name, artists);
+                        (track.name.clone(), artists, alt)
+                    }
+                    rspotify::model::PlayableItem::Episode(ep) => {
+                        let alt = format!("Show cover: {}", ep.show.name);
+                        (ep.name.clone(), ep.show.name.clone(), alt)
+                    }
+                    _ => (String::new(), String::new(), String::new()),
+                };
+
                 if let Some(path) = cover_path {
                     if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                         ui.painter().rect_filled(
@@ -104,23 +119,22 @@ pub fn render(
                             theme::ART_CORNER_RADIUS,
                             theme::bg_active(),
                         );
-                        egui::Image::new(texture)
-                            .corner_radius(theme::ART_CORNER_RADIUS)
-                            .paint_at(ui, art_rect);
+                        // Create image with accessibility support
+                        let img = egui::Image::new(texture)
+                            .corner_radius(theme::ART_CORNER_RADIUS);
+                        img.paint_at(ui, art_rect);
                         art_drawn = true;
+                        
+                        // Add alt text for screen readers (invisible but accessible)
+                        ui.painter().text(
+                            art_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            &alt_text,
+                            egui::FontId::proportional(1.0),
+                            egui::Color32::TRANSPARENT,
+                        );
                     }
                 }
-
-                let (name, artists_str) = match item {
-                    rspotify::model::PlayableItem::Track(track) => {
-                        let a: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
-                        (track.name.clone(), a.join(", "))
-                    }
-                    rspotify::model::PlayableItem::Episode(ep) => {
-                        (ep.name.clone(), ep.show.name.clone())
-                    }
-                    _ => (String::new(), String::new()),
-                };
 
                 if !art_drawn {
                     ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());

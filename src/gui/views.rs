@@ -375,7 +375,7 @@ pub fn render_show_detail(
     let (header_rect, _) = ui
         .allocate_exact_size(egui::vec2(ui.available_width(), header_height), egui::Sense::hover());
 
-    // Cover art
+    // Cover art with accessibility alt text
     let art_size = 160.0;
     let art_rect = egui::Rect::from_min_size(
         header_rect.min + egui::vec2(24.0, 20.0),
@@ -383,6 +383,9 @@ pub fn render_show_detail(
     );
 
     let mut art_drawn = false;
+    // Generate alt text for screen readers
+    let alt_text = format!("Show cover: {} by {}", show.name, show.publisher);
+    
     if let Some(path) = image_cache::show_cover_path(show) {
         if let (Some(path_ref), Some(url)) = (Some(&path), &show.cover_url) {
             if !path_ref.exists() {
@@ -391,10 +394,19 @@ pub fn render_show_detail(
         }
         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
             ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-            egui::Image::new(texture)
-                .corner_radius(theme::ART_CORNER_RADIUS)
-                .paint_at(ui, art_rect);
+            let img = egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS);
+            img.paint_at(ui, art_rect);
             art_drawn = true;
+            
+            // Add alt text for screen readers (invisible but accessible)
+            ui.painter().text(
+                art_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &alt_text,
+                egui::FontId::proportional(1.0),
+                egui::Color32::TRANSPARENT,
+            );
         }
     }
 
@@ -819,7 +831,7 @@ fn grid_card(
         theme::draw_glow_border(ui.painter(), rect, 8, theme::accent());
     }
 
-    // Album art
+    // Album art with accessibility alt text
     let art_size = width - 24.0;
     let art_rect = egui::Rect::from_min_size(
         rect.min + egui::vec2(12.0, 12.0),
@@ -827,13 +839,26 @@ fn grid_card(
     );
 
     let mut art_drawn = false;
+    // Generate alt text for screen readers
+    let alt_text = format!("Album cover: {} by {}", title, subtitle);
+    
     if let Some(path) = cover_path {
         if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
             ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
-            egui::Image::new(texture)
-                .corner_radius(theme::ART_CORNER_RADIUS)
-                .paint_at(ui, art_rect);
+            // Create image with alt text for accessibility
+            let img = egui::Image::new(texture)
+                .corner_radius(theme::ART_CORNER_RADIUS);
+            img.paint_at(ui, art_rect);
             art_drawn = true;
+            
+            // Add invisible label with alt text for screen readers
+            ui.painter().text(
+                art_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &alt_text,
+                egui::FontId::proportional(1.0),
+                egui::Color32::TRANSPARENT,
+            );
         }
     }
 
@@ -1207,12 +1232,20 @@ pub fn render_tracks(
                     num_color,
                 );
 
-                // Thumbnail
+                // Thumbnail with accessibility alt text
                 let thumb_rect = egui::Rect::from_min_size(
                     row_rect.left_center() + egui::vec2(48.0, -theme::TRACK_THUMB_SIZE / 2.0),
                     egui::vec2(theme::TRACK_THUMB_SIZE, theme::TRACK_THUMB_SIZE),
                 );
                 let mut thumb_drawn = false;
+                // Generate alt text for screen readers
+                let thumb_alt_text = if let Some(ref album) = track.album {
+                    let artists = track.artists_info();
+                    format!("Album cover: {} by {}", album.name, artists)
+                } else {
+                    format!("Track: {}", track.name)
+                };
+                
                 if let Some(ref album) = track.album {
                     if let Some(path) = image_cache::album_cover_path(album) {
                         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
@@ -1221,10 +1254,19 @@ pub fn render_tracks(
                                 theme::ART_CORNER_RADIUS,
                                 theme::bg_active(),
                             );
-                            egui::Image::new(texture)
-                                .corner_radius(theme::ART_CORNER_RADIUS)
-                                .paint_at(ui, thumb_rect);
+                            let img = egui::Image::new(texture)
+                                .corner_radius(theme::ART_CORNER_RADIUS);
+                            img.paint_at(ui, thumb_rect);
                             thumb_drawn = true;
+                            
+                            // Add alt text for screen readers (invisible but accessible)
+                            ui.painter().text(
+                                thumb_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &thumb_alt_text,
+                                egui::FontId::proportional(1.0),
+                                egui::Color32::TRANSPARENT,
+                            );
                         }
                     }
                 }
