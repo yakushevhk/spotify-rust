@@ -127,13 +127,16 @@ pub fn render(
                     }
                 }
                 state::PlaylistFolderItem::Folder(folder) => {
-                    let rect = ui.allocate_space(egui::vec2(ui.available_width(), 28.0)).1;
+                    let (rect, resp) = ui
+                        .allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
+                    let bg = if resp.hovered() { theme::bg_card() } else { egui::Color32::TRANSPARENT };
+                    ui.painter().rect_filled(rect, 4.0, bg);
                     ui.painter().text(
                         rect.left_center() + egui::vec2(16.0, 0.0),
                         egui::Align2::LEFT_CENTER,
-                        format!("📁 {}", folder.name),
+                        format!("\u{1F4C1} {}", folder.name),
                         egui::FontId::proportional(13.0),
-                        theme::text_dim(),
+                        if resp.hovered() { theme::text_secondary() } else { theme::text_dim() },
                     );
                 }
             }

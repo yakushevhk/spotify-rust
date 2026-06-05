@@ -741,6 +741,35 @@ fn skeleton_rect(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl Into<e
     theme::draw_shimmer_rect(ui.painter(), rect, corner_radius, time);
 }
 
+fn truncate_text_binary(
+    ui: &egui::Ui,
+    text: &str,
+    font: egui::FontId,
+    color: egui::Color32,
+    max_width: f32,
+) -> String {
+    let galley = ui.fonts(|f| f.layout_no_wrap(text.to_string(), font.clone(), color));
+    if galley.rect.width() <= max_width {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut lo = 0usize;
+    let mut hi = chars.len();
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        let candidate: String = chars[..mid].iter().collect();
+        let test = format!("{}\u{2026}", candidate);
+        let g = ui.fonts(|f| f.layout_no_wrap(test, font.clone(), color));
+        if g.rect.width() <= max_width {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    let truncated: String = chars[..lo].iter().collect();
+    format!("{}\u{2026}", truncated)
+}
+
 fn grid_card(
     ui: &mut egui::Ui,
     title: &str,
@@ -816,23 +845,7 @@ fn grid_card(
     // Title
     let title_font = egui::FontId::proportional(13.0);
     let max_text_width = (width - 24.0).max(20.0);
-    let truncated_title = {
-        let galley = ui.fonts(|f| f.layout_no_wrap(title.to_string(), title_font.clone(), theme::text_primary()));
-        if galley.rect.width() > max_text_width {
-            let mut s = title.to_string();
-            while s.len() > 1 {
-                s.pop();
-                let test = format!("{}…", s);
-                let g = ui.fonts(|f| f.layout_no_wrap(test, title_font.clone(), theme::text_primary()));
-                if g.rect.width() <= max_text_width {
-                    break;
-                }
-            }
-            format!("{}…", s)
-        } else {
-            title.to_string()
-        }
-    };
+    let truncated_title = truncate_text_binary(ui, title, title_font.clone(), theme::text_primary(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
@@ -843,23 +856,7 @@ fn grid_card(
 
     // Subtitle
     let subtitle_font = egui::FontId::proportional(11.0);
-    let truncated_subtitle = {
-        let galley = ui.fonts(|f| f.layout_no_wrap(subtitle.to_string(), subtitle_font.clone(), theme::text_dim()));
-        if galley.rect.width() > max_text_width {
-            let mut s = subtitle.to_string();
-            while s.len() > 1 {
-                s.pop();
-                let test = format!("{}…", s);
-                let g = ui.fonts(|f| f.layout_no_wrap(test, subtitle_font.clone(), theme::text_dim()));
-                if g.rect.width() <= max_text_width {
-                    break;
-                }
-            }
-            format!("{}…", s)
-        } else {
-            subtitle.to_string()
-        }
-    };
+    let truncated_subtitle = truncate_text_binary(ui, subtitle, subtitle_font.clone(), theme::text_dim(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
@@ -1205,23 +1202,7 @@ pub fn render_tracks(
                 };
                 let track_name_font = egui::FontId::proportional(14.0);
                 let max_track_width = (row_rect.width() * 0.5 - 180.0).max(80.0);
-                let truncated_name = {
-                    let galley = ui.fonts(|f| f.layout_no_wrap(track.name.clone(), track_name_font.clone(), title_color));
-                    if galley.rect.width() > max_track_width {
-                        let mut s = track.name.clone();
-                        while s.len() > 1 {
-                            s.pop();
-                            let test = format!("{}…", s);
-                            let g = ui.fonts(|f| f.layout_no_wrap(test.clone(), track_name_font.clone(), title_color));
-                            if g.rect.width() <= max_track_width {
-                                break;
-                            }
-                        }
-                        format!("{}…", s)
-                    } else {
-                        track.name.clone()
-                    }
-                };
+                let truncated_name = truncate_text_binary(ui, &track.name, track_name_font.clone(), title_color, max_track_width);
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(92.0, -7.0),
                     egui::Align2::LEFT_CENTER,
@@ -1243,23 +1224,7 @@ pub fn render_tracks(
                     let album_font = egui::FontId::proportional(12.0);
                     let album_color = theme::text_dim();
                     let max_album_width = 180.0;
-                    let truncated_album = {
-                        let galley = ui.fonts(|f| f.layout_no_wrap(album_name.clone(), album_font.clone(), album_color));
-                        if galley.rect.width() > max_album_width {
-                            let mut s = album_name.clone();
-                            while s.len() > 1 {
-                                s.pop();
-                                let test = format!("{}…", s);
-                                let g = ui.fonts(|f| f.layout_no_wrap(test.clone(), album_font.clone(), album_color));
-                                if g.rect.width() <= max_album_width {
-                                    break;
-                                }
-                            }
-                            format!("{}…", s)
-                        } else {
-                            album_name
-                        }
-                    };
+                    let truncated_album = truncate_text_binary(ui, &album_name, album_font.clone(), album_color, max_album_width);
                     ui.painter().text(
                         row_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -1942,23 +1907,7 @@ fn search_grid_card(
     let max_text_width = (width - 24.0).max(20.0);
 
     let title_font = egui::FontId::proportional(13.0);
-    let truncated_title = {
-        let galley = ui.fonts(|f| f.layout_no_wrap(title.to_string(), title_font.clone(), theme::text_primary()));
-        if galley.rect.width() > max_text_width {
-            let mut s = title.to_string();
-            while s.len() > 1 {
-                s.pop();
-                let test = format!("{}…", s);
-                let g = ui.fonts(|f| f.layout_no_wrap(test, title_font.clone(), theme::text_primary()));
-                if g.rect.width() <= max_text_width {
-                    break;
-                }
-            }
-            format!("{}…", s)
-        } else {
-            title.to_string()
-        }
-    };
+    let truncated_title = truncate_text_binary(ui, title, title_font.clone(), theme::text_primary(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
@@ -1968,23 +1917,7 @@ fn search_grid_card(
     );
 
     let subtitle_font = egui::FontId::proportional(11.0);
-    let truncated_subtitle = {
-        let galley = ui.fonts(|f| f.layout_no_wrap(subtitle.to_string(), subtitle_font.clone(), theme::text_dim()));
-        if galley.rect.width() > max_text_width {
-            let mut s = subtitle.to_string();
-            while s.len() > 1 {
-                s.pop();
-                let test = format!("{}…", s);
-                let g = ui.fonts(|f| f.layout_no_wrap(test, subtitle_font.clone(), theme::text_dim()));
-                if g.rect.width() <= max_text_width {
-                    break;
-                }
-            }
-            format!("{}…", s)
-        } else {
-            subtitle.to_string()
-        }
-    };
+    let truncated_subtitle = truncate_text_binary(ui, subtitle, subtitle_font.clone(), theme::text_dim(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
@@ -2680,7 +2613,7 @@ pub fn render_settings(
     dirty: &mut bool,
     keybinding_search: &mut String,
     editing_keybinding: &mut Option<usize>,
-    keybindings: &[crate::key::CommandBinding],
+    keybindings: &mut [crate::key::CommandBinding],
     current_theme_name: &str,
     _client_pub: &flume::Sender<ClientRequest>,
 ) -> SettingsAction {
@@ -2839,6 +2772,7 @@ fn render_settings_general(
                     settings_text_field(ui, "Client ID", &mut client_id_str, "Spotify app client ID");
                     if client_id_str != old_client_id {
                         config.client_id = Some(client_id_str);
+                        *dirty = true;
                     }
 
                     let old_port = config.client_port;
@@ -3200,7 +3134,7 @@ fn render_settings_keybindings(
     ui: &mut egui::Ui,
     keybinding_search: &mut String,
     editing_keybinding: &mut Option<usize>,
-    keybindings: &[crate::key::CommandBinding],
+    keybindings: &mut [crate::key::CommandBinding],
 ) {
     // Search bar
     ui.horizontal(|ui| {
@@ -3383,10 +3317,60 @@ fn render_settings_keybindings(
             }
 
             // Handle keybinding editing (capture key presses)
-            if editing_keybinding.is_some() {
+            if let Some(edit_idx) = *editing_keybinding {
                 // Check for escape to cancel
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     *editing_keybinding = None;
+                } else {
+                    // Capture key events
+                    let mut captured: Option<crate::key::KeyBinding> = None;
+                    ui.input(|i| {
+                        for event in &i.events {
+                            if let egui::Event::Key { key, modifiers, pressed: true, .. } = event {
+                                if *key == egui::Key::Escape {
+                                    continue;
+                                }
+                                let has_modifier = modifiers.ctrl || modifiers.alt || modifiers.mac_cmd;
+                                let ch = crate::key::key_to_char(*key, *modifiers);
+                                if let Some(c) = ch {
+                                    if has_modifier {
+                                        captured = Some(crate::key::KeyBinding::Modified {
+                                            key: c,
+                                            ctrl: modifiers.ctrl,
+                                            shift: modifiers.shift,
+                                        });
+                                    } else {
+                                        captured = Some(crate::key::KeyBinding::Key(c));
+                                    }
+                                } else {
+                                    let name = match key {
+                                        egui::Key::Home => Some("Home"),
+                                        egui::Key::End => Some("End"),
+                                        egui::Key::PageUp => Some("PageUp"),
+                                        egui::Key::PageDown => Some("PageDown"),
+                                        egui::Key::Enter => Some("Enter"),
+                                        egui::Key::Tab => Some("Tab"),
+                                        egui::Key::Backspace => Some("Backspace"),
+                                        egui::Key::ArrowUp => Some("ArrowUp"),
+                                        egui::Key::ArrowDown => Some("ArrowDown"),
+                                        egui::Key::ArrowLeft => Some("ArrowLeft"),
+                                        egui::Key::ArrowRight => Some("ArrowRight"),
+                                        _ => None,
+                                    };
+                                    if let Some(n) = name {
+                                        captured = Some(crate::key::KeyBinding::Special(n.to_string()));
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    });
+                    if let Some(kb) = captured {
+                        if edit_idx < keybindings.len() {
+                            keybindings[edit_idx].keybindings = vec![kb];
+                        }
+                        *editing_keybinding = None;
+                    }
                 }
             }
         });
@@ -3730,6 +3714,7 @@ pub fn render_artist(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     artist_context: &Option<crate::state::Context>,
+    selected_track: &mut Option<usize>,
     image_cache: &mut ImageCache,
     context_menu: &mut context_menu::ContextMenu,
 ) -> Action {
@@ -3898,7 +3883,9 @@ pub fn render_artist(
                         egui::Sense::click(),
                     );
 
-                let bg = if response.hovered() {
+                let bg = if *selected_track == Some(i) {
+                    theme::bg_selected()
+                } else if response.hovered() {
                     theme::bg_hover()
                 } else {
                     theme::bg_black()
@@ -4042,8 +4029,9 @@ pub fn render_artist(
                     );
                 }
 
-                // Click to play track
-                if response.clicked() {
+                // Click to select, double-click to play
+                if response.double_clicked() {
+                    *selected_track = Some(i);
                     let track_uris: Vec<PlayableId<'static>> = top_tracks
                         .iter()
                         .map(|t| PlayableId::Track(t.id.clone()))
@@ -4057,6 +4045,8 @@ pub fn render_artist(
                             None,
                         ),
                     ));
+                } else if response.clicked() {
+                    *selected_track = Some(i);
                 }
 
                 // Row divider
@@ -4557,7 +4547,7 @@ pub fn render_help(
 pub fn render_logs(ui: &mut egui::Ui, state: &SharedState) {
     theme::page_title(ui, "Logs");
 
-    let logs: Vec<String> = state.logs.lock().iter().cloned().collect();
+    let logs = state.logs.lock();
 
     egui::ScrollArea::vertical()
         .id_salt("logs_scroll")
@@ -4578,7 +4568,7 @@ pub fn render_logs(ui: &mut egui::Ui, state: &SharedState) {
                                 .color(theme::text_dim()),
                         );
                     } else {
-                        for line in &logs {
+                        for line in logs.iter() {
                             ui.label(
                                 egui::RichText::new(line)
                                     .size(11.0)

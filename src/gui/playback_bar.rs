@@ -30,7 +30,7 @@ pub fn render(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
-    waveform_cache: &mut Option<(u64, usize, Vec<f32>)>,
+    waveform_cache: &mut Option<(String, usize, Vec<f32>)>,
 ) -> PlaybackBarResponse {
     let mut result = PlaybackBarResponse {
         navigate: None,
@@ -281,12 +281,19 @@ pub fn render(
                     let (bar_rect, bar_response) =
                         ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::click());
 
-                    // Generate waveform bars (cached by duration and bar count)
+                    // Get track URI for cache key
+                    let track_uri = playback.item.as_ref().map(|item| match item {
+                        rspotify::model::PlayableItem::Track(t) => t.id.as_ref().map(|id| id.uri()).unwrap_or_default(),
+                        rspotify::model::PlayableItem::Episode(e) => e.id.uri(),
+                        _ => String::new(),
+                    }).unwrap_or_default();
+
+                    // Generate waveform bars (cached by track URI and bar count)
                     let num_bars = (bar_width / 3.0) as usize;
-                    let cache_key = (d_secs, num_bars);
-                    if waveform_cache.as_ref().map_or(true, |(d, n, _)| (*d, *n) != cache_key) {
+                    let cache_key_uri = track_uri.clone();
+                    if waveform_cache.as_ref().map_or(true, |(uri, n, _)| *uri != cache_key_uri || *n != num_bars) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
-                        *waveform_cache = Some((d_secs, num_bars, bars));
+                        *waveform_cache = Some((cache_key_uri, num_bars, bars));
                     }
                     let waveform = &waveform_cache.as_ref().unwrap().2;
 
@@ -454,7 +461,8 @@ pub fn render(
                 let mut vol = volume;
                 let vol_slider = egui::Slider::new(&mut vol, 0.0..=100.0)
                     .show_value(false);
-                if ui.add(vol_slider).changed() {
+                let vol_resp = ui.add(vol_slider);
+                if vol_resp.drag_stopped() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(vol as u8)));
                 }
 

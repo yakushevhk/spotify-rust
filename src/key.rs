@@ -280,7 +280,7 @@ impl KeySequenceState {
     }
 }
 
-fn key_to_char(key: egui::Key, modifiers: egui::Modifiers) -> Option<char> {
+pub fn key_to_char(key: egui::Key, modifiers: egui::Modifiers) -> Option<char> {
     match key {
         egui::Key::A => Some(if modifiers.shift { 'A' } else { 'a' }),
         egui::Key::B => Some(if modifiers.shift { 'B' } else { 'b' }),

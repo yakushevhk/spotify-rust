@@ -656,7 +656,9 @@ impl ContextMenu {
 
         if close {
             self.confirm_action = None;
-            self.target = None;
+            if execute {
+                self.target = None;
+            }
         }
 
         if execute {

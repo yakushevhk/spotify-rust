@@ -14,11 +14,13 @@ pub struct ImageCache {
     download_tx: mpsc::Sender<(String, PathBuf)>,
     _download_thread: std::thread::JoinHandle<()>,
     in_flight: HashSet<String>,
+    done_rx: mpsc::Receiver<String>,
 }
 
 impl ImageCache {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(String, PathBuf)>();
+        let (done_tx, done_rx) = mpsc::channel::<String>();
 
         let handle = std::thread::Builder::new()
             .name("image-downloader".to_string())
@@ -30,9 +32,10 @@ impl ImageCache {
                 let http = reqwest::Client::new();
                 while let Ok((url, path)) = rx.recv() {
                     if path.exists() {
+                        let _ = done_tx.send(url);
                         continue;
                     }
-                    let _ = rt.block_on(async {
+                    let result = rt.block_on(async {
                         let resp = http
                             .get(&url)
                             .send()
@@ -48,6 +51,8 @@ impl ImageCache {
                         std::fs::write(&path, &bytes)?;
                         Ok::<(), anyhow::Error>(())
                     });
+                    let _ = result;
+                    let _ = done_tx.send(url);
                 }
             })
             .expect("spawn image-downloader thread");
@@ -58,10 +63,15 @@ impl ImageCache {
             download_tx: tx,
             _download_thread: handle,
             in_flight: HashSet::new(),
+            done_rx,
         }
     }
 
     pub fn request_download(&mut self, url: &str, path: &Path) {
+        // Drain completion channel
+        while let Ok(done_url) = self.done_rx.try_recv() {
+            self.in_flight.remove(&done_url);
+        }
         if path.exists() {
             self.in_flight.remove(url);
             return;

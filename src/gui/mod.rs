@@ -164,6 +164,7 @@ pub struct SpotifyApp {
     settings_dirty: bool,
     settings_keybinding_search: String,
     settings_editing_keybinding: Option<usize>,
+    settings_editing_keybindings: Vec<crate::key::CommandBinding>,
     library_sort_order: LibrarySortOrder,
     scroll_to_selected: bool,
     show_browse_playlists_popup: bool,
@@ -172,7 +173,8 @@ pub struct SpotifyApp {
     browse_popup_filter: String,
     show_in_page_search: bool,
     in_page_search_query: String,
-    waveform_cache: Option<(u64, usize, Vec<f32>)>,
+    waveform_cache: Option<(String, usize, Vec<f32>)>,
+    selected_artist_track: Option<usize>,
 }
 
 impl SpotifyApp {
@@ -244,6 +246,11 @@ impl SpotifyApp {
             settings_dirty: false,
             settings_keybinding_search: String::new(),
             settings_editing_keybinding: None,
+            settings_editing_keybindings: {
+                let mut bindings = default_keybindings();
+                crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
+                bindings
+            },
             library_sort_order: LibrarySortOrder::Default,
             scroll_to_selected: false,
             show_browse_playlists_popup: false,
@@ -253,6 +260,7 @@ impl SpotifyApp {
             show_in_page_search: false,
             in_page_search_query: String::new(),
             waveform_cache: None,
+            selected_artist_track: None,
         }
     }
 
@@ -281,7 +289,7 @@ impl SpotifyApp {
                         self.context_tracks.clear();
                         self.sort_state = None;
                     self.current_context_id = Some(state::ContextId::Playlist(id.clone()));
-                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                    self.send_request(ClientRequest::GetContext(
                         state::ContextId::Playlist(id),
                     ));
                     self.current_view = View::Tracks;
@@ -323,7 +331,7 @@ impl SpotifyApp {
                     "Liked Tracks",
                 ));
                 self.current_context_id = Some(ctx_id.clone());
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::Tracks;
             }
             Action::OpenRecentlyPlayed => {
@@ -340,7 +348,7 @@ impl SpotifyApp {
                     "Recently Played",
                 ));
                 self.current_context_id = Some(ctx_id.clone());
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::Tracks;
             }
             Action::OpenTopTracks => {
@@ -357,7 +365,7 @@ impl SpotifyApp {
                     "Top Tracks",
                 ));
                 self.current_context_id = Some(ctx_id.clone());
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::Tracks;
             }
             Action::OpenSearchResultPlaylist(playlist) => {
@@ -370,7 +378,7 @@ impl SpotifyApp {
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Playlist(playlist.id.clone()));
-                let _ = self.client_pub.send(ClientRequest::GetContext(
+                self.send_request(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
                 ));
                 self.current_view = View::Tracks;
@@ -407,7 +415,7 @@ impl SpotifyApp {
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
-                let _ = self.client_pub.send(ClientRequest::GetBrowseCategoryPlaylists(
+                self.send_request(ClientRequest::GetBrowseCategoryPlaylists(
                     state::Category {
                         id: id.clone(),
                         name: name.clone(),
@@ -426,7 +434,7 @@ impl SpotifyApp {
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Playlist(playlist.id.clone()));
-                let _ = self.client_pub.send(ClientRequest::GetContext(
+                self.send_request(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
                 ));
                 self.current_view = View::Tracks;
@@ -471,7 +479,7 @@ impl SpotifyApp {
                 self.show_detail_show = Some(show);
                 self.show_detail_episodes.clear();
                 self.show_detail_selected_episode = None;
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
             Action::OpenCreatePlaylist => {
@@ -488,7 +496,7 @@ impl SpotifyApp {
                 drop(data);
                 if shows_empty && !shows_loading {
                     self.state.data.write().shows_loading = true;
-                    let _ = self.client_pub.send(ClientRequest::GetUserSavedShows);
+                    self.send_request(ClientRequest::GetUserSavedShows);
                 }
                 self.navigate_to_view(View::Shows);
             }
@@ -502,7 +510,7 @@ impl SpotifyApp {
                 self.show_detail_show = Some(show);
                 self.show_detail_episodes.clear();
                 self.show_detail_selected_episode = None;
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
             Action::OpenShowFromSearch(show) => {
@@ -515,7 +523,7 @@ impl SpotifyApp {
                 self.show_detail_show = Some(show);
                 self.show_detail_episodes.clear();
                 self.show_detail_selected_episode = None;
-                let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                self.send_request(ClientRequest::GetContext(ctx_id));
                 self.current_view = View::ShowDetail;
             }
             Action::None => {}
@@ -539,6 +547,12 @@ impl SpotifyApp {
     fn navigate_forward(&mut self) {
         if let Some(next) = self.forward_history.pop() {
             self.view_history.push(std::mem::replace(&mut self.current_view, next));
+        }
+    }
+
+    fn send_request(&self, req: ClientRequest) {
+        if let Err(_e) = self.client_pub.send(req) {
+            tracing::warn!("Failed to send request: client channel closed");
         }
     }
 
@@ -645,7 +659,7 @@ impl SpotifyApp {
                                         ctx_id.clone(),
                                         Some(rspotify::model::Offset::Uri(episode.id.uri())),
                                     );
-                                    let _ = self.client_pub.send(ClientRequest::Player(
+                                    self.send_request(ClientRequest::Player(
                                         PlayerRequest::StartPlayback(playback, None),
                                     ));
                                 }
@@ -661,30 +675,30 @@ impl SpotifyApp {
             },
             Command::Playback(pb) => match pb {
                 PlaybackCommand::PlayPause => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause));
+                    self.send_request(ClientRequest::Player(PlayerRequest::ResumePause));
                 }
                 PlaybackCommand::NextTrack => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack));
+                    self.send_request(ClientRequest::Player(PlayerRequest::NextTrack));
                 }
                 PlaybackCommand::PrevTrack => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack));
+                    self.send_request(ClientRequest::Player(PlayerRequest::PreviousTrack));
                 }
                 PlaybackCommand::RefreshPlayback => {
-                    let _ = self.client_pub.send(ClientRequest::GetCurrentPlayback);
+                    self.send_request(ClientRequest::GetCurrentPlayback);
                     self.toast("Refreshing playback...".to_string());
                 }
                 PlaybackCommand::RestartClient => {
                     #[cfg(feature = "streaming")]
                     {
-                        let _ = self.client_pub.send(ClientRequest::RestartIntegratedClient);
+                        self.send_request(ClientRequest::RestartIntegratedClient);
                         self.toast("Restarting client...".to_string());
                     }
                 }
                 PlaybackCommand::MuteToggle => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::ToggleMute));
+                    self.send_request(ClientRequest::Player(PlayerRequest::ToggleMute));
                 }
                 PlaybackCommand::SeekToStart => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(
+                    self.send_request(ClientRequest::Player(PlayerRequest::SeekTrack(
                         chrono::Duration::zero(),
                     )));
                 }
@@ -695,7 +709,7 @@ impl SpotifyApp {
                         .unwrap_or(chrono::Duration::zero());
                     drop(player);
                     let new_pos = current_pos + chrono::Duration::seconds(seek_secs * count as i64);
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
+                    self.send_request(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
                 }
                 PlaybackCommand::SeekBackward => {
                     let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
@@ -705,7 +719,7 @@ impl SpotifyApp {
                     drop(player);
                     let new_pos = (current_pos - chrono::Duration::seconds(seek_secs * count as i64))
                         .max(chrono::Duration::zero());
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
+                    self.send_request(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
                 }
                 PlaybackCommand::PlayRandom => {
                     if !self.context_tracks.is_empty() {
@@ -715,10 +729,10 @@ impl SpotifyApp {
                     }
                 }
                 PlaybackCommand::Shuffle => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle));
+                    self.send_request(ClientRequest::Player(PlayerRequest::Shuffle));
                 }
                 PlaybackCommand::Repeat => {
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Repeat));
+                    self.send_request(ClientRequest::Player(PlayerRequest::Repeat));
                 }
                 PlaybackCommand::VolumeUp => {
                     let vol = self.state.player.read()
@@ -727,7 +741,7 @@ impl SpotifyApp {
                         .unwrap_or(50) as u8;
                     let step = crate::config::get_config().app_config.volume_scroll_step;
                     let new_vol = vol.saturating_add(step).min(100);
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
+                    self.send_request(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
                 }
                 PlaybackCommand::VolumeDown => {
                     let vol = self.state.player.read()
@@ -736,7 +750,7 @@ impl SpotifyApp {
                         .unwrap_or(50) as u8;
                     let step = crate::config::get_config().app_config.volume_scroll_step;
                     let new_vol = vol.saturating_sub(step);
-                    let _ = self.client_pub.send(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
+                    self.send_request(ClientRequest::Player(PlayerRequest::Volume(new_vol)));
                 }
             },
             Command::Sorting(sort) => {
@@ -880,7 +894,7 @@ impl SpotifyApp {
                     if let Some(idx) = self.selected_track {
                         if idx < self.context_tracks.len() {
                             let track = &self.context_tracks[idx];
-                            let _ = self.client_pub.send(ClientRequest::AddPlayableToQueue(
+                            self.send_request(ClientRequest::AddPlayableToQueue(
                                 PlayableId::Track(track.id.clone()),
                             ));
                             self.toast("Added to queue".to_string());
@@ -919,7 +933,7 @@ impl SpotifyApp {
                             let track = &self.context_tracks[idx];
                             let artist_name = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
                             let query = format!("artist:{}", artist_name);
-                            let _ = self.client_pub.send(ClientRequest::Search(query));
+                            self.send_request(ClientRequest::Search(query));
                             self.navigate_to_view(View::Search);
                             self.toast("Searching for radio...".to_string());
                         }
@@ -930,7 +944,7 @@ impl SpotifyApp {
                         if idx > 0 && idx < self.context_tracks.len() {
                             if let Some(ref ctx_id) = self.current_context_id {
                                 if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
-                                    let _ = self.client_pub.send(ClientRequest::ReorderPlaylistItems {
+                                    self.send_request(ClientRequest::ReorderPlaylistItems {
                                         playlist_id: playlist_id.clone(),
                                         insert_index: idx.saturating_sub(1),
                                         range_start: idx,
@@ -950,7 +964,7 @@ impl SpotifyApp {
                         if idx + 1 < self.context_tracks.len() {
                             if let Some(ref ctx_id) = self.current_context_id {
                                 if let state::ContextId::Playlist(ref playlist_id) = ctx_id {
-                                    let _ = self.client_pub.send(ClientRequest::ReorderPlaylistItems {
+                                    self.send_request(ClientRequest::ReorderPlaylistItems {
                                         playlist_id: playlist_id.clone(),
                                         insert_index: idx + 2,
                                         range_start: idx,
@@ -1086,7 +1100,7 @@ impl SpotifyApp {
                         vec![PlayableId::Track(track_id.into_static())],
                         None,
                     );
-                    let _ = self.client_pub.send(ClientRequest::Player(
+                    self.send_request(ClientRequest::Player(
                         PlayerRequest::StartPlayback(playback, None),
                     ));
                     self.toast("Playing track".to_string());
@@ -1102,7 +1116,7 @@ impl SpotifyApp {
                     self.sort_state = None;
                     self.selected_track = None;
                     self.current_context_id = Some(state::ContextId::Album(album_id_static.clone()));
-                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                    self.send_request(ClientRequest::GetContext(
                         state::ContextId::Album(album_id_static),
                     ));
                     self.current_view = View::Tracks;
@@ -1116,7 +1130,7 @@ impl SpotifyApp {
                     let artist_id_static = artist_id.into_static();
                     self.artist_id = Some(artist_id_static.uri());
                     self.artist_context = None;
-                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                    self.send_request(ClientRequest::GetContext(
                         state::ContextId::Artist(artist_id_static),
                     ));
                     self.current_view = View::Artist;
@@ -1133,7 +1147,7 @@ impl SpotifyApp {
                     self.sort_state = None;
                     self.selected_track = None;
                     self.current_context_id = Some(state::ContextId::Playlist(playlist_id_static.clone()));
-                    let _ = self.client_pub.send(ClientRequest::GetContext(
+                    self.send_request(ClientRequest::GetContext(
                         state::ContextId::Playlist(playlist_id_static),
                     ));
                     self.current_view = View::Tracks;
@@ -1150,7 +1164,7 @@ impl SpotifyApp {
                     self.show_detail_show = None;
                     self.show_detail_episodes.clear();
                     self.show_detail_selected_episode = None;
-                    let _ = self.client_pub.send(ClientRequest::GetContext(ctx_id));
+                    self.send_request(ClientRequest::GetContext(ctx_id));
                     self.current_view = View::ShowDetail;
                     self.toast("Opening show".to_string());
                 } else {
@@ -1264,7 +1278,7 @@ impl eframe::App for SpotifyApp {
         // Device popup overlay
         if self.show_device_popup {
             if !self.devices_fetched {
-                let _ = self.client_pub.send(ClientRequest::GetDevices);
+                self.send_request(ClientRequest::GetDevices);
                 self.devices_fetched = true;
             }
 
@@ -1407,7 +1421,7 @@ impl eframe::App for SpotifyApp {
                                 }
 
                                 if item_response.clicked() && !is_active {
-                                    let _ = self.client_pub.send(ClientRequest::Player(
+                                    self.send_request(ClientRequest::Player(
                                         PlayerRequest::TransferPlayback(device.id.clone(), true),
                                     ));
                                     close_popup = true;
@@ -1595,7 +1609,7 @@ impl eframe::App for SpotifyApp {
                         let has_lyrics = self.state.data.read().caches.lyrics.contains_key(&uri);
                         if !has_lyrics {
                             if let Ok(track_id) = rspotify::model::TrackId::from_uri(&uri) {
-                                let _ = self.client_pub.send(ClientRequest::GetLyrics {
+                                self.send_request(ClientRequest::GetLyrics {
                                     track_id: track_id.into_static(),
                                 });
                             }
@@ -1682,15 +1696,15 @@ impl eframe::App for SpotifyApp {
                         &mut self.settings_dirty,
                         &mut self.settings_keybinding_search,
                         &mut self.settings_editing_keybinding,
-                        &self.keybindings,
+                        &mut self.settings_editing_keybindings,
                         &self.current_theme_name,
                         &self.client_pub,
                     );
                     match settings_action {
                         views::SettingsAction::Save => self.save_settings(),
                         views::SettingsAction::Reset => {
-                            self.settings_editing = crate::config::AppConfig::default();
-                            self.settings_dirty = true;
+                            self.settings_editing = self.settings_original.clone();
+                            self.settings_dirty = false;
                         }
                         views::SettingsAction::None => {}
                     }
@@ -1704,6 +1718,7 @@ impl eframe::App for SpotifyApp {
                         &self.state,
                         &self.client_pub,
                         &self.artist_context,
+                        &mut self.selected_artist_track,
                         &mut self.image_cache,
                         &mut self.context_menu,
                     );
@@ -1758,7 +1773,7 @@ impl eframe::App for SpotifyApp {
                     self.context_menu.close();
                     let artist_name = track.artists.first().map(|a| a.name.clone()).unwrap_or_default();
                     let query = format!("artist:{}", artist_name);
-                    let _ = self.client_pub.send(ClientRequest::Search(query));
+                    self.send_request(ClientRequest::Search(query));
                     self.navigate_to_view(View::Search);
                     self.toast("Searching for radio...".to_string());
                 }
@@ -1882,7 +1897,7 @@ impl SpotifyApp {
             },
             None => state::Playback::URIs(vec![PlayableId::Track(track.id.clone())], None),
         };
-        let _ = self.client_pub.send(ClientRequest::Player(
+        self.send_request(ClientRequest::Player(
             PlayerRequest::StartPlayback(playback, None),
         ));
     }
@@ -2124,7 +2139,7 @@ impl SpotifyApp {
         }
 
         if create {
-            let _ = self.client_pub.send(ClientRequest::CreatePlaylist {
+            self.send_request(ClientRequest::CreatePlaylist {
                 playlist_name: self.create_playlist_name.trim().to_string(),
                 public: self.create_playlist_public,
                 collab: self.create_playlist_collab,
@@ -2321,7 +2336,7 @@ impl SpotifyApp {
 
         if let Some(playlist_id) = selected_playlist_id {
             if let Some(ref playable_id) = self.add_to_playlist_track {
-                let _ = self.client_pub.send(ClientRequest::AddPlayableToPlaylist(
+                self.send_request(ClientRequest::AddPlayableToPlaylist(
                     playlist_id,
                     playable_id.clone(),
                 ));
@@ -2953,7 +2968,7 @@ impl SpotifyApp {
                     close_search = true;
                     if !self.in_page_search_query.is_empty() {
                         let query = std::mem::take(&mut self.in_page_search_query);
-                        let _ = self.client_pub.send(ClientRequest::Search(query.clone()));
+                        self.send_request(ClientRequest::Search(query.clone()));
                         self.search_query = query;
                         self.navigate_to_view(View::Search);
                     } else {

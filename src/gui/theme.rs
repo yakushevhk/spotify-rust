@@ -381,43 +381,43 @@ pub const RADIUS_LARGE: u8 = 12;
 // === Color accessor functions ===
 // These replace the old constants. Every call reads from the global palette.
 
-pub fn background() -> egui::Color32 { get_palette().background }
-pub fn foreground() -> egui::Color32 { get_palette().foreground }
-pub fn accent() -> egui::Color32 { get_palette().accent }
-pub fn accent_hover() -> egui::Color32 { get_palette().accent_hover }
-pub fn accent_dark() -> egui::Color32 { get_palette().accent_dark }
+#[inline] pub fn background() -> egui::Color32 { get_palette().background }
+#[inline] pub fn foreground() -> egui::Color32 { get_palette().foreground }
+#[inline] pub fn accent() -> egui::Color32 { get_palette().accent }
+#[inline] pub fn accent_hover() -> egui::Color32 { get_palette().accent_hover }
+#[inline] pub fn accent_dark() -> egui::Color32 { get_palette().accent_dark }
 
 // Short aliases matching old constant names for minimal diff
-pub fn bg_black() -> egui::Color32 { get_palette().background }
-pub fn bg_dark() -> egui::Color32 { get_palette().bg_dark }
-pub fn bg_card() -> egui::Color32 { get_palette().bg_card }
-pub fn bg_hover() -> egui::Color32 { get_palette().bg_hover }
-pub fn bg_active() -> egui::Color32 { get_palette().bg_active }
-pub fn bg_elevated() -> egui::Color32 { get_palette().bg_elevated }
-pub fn bg_input() -> egui::Color32 { get_palette().bg_input }
-pub fn bg_selected() -> egui::Color32 { get_palette().bg_selected }
+#[inline] pub fn bg_black() -> egui::Color32 { get_palette().background }
+#[inline] pub fn bg_dark() -> egui::Color32 { get_palette().bg_dark }
+#[inline] pub fn bg_card() -> egui::Color32 { get_palette().bg_card }
+#[inline] pub fn bg_hover() -> egui::Color32 { get_palette().bg_hover }
+#[inline] pub fn bg_active() -> egui::Color32 { get_palette().bg_active }
+#[inline] pub fn bg_elevated() -> egui::Color32 { get_palette().bg_elevated }
+#[inline] pub fn bg_input() -> egui::Color32 { get_palette().bg_input }
+#[inline] pub fn bg_selected() -> egui::Color32 { get_palette().bg_selected }
 
-pub fn green() -> egui::Color32 { get_palette().accent }
-pub fn green_hover() -> egui::Color32 { get_palette().accent_hover }
-pub fn green_dark() -> egui::Color32 { get_palette().accent_dark }
+#[inline] pub fn green() -> egui::Color32 { get_palette().accent }
+#[inline] pub fn green_hover() -> egui::Color32 { get_palette().accent_hover }
+#[inline] pub fn green_dark() -> egui::Color32 { get_palette().accent_dark }
 
-pub fn text_primary() -> egui::Color32 { get_palette().text_primary }
-pub fn text_secondary() -> egui::Color32 { get_palette().text_secondary }
-pub fn text_dim() -> egui::Color32 { get_palette().text_dim }
-pub fn text_muted() -> egui::Color32 { get_palette().text_muted }
-pub fn text_hint() -> egui::Color32 { get_palette().text_hint }
+#[inline] pub fn text_primary() -> egui::Color32 { get_palette().text_primary }
+#[inline] pub fn text_secondary() -> egui::Color32 { get_palette().text_secondary }
+#[inline] pub fn text_dim() -> egui::Color32 { get_palette().text_dim }
+#[inline] pub fn text_muted() -> egui::Color32 { get_palette().text_muted }
+#[inline] pub fn text_hint() -> egui::Color32 { get_palette().text_hint }
 
-pub fn border() -> egui::Color32 { get_palette().border }
-pub fn divider() -> egui::Color32 { get_palette().divider }
+#[inline] pub fn border() -> egui::Color32 { get_palette().border }
+#[inline] pub fn divider() -> egui::Color32 { get_palette().divider }
 
-pub fn success() -> egui::Color32 { get_palette().success }
-pub fn error_color() -> egui::Color32 { get_palette().error }
-pub fn warning() -> egui::Color32 { get_palette().warning }
+#[inline] pub fn success() -> egui::Color32 { get_palette().success }
+#[inline] pub fn error_color() -> egui::Color32 { get_palette().error }
+#[inline] pub fn warning() -> egui::Color32 { get_palette().warning }
 
-pub fn lyrics_current() -> egui::Color32 { get_palette().lyrics_current }
-pub fn lyrics_played() -> egui::Color32 { get_palette().lyrics_played }
-pub fn lyrics_upcoming() -> egui::Color32 { get_palette().lyrics_upcoming }
-pub fn lyrics_bg() -> egui::Color32 { get_palette().lyrics_bg }
+#[inline] pub fn lyrics_current() -> egui::Color32 { get_palette().lyrics_current }
+#[inline] pub fn lyrics_played() -> egui::Color32 { get_palette().lyrics_played }
+#[inline] pub fn lyrics_upcoming() -> egui::Color32 { get_palette().lyrics_upcoming }
+#[inline] pub fn lyrics_bg() -> egui::Color32 { get_palette().lyrics_bg }
 
 fn wv(bg: egui::Color32, fg: egui::Color32) -> egui::style::WidgetVisuals {
     egui::style::WidgetVisuals {
