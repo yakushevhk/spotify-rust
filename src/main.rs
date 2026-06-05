@@ -35,6 +35,43 @@ fn init_spotify(
     Ok(())
 }
 
+/// Maximum size for backtrace files (10 MB)
+const MAX_BACKTRACE_SIZE: u64 = 10 * 1024 * 1024;
+/// Maximum number of backtrace files to keep
+const MAX_BACKTRACE_FILES: usize = 5;
+
+/// Rotate backtrace files: remove oldest if we have too many, rename existing
+fn rotate_backtrace_files(log_folder: &std::path::Path, log_prefix: &str) -> Result<()> {
+    let backtrace_pattern = format!("{}.backtrace", log_prefix);
+    let mut backtrace_files: Vec<_> = std::fs::read_dir(log_folder)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|n| n.starts_with(&backtrace_pattern))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    // Sort by modification time (oldest first)
+    backtrace_files.sort_by(|a, b| {
+        a.metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            .cmp(&b.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH))
+    });
+
+    // Remove oldest files if we exceed the limit
+    while backtrace_files.len() >= MAX_BACKTRACE_FILES {
+        if let Some(oldest) = backtrace_files.first() {
+            let _ = std::fs::remove_file(oldest.path());
+            backtrace_files.remove(0);
+        }
+    }
+
+    Ok(())
+}
+
 fn init_logging(
     log_folder: &std::path::Path,
     log_buffer: Arc<Mutex<VecDeque<String>>>,
@@ -52,12 +89,23 @@ fn init_logging(
         std::fs::create_dir_all(log_folder)?;
     }
 
+    // Rotate old backtrace files before creating new one
+    rotate_backtrace_files(log_folder, &log_prefix)?;
+
     // Install panic hook BEFORE tracing subscriber init (H2)
-    let backtrace_file = std::fs::File::create(log_folder.join(format!("{log_prefix}.backtrace")))
+    let backtrace_path = log_folder.join(format!("{log_prefix}.backtrace"));
+    let backtrace_file = std::fs::File::create(&backtrace_path)
         .context("failed to create backtrace file")?;
     let backtrace_file = std::sync::Mutex::new(backtrace_file);
     std::panic::set_hook(Box::new(move |info| {
         if let Ok(mut file) = backtrace_file.lock() {
+            // Check file size before writing
+            if let Ok(metadata) = file.metadata() {
+                if metadata.len() >= MAX_BACKTRACE_SIZE {
+                    // File is too large, skip writing
+                    return;
+                }
+            }
             let backtrace = backtrace::Backtrace::new();
             let _ = writeln!(&mut file, "Got a panic: {info:#?}\n");
             let _ = writeln!(&mut file, "Stack backtrace:\n{backtrace:?}");

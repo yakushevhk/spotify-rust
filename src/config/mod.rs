@@ -221,6 +221,28 @@ pub struct Command {
     pub args: Vec<String>,
 }
 
+/// Whitelist of allowed commands for security
+const ALLOWED_COMMANDS: &[&str] = &[
+    "/usr/bin/cat",
+    "/usr/bin/head",
+    "/usr/bin/tail",
+    "/usr/bin/printf",
+    "/usr/bin/echo",
+    "/usr/bin/pass",
+    "/usr/bin/secret-tool",
+    "/usr/bin/security",
+    "/usr/bin/gpg",
+    "/usr/bin/gpg2",
+    "/usr/bin/bw",
+    "/usr/bin/op",
+    "/usr/local/bin/bw",
+    "/usr/local/bin/op",
+    "/opt/homebrew/bin/bw",
+    "/opt/homebrew/bin/op",
+    "/bin/cat",
+    "/bin/echo",
+];
+
 impl Command {
     pub fn new<C, A>(command: C, args: &[A]) -> Self
     where
@@ -234,20 +256,56 @@ impl Command {
     }
 
     /// Execute a command, returning stdout if succeeded or stderr if failed
+    /// 
+    /// SECURITY: This function validates that the command is an absolute path
+    /// to a known allowed binary. Commands with relative paths or shell
+    /// metacharacters are rejected to prevent command injection.
     pub fn execute(&self, extra_args: Option<Vec<String>>) -> anyhow::Result<String> {
+        // Validate command is an absolute path
+        let cmd_path = std::path::Path::new(&self.command);
+        if !cmd_path.is_absolute() {
+            anyhow::bail!(
+                "Command must be an absolute path, got: {}",
+                self.command
+            );
+        }
+
+        // Validate command is in whitelist
+        if !ALLOWED_COMMANDS.contains(&self.command.as_str()) {
+            anyhow::bail!(
+                "Command not in allowed list: {}. Allowed commands: {:?}",
+                self.command,
+                ALLOWED_COMMANDS
+            );
+        }
+
+        // Validate no shell metacharacters in args
+        for arg in &self.args {
+            if arg.chars().any(|c| matches!(c, ';' | '&' | '|' | '$' | '`' | '(' | ')' | '<' | '>' | '#' | '*' | '?' | '[' | ']' | '{' | '}' | '\\' | '"' | '\'' | '\n' | '\r')) {
+                anyhow::bail!("Argument contains shell metacharacters: {}", arg);
+            }
+        }
+
         let mut args = self.args.clone();
-        args.extend(extra_args.unwrap_or_default());
+        if let Some(extra) = extra_args {
+            for arg in &extra {
+                if arg.chars().any(|c| matches!(c, ';' | '&' | '|' | '$' | '`' | '(' | ')' | '<' | '>' | '#' | '*' | '?' | '[' | ']' | '{' | '}' | '\\' | '"' | '\'' | '\n' | '\r')) {
+                    anyhow::bail!("Extra argument contains shell metacharacters: {}", arg);
+                }
+            }
+            args.extend(extra);
+        }
 
         let output = std::process::Command::new(&self.command)
             .args(&args)
             .output()?;
 
         if !output.status.success() {
-            let stderr = std::str::from_utf8(&output.stderr)?.to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             anyhow::bail!(stderr);
         }
 
-        let stdout = std::str::from_utf8(&output.stdout)?.to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         Ok(stdout)
     }
 }

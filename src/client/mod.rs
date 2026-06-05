@@ -55,6 +55,45 @@ pub struct AppClient {
 }
 
 impl AppClient {
+    /// Sanitize an image filename to prevent path traversal attacks
+    fn sanitize_image_filename(name: &str) -> String {
+        // Reject path traversal attempts
+        if name.contains("..") {
+            return format!("invalid_traversal_{:x}", Self::hash_filename(name));
+        }
+
+        let sanitized: String = name
+            .chars()
+            .map(|c| match c {
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+                c if c.is_control() => '_',
+                c => c,
+            })
+            .collect();
+
+        // Additional validation: ensure no remaining path separators or traversal
+        if sanitized.contains('/') || sanitized.contains('\\') || sanitized.starts_with('.') {
+            return format!("invalid_{:x}", Self::hash_filename(&sanitized));
+        }
+
+        // Limit filename length
+        if sanitized.len() > 200 {
+            let hash = Self::hash_filename(&sanitized);
+            format!("{}_{:x}", &sanitized[..150], hash)
+        } else {
+            sanitized
+        }
+    }
+
+    /// Generate a simple hash for filename fallback
+    fn hash_filename(name: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        hasher.finish()
+    }
+
     pub fn user_client(&self) -> Result<&rspotify::AuthCodePkceSpotify> {
         self.user_client
             .as_ref()
@@ -138,7 +177,7 @@ impl AppClient {
             .get_token()
             .lock()
             .await
-            .unwrap()
+            .map_err(|e| anyhow::anyhow!("Token mutex poisoned: {e:?}"))?
             .as_ref()
             .context("no access token")?
             .access_token
@@ -2083,7 +2122,8 @@ impl AppClient {
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
         };
 
-        let filename = (match curr_item {
+        // Build filename and sanitize it to prevent path traversal
+        let raw_filename = match curr_item {
             rspotify::model::PlayableItem::Track(ref track) => {
                 let artist_name = track.album.artists.first().map_or("unknown", |a| &a.name);
                 let album_id_prefix = track.album.id.as_ref().map_or("unknown", |id| &id.id()[..6.min(id.id().len())]);
@@ -2104,8 +2144,8 @@ impl AppClient {
                 )
             }
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
-        })
-        .replace(|c: char| c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|', "");
+        };
+        let filename = Self::sanitize_image_filename(&raw_filename);
         let path = configs.cache_folder.join("image").join(filename);
 
         if configs.app_config.enable_cover_image_cache {
@@ -2271,6 +2311,37 @@ impl AppClient {
         Ok(())
     }
 
+    /// Validate that a path is within the cache directory to prevent path traversal
+    fn validate_cache_path(path: &std::path::Path) -> Result<()> {
+        let configs = config::get_config();
+        let cache_folder = &configs.cache_folder;
+
+        // Check for path traversal components
+        if path.components().any(|c| {
+            matches!(c, std::path::Component::ParentDir)
+        }) {
+            anyhow::bail!("Path contains parent directory reference (..): {}", path.display());
+        }
+
+        // Ensure path is within cache folder
+        let canonical_cache = cache_folder.canonicalize()?;
+        let canonical_path = path.canonicalize().or_else(|_| {
+            // If path doesn't exist yet, check its parent
+            if let Some(parent) = path.parent() {
+                let canonical_parent = parent.canonicalize()?;
+                Ok(canonical_parent.join(path.file_name().unwrap_or(std::ffi::OsStr::new(""))))
+            } else {
+                anyhow::bail!("Path has no parent: {}", path.display())
+            }
+        })?;
+
+        if !canonical_path.starts_with(&canonical_cache) {
+            anyhow::bail!("Path is outside cache directory: {}", path.display());
+        }
+
+        Ok(())
+    }
+
     /// Retrieve an image from a `url` or a cached `path`.
     /// If `saved` is specified, the retrieved image is saved to the cached `path`.
     async fn retrieve_image(
@@ -2279,6 +2350,11 @@ impl AppClient {
         path: &std::path::Path,
         saved: bool,
     ) -> Result<Vec<u8>> {
+        // Validate path is within cache directory for security
+        if let Err(e) = Self::validate_cache_path(path) {
+            anyhow::bail!("Invalid image cache path: {e}");
+        }
+
         if path.exists() {
             tracing::debug!("Retrieving image from file: {}", path.display());
             return Ok(std::fs::read(path)?);

@@ -215,12 +215,41 @@ pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
 
 /// Sanitize a filename by replacing characters that are unsafe on any platform
 /// (Windows: \ : * ? " < > |, plus NUL; Unix: /).
+/// Also rejects path traversal attempts (.., leading/trailing dots).
 fn sanitize_filename(name: &str) -> String {
-    name.chars()
+    // Reject path traversal attempts
+    if name.contains("..") {
+        return format!("invalid_traversal_{}", hash_name(name));
+    }
+
+    let sanitized: String = name
+        .chars()
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
             c if c.is_control() => '_',
             c => c,
         })
-        .collect()
+        .collect();
+
+    // Additional validation: ensure no remaining path separators or traversal
+    if sanitized.contains('/') || sanitized.contains('\\') || sanitized.starts_with('.') {
+        return format!("invalid_{}", hash_name(name));
+    }
+
+    // Limit filename length to prevent other issues
+    if sanitized.len() > 200 {
+        let hash = hash_name(&sanitized);
+        format!("{}_{}", &sanitized[..150], hash)
+    } else {
+        sanitized
+    }
+}
+
+/// Generate a hash-based filename for security-critical paths
+fn hash_name(name: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    name.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
 }
