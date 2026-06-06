@@ -639,8 +639,10 @@ impl AppClient {
                 #[cfg(feature = "streaming")]
                 {
                     if device_id.is_none() && self.stream_conn.lock().is_some() {
-                        let session = self.spotify.session().await?;
-                        device_id = Some(session.device_id().to_string());
+                        match self.spotify.session().await {
+                            Ok(session) => { device_id = Some(session.device_id().to_string()); }
+                            Err(e) => tracing::warn!("Could not get streaming session for device_id: {e:#}"),
+                        }
                     }
                 }
                 let device_id_ref = device_id.as_deref();
@@ -904,16 +906,20 @@ impl AppClient {
                 state.data.write().user_data.saved_albums = albums;
             }
             ClientRequest::GetUserSavedShows => {
-                let shows = self.current_user_saved_shows().await?;
-                store_data_into_file_cache(
-                    FileCacheKey::SavedShows,
-                    &config::get_config().cache_folder,
-                    &shows,
-                )
-                .context("store user's saved shows into the cache folder")?;
-                let mut data = state.data.write();
-                data.user_data.saved_shows = shows;
-                data.shows_loading = false;
+                let result = self.current_user_saved_shows().await;
+                if result.is_ok() {
+                    let shows = result.unwrap();
+                    if let Err(e) = store_data_into_file_cache(
+                        FileCacheKey::SavedShows,
+                        &config::get_config().cache_folder,
+                        &shows,
+                    ) {
+                        tracing::warn!("Failed to cache shows: {e:#}");
+                    }
+                    let mut data = state.data.write();
+                    data.user_data.saved_shows = shows;
+                }
+                state.data.write().shows_loading = false;
             }
             ClientRequest::GetContext(context) => {
                 let uri = context.uri();
@@ -2153,6 +2159,7 @@ impl AppClient {
                     .unwrap_or(1);
                 let sleep_duration = std::time::Duration::from_secs(retry_after.min(60));
                 tracing::warn!("Got 429 for {url}, retrying after {sleep_duration:?}");
+                last_err = Some(anyhow::anyhow!("rate limited (429), waited {sleep_duration:?}"));
                 tokio::time::sleep(sleep_duration).await;
                 continue;
             }
@@ -2235,7 +2242,9 @@ impl AppClient {
                 }
             }
             if failed_count > 0 && any_ok {
-                tracing::warn!("{failed_count} page(s) failed during paging");
+                return Err(anyhow::anyhow!(
+                    "{failed_count} of {n_jobs} page requests failed — data may be incomplete",
+                ));
             }
             if !any_ok {
                 return Err(anyhow::anyhow!("all page requests failed"));
