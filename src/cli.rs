@@ -90,22 +90,22 @@ pub async fn run_cli_command(
     match command {
         CliCommand::Play => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Resume))?;
-            println!("Playback started/resumed");
+            println!("Resume command sent to Spotify");
         }
         
         CliCommand::Pause => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Pause))?;
-            println!("Playback paused");
+            println!("Pause command sent to Spotify");
         }
         
         CliCommand::Next => {
             client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack))?;
-            println!("Skipped to next track");
+            println!("Next track command sent to Spotify");
         }
         
         CliCommand::Prev => {
             client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack))?;
-            println!("Skipped to previous track");
+            println!("Previous track command sent to Spotify");
         }
         
         CliCommand::Search { query } => {

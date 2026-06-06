@@ -101,7 +101,7 @@ impl BaseClient for Spotify {
         }
 
         let session = self.session.lock().await.clone();
-        let old_token = self.token.lock().await
+        let _old_token = self.token.lock().await
             .map_err(|e| ClientError::Cli(format!("Token mutex poisoned: {:?}", e)))?
             .clone();
 
@@ -124,8 +124,8 @@ impl BaseClient for Spotify {
             Err(err) => {
                 let msg = format!("{err:#}");
                 if msg.contains("timeout") {
-                    tracing::warn!("Token refresh timed out, keeping existing token");
-                    Ok(old_token)
+                    tracing::warn!("Token refresh timed out");
+                    return Err(ClientError::Cli(msg));
                 } else if msg.contains("400") || msg.contains("Bad Request") {
                     let error_msg = "HTTP 400 Bad Request during token refresh. Delete ~/.cache/spotify-player/user_client_token.json and retry.".to_string();
                     tracing::error!("{}", error_msg);

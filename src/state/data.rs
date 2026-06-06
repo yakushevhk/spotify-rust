@@ -142,7 +142,10 @@ impl UserData {
         Self {
             user: None,
             playlists: load_data_from_file_cache(FileCacheKey::Playlists, cache_folder)
-                .unwrap_or_default(),
+                .unwrap_or_else(|| {
+                    tracing::warn!("Playlist cache not available or corrupted, starting empty");
+                    Vec::new()
+                }),
             playlist_folder_node: load_data_from_file_cache(
                 FileCacheKey::PlaylistFolders,
                 cache_folder,
@@ -151,13 +154,25 @@ impl UserData {
                 FileCacheKey::FollowedArtists,
                 cache_folder,
             )
-            .unwrap_or_default(),
+            .unwrap_or_else(|| {
+                tracing::warn!("Followed artists cache not available or corrupted, starting empty");
+                Vec::new()
+            }),
             saved_shows: load_data_from_file_cache(FileCacheKey::SavedShows, cache_folder)
-                .unwrap_or_default(),
+                .unwrap_or_else(|| {
+                    tracing::warn!("Saved shows cache not available or corrupted, starting empty");
+                    Vec::new()
+                }),
             saved_albums: load_data_from_file_cache(FileCacheKey::SavedAlbums, cache_folder)
-                .unwrap_or_default(),
+                .unwrap_or_else(|| {
+                    tracing::warn!("Saved albums cache not available or corrupted, starting empty");
+                    Vec::new()
+                }),
             saved_tracks: load_data_from_file_cache(FileCacheKey::SavedTracks, cache_folder)
-                .unwrap_or_default(),
+                .unwrap_or_else(|| {
+                    tracing::warn!("Saved tracks cache not available or corrupted, starting empty");
+                    std::collections::HashMap::new()
+                }),
         }
     }
 

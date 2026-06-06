@@ -1229,7 +1229,7 @@ current_view: View::Library,
                     self.send_request(ClientRequest::GetContext(
                         state::ContextId::Album(album_id_static),
                     ));
-                    self.current_view = View::Tracks;
+                    self.navigate_to_view(View::Tracks);
                     self.toast("Opening album".to_string());
                 } else {
                     self.toast("Invalid album ID".to_string());
@@ -1243,7 +1243,7 @@ current_view: View::Library,
                     self.send_request(ClientRequest::GetContext(
                         state::ContextId::Artist(artist_id_static),
                     ));
-                    self.current_view = View::Artist;
+                    self.navigate_to_view(View::Artist);
                     self.toast("Opening artist".to_string());
                 } else {
                     self.toast("Invalid artist ID".to_string());
@@ -1260,7 +1260,7 @@ current_view: View::Library,
                     self.send_request(ClientRequest::GetContext(
                         state::ContextId::Playlist(playlist_id_static),
                     ));
-                    self.current_view = View::Tracks;
+                    self.navigate_to_view(View::Tracks);
                     self.toast("Opening playlist".to_string());
                 } else {
                     self.toast("Invalid playlist ID".to_string());
@@ -1275,7 +1275,7 @@ current_view: View::Library,
                     self.podcast_episodes.clear();
                     self.selected_podcast_episode = None;
                     self.send_request(ClientRequest::GetContext(ctx_id));
-                    self.current_view = View::ShowDetail;
+                    self.navigate_to_view(View::ShowDetail);
                     self.toast("Opening show".to_string());
                 } else {
                     self.toast("Invalid show ID".to_string());
@@ -3458,8 +3458,9 @@ impl SpotifyApp {
         
         let start_y = screen.bottom() - 160.0 - total_height + toast_height;
         
-        // Track which toasts to dismiss
-        let mut dismiss_indices: Vec<usize> = Vec::new();
+        // Track which toasts to dismiss (by message string, not index, to avoid
+        // stale-index bugs when toasts expire between frames)
+        let mut dismiss_messages: Vec<String> = Vec::new();
         
         // Accessibility: Track announcements for screen readers
         let mut announcements: Vec<String> = Vec::new();
@@ -3542,7 +3543,7 @@ impl SpotifyApp {
                 });
             
             if dismissed {
-                dismiss_indices.push(i);
+                dismiss_messages.push(toast.message.clone());
             }
         }
         
@@ -3564,12 +3565,8 @@ impl SpotifyApp {
                 });
         }
         
-        // Remove dismissed toasts (in reverse order to maintain indices)
-        for &idx in dismiss_indices.iter().rev() {
-            if idx < self.toast_messages.len() {
-                self.toast_messages.remove(idx);
-            }
-        }
+        // Remove dismissed toasts by message string (safe even if toasts expired between frames)
+        self.toast_messages.retain(|t| !dismiss_messages.contains(&t.message));
         
         // Show "Show All" button if there are more than 3 toasts
         if self.toast_messages.len() > 3 && !self.toast_show_all {
