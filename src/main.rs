@@ -323,9 +323,8 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
-        eprintln!("Warning: failed to install rustls default crypto provider: {e:?}");
-    }
+    rustls::crypto::ring::default_provider().install_default()
+        .map_err(|e| anyhow::anyhow!("Failed to install crypto provider: {e:?}"))?;
     
     let cli_args = cli::CliArgs::parse();
     

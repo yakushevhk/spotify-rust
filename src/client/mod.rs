@@ -391,6 +391,7 @@ impl AppClient {
             match user_client.refresh_token().await {
                 Ok(()) => {
                     tracing::info!("Token refreshed successfully");
+                    last_token_err = None;
                     break;
                 }
                 Err(e) => {
@@ -2178,6 +2179,7 @@ impl AppClient {
                 match self.token().await {
                     Ok(new_token) => {
                         access_token = new_token;
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         continue;
                     }
                     Err(err) => {
@@ -2258,10 +2260,12 @@ impl AppClient {
             let mut found_empty = false;
             let mut any_ok = false;
             let mut failed_count = 0;
+            let mut successful_items = 0;
             for result in results {
                 match result {
                     Ok(mut paging) => {
                         any_ok = true;
+                        successful_items += paging.items.len();
                         if paging.items.is_empty() {
                             found_empty = true;
                         } else {
@@ -2285,7 +2289,7 @@ impl AppClient {
                 break;
             }
 
-            offset += n_jobs * PAGE_LIMIT;
+            offset += successful_items;
         }
 
         Ok(all_items)
