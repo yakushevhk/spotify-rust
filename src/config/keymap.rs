@@ -58,7 +58,13 @@ impl KeymapConfig {
         let file_path = path.join("keymap.toml");
         match std::fs::read_to_string(&file_path) {
             Ok(content) => {
-                let config: KeymapConfig = toml::from_str(&content).unwrap_or_default();
+                let config: KeymapConfig = match toml::from_str(&content) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        tracing::warn!("failed to parse keymap config: {:#}, using defaults", e);
+                        KeymapConfig::default()
+                    }
+                };
                 Ok(config)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),

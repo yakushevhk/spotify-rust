@@ -21,7 +21,11 @@ mod media_control;
 use anyhow::{Context, Result};
 use clap::Parser;
 use parking_lot::Mutex;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
+};
 
 fn init_spotify(
     client_pub: &flume::Sender<client::ClientRequest>,
@@ -183,17 +187,23 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     });
 
     // player event watcher task
+    let player_watcher_running = Arc::new(AtomicBool::new(true));
+    let player_watcher_running_clone = player_watcher_running.clone();
     let player_watcher = std::thread::Builder::new()
         .name("player-event-watcher".to_string())
         .spawn({
             let state = state.clone();
             let client_pub = client_pub.clone();
             move || {
-                client::start_player_event_watcher(&state, &client_pub);
+                while player_watcher_running_clone.load(Ordering::Acquire) {
+                    client::start_player_event_watcher(&state, &client_pub);
+                }
             }
         })?;
 
     // media control task (MPRIS on Linux, native on macOS/Windows)
+    let media_control_running = Arc::new(AtomicBool::new(true));
+    let media_control_running_clone = media_control_running.clone();
     #[cfg(feature = "media-control")]
     let media_control_handle: Option<std::thread::JoinHandle<()>> = {
         let configs = config::get_config();
@@ -205,8 +215,10 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
                     .spawn({
                         let state = state.clone();
                         move || {
-                            if let Err(err) = media_control::start_event_watcher(&state, media_client_pub) {
-                                tracing::error!("Media control event watcher failed: {err:#}");
+                            while media_control_running_clone.load(Ordering::Acquire) {
+                                if let Err(err) = media_control::start_event_watcher(&state, media_client_pub.clone()) {
+                                    tracing::error!("Media control event watcher failed: {err:#}");
+                                }
                             }
                         }
                     })?,
@@ -218,7 +230,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 
     // Issue #7: Signal handler for clean shutdown on Ctrl+C (SIGINT) and SIGTERM
     let signal_state = state.clone();
-    tokio::spawn(async move {
+    let signal_handler = tokio::spawn(async move {
         // Create signal handlers for both SIGINT and SIGTERM (Unix only)
         #[cfg(unix)]
         {
@@ -274,8 +286,11 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
 
     // Signal background threads to shut down cleanly
     state.running.store(false, std::sync::atomic::Ordering::Release);
+    player_watcher_running.store(false, Ordering::Release);
+    media_control_running.store(false, Ordering::Release);
 
     // Shutdown spawned tasks
+    signal_handler.abort();
     client_handler.abort();
     if let Err(_panic) = player_watcher.join() {
         tracing::error!("Player event watcher thread panicked");
@@ -316,7 +331,7 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
     }
     
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_shared(
+    fs2::FileExt::try_lock_exclusive(
         &std::fs::OpenOptions::new()
             .create(true)
             .truncate(true)
@@ -377,7 +392,7 @@ async fn run_daemon() -> Result<()> {
     }
     
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_shared(
+    fs2::FileExt::try_lock_exclusive(
         &std::fs::OpenOptions::new()
             .create(true)
             .truncate(true)
@@ -443,7 +458,7 @@ fn run_gui() -> Result<()> {
 
     // Multi-instance guard (C3)
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_shared(
+    fs2::FileExt::try_lock_exclusive(
         &std::fs::OpenOptions::new()
             .create(true)
             .truncate(true)
@@ -453,7 +468,7 @@ fn run_gui() -> Result<()> {
             .context("failed to open lock file")?,
     )
     .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
-
+    
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
     if !cache_audio_folder.exists() {

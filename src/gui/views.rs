@@ -241,14 +241,21 @@ pub fn render_shows(
 
     theme::page_title(ui, "Your Shows");
 
-    let data = state.data.read();
-    let shows_empty = data.user_data.saved_shows.is_empty();
-    let shows_loading = data.shows_loading;
-    drop(data);
+    let (shows_empty, shows_loading) = {
+        let data = state.data.read();
+        (data.user_data.saved_shows.is_empty(), data.shows_loading)
+    };
 
     if shows_empty && !shows_loading {
-        state.data.write().shows_loading = true;
-        let _ = client_pub.send(ClientRequest::GetUserSavedShows);
+        let mut data = state.data.write();
+        if !data.shows_loading {
+            data.shows_loading = true;
+            drop(data);
+            if client_pub.send(ClientRequest::GetUserSavedShows).is_err() {
+                let mut data = state.data.write();
+                data.shows_loading = false;
+            }
+        }
     }
 
     if shows_empty {
@@ -1110,12 +1117,9 @@ pub fn render_tracks(
         );
 
         // TITLE column (35%)
-        let title_active = sort_state.is_some_and(|s| s.column == SortColumn::Title);
-        let title_label = if title_active {
-            format!("TITLE {}", sort_state.unwrap().direction.arrow())
-        } else {
-            "TITLE".to_string()
-        };
+        let title_arrow = sort_state.as_ref().and_then(|s| (s.column == SortColumn::Title).then_some(s.direction.arrow()));
+        let title_label = title_arrow.map(|a| format!("TITLE {}", a)).unwrap_or_else(|| "TITLE".to_string());
+        let title_active = title_arrow.is_some();
         let title_color = if title_active { header_color_active } else { header_color_default };
         let title_rect = egui::Rect::from_min_size(
             header_rect.left_top() + egui::vec2(title_x, 0.0),
@@ -1135,21 +1139,17 @@ pub fn render_tracks(
             title_color,
         );
         if title_resp.clicked() {
-            let dir = if title_active {
-                sort_state.unwrap().direction.toggle()
-            } else {
-                SortDirection::Ascending
-            };
+            let dir = sort_state.as_ref()
+                .filter(|s| s.column == SortColumn::Title)
+                .map(|s| s.direction.toggle())
+                .unwrap_or(SortDirection::Ascending);
             sort_action = SortAction::Sort(SortState { column: SortColumn::Title, direction: dir });
         }
 
         // ARTIST column (25%)
-        let artist_active = sort_state.is_some_and(|s| s.column == SortColumn::Artist);
-        let artist_label = if artist_active {
-            format!("ARTIST {}", sort_state.unwrap().direction.arrow())
-        } else {
-            "ARTIST".to_string()
-        };
+        let artist_arrow = sort_state.as_ref().and_then(|s| (s.column == SortColumn::Artist).then_some(s.direction.arrow()));
+        let artist_label = artist_arrow.map(|a| format!("ARTIST {}", a)).unwrap_or_else(|| "ARTIST".to_string());
+        let artist_active = artist_arrow.is_some();
         let artist_color = if artist_active { header_color_active } else { header_color_default };
         let artist_rect = egui::Rect::from_min_size(
             header_rect.left_top() + egui::vec2(artist_x, 0.0),
@@ -1169,21 +1169,17 @@ pub fn render_tracks(
             artist_color,
         );
         if artist_resp.clicked() {
-            let dir = if artist_active {
-                sort_state.unwrap().direction.toggle()
-            } else {
-                SortDirection::Ascending
-            };
+            let dir = sort_state.as_ref()
+                .filter(|s| s.column == SortColumn::Artist)
+                .map(|s| s.direction.toggle())
+                .unwrap_or(SortDirection::Ascending);
             sort_action = SortAction::Sort(SortState { column: SortColumn::Artist, direction: dir });
         }
 
         // ALBUM column (25%)
-        let album_active = sort_state.is_some_and(|s| s.column == SortColumn::Album);
-        let album_label = if album_active {
-            format!("ALBUM {}", sort_state.unwrap().direction.arrow())
-        } else {
-            "ALBUM".to_string()
-        };
+        let album_arrow = sort_state.as_ref().and_then(|s| (s.column == SortColumn::Album).then_some(s.direction.arrow()));
+        let album_label = album_arrow.map(|a| format!("ALBUM {}", a)).unwrap_or_else(|| "ALBUM".to_string());
+        let album_active = album_arrow.is_some();
         let album_color = if album_active { header_color_active } else { header_color_default };
         let album_rect = egui::Rect::from_min_size(
             header_rect.left_top() + egui::vec2(album_x, 0.0),
@@ -1203,21 +1199,17 @@ pub fn render_tracks(
             album_color,
         );
         if album_resp.clicked() {
-            let dir = if album_active {
-                sort_state.unwrap().direction.toggle()
-            } else {
-                SortDirection::Ascending
-            };
+            let dir = sort_state.as_ref()
+                .filter(|s| s.column == SortColumn::Album)
+                .map(|s| s.direction.toggle())
+                .unwrap_or(SortDirection::Ascending);
             sort_action = SortAction::Sort(SortState { column: SortColumn::Album, direction: dir });
         }
 
         // TIME column (15%, right-aligned)
-        let time_active = sort_state.is_some_and(|s| s.column == SortColumn::Duration);
-        let time_label = if time_active {
-            format!("TIME {}", sort_state.unwrap().direction.arrow())
-        } else {
-            "TIME".to_string()
-        };
+        let time_arrow = sort_state.as_ref().and_then(|s| (s.column == SortColumn::Duration).then_some(s.direction.arrow()));
+        let time_label = time_arrow.map(|a| format!("TIME {}", a)).unwrap_or_else(|| "TIME".to_string());
+        let time_active = time_arrow.is_some();
         let time_color = if time_active { header_color_active } else { header_color_default };
         let time_rect = egui::Rect::from_min_size(
             header_rect.left_top() + egui::vec2(time_x, 0.0),
@@ -1237,11 +1229,10 @@ pub fn render_tracks(
             time_color,
         );
         if time_resp.clicked() {
-            let dir = if time_active {
-                sort_state.unwrap().direction.toggle()
-            } else {
-                SortDirection::Ascending
-            };
+            let dir = sort_state.as_ref()
+                .filter(|s| s.column == SortColumn::Duration)
+                .map(|s| s.direction.toggle())
+                .unwrap_or(SortDirection::Ascending);
             sort_action = SortAction::Sort(SortState { column: SortColumn::Duration, direction: dir });
         }
     });
@@ -2543,7 +2534,7 @@ pub fn render_queue(
                     let row_height = 48.0;
                     let (row_rect, _response) = ui.allocate_exact_size(
                         egui::vec2(ui.available_width(), row_height),
-                        egui::Sense::hover(),
+                        egui::Sense::click(),
                     );
 
                     let bg = if _response.hovered() {
@@ -2580,7 +2571,7 @@ pub fn render_queue(
                                 egui::FontId::proportional(12.0),
                                 theme::text_dim(),
                             );
-                            let dur = theme::format_duration_secs(track.duration.num_seconds() as u64);
+                            let dur = theme::format_duration_secs(track.duration.num_seconds().max(0) as u64);
                             ui.painter().text(
                                 row_rect.right_center() + egui::vec2(-24.0, 0.0),
                                 egui::Align2::RIGHT_CENTER,

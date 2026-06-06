@@ -596,7 +596,11 @@ impl AppConfig {
         toml::to_string_pretty(&self)
             .map_err(From::from)
             .and_then(|content| {
-                std::fs::write(path.join(APP_CONFIG_FILE), content).map_err(From::from)
+                let config_path = path.join(APP_CONFIG_FILE);
+                if let Some(parent) = config_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(config_path, content).map_err(From::from)
             })
     }
 
@@ -611,10 +615,15 @@ impl AppConfig {
                 }
                 Ok(url) => Some(url),
             });
+        let client_id = self
+            .client_id
+            .as_deref()
+            .unwrap_or(SPOTIFY_CLIENT_ID)
+            .to_string();
         SessionConfig {
             proxy,
             ap_port: self.ap_port,
-            client_id: SPOTIFY_CLIENT_ID.to_string(),
+            client_id,
             autoplay: Some(self.device.autoplay),
             ..Default::default()
         }
@@ -648,6 +657,7 @@ pub fn get_cache_folder_path() -> Result<PathBuf> {
 pub fn get_config() -> Configs {
     CONFIGS
         .get()
+        .ok_or_else(|| anyhow::anyhow!("config not initialized: set_config must be called before get_config"))
         .expect("config not initialized: set_config must be called before get_config")
         .lock()
         .clone()
@@ -870,8 +880,8 @@ mod tests {
     fn test_app_config_session_config() {
         let config = AppConfig::default();
         let session_config = config.session_config();
-        
-        assert_eq!(session_config.client_id, SPOTIFY_CLIENT_ID);
+
+        assert_eq!(session_config.client_id, NCSPOT_CLIENT_ID);
         assert!(session_config.proxy.is_none());
         assert!(session_config.ap_port.is_none());
     }

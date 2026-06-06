@@ -45,7 +45,11 @@ use anyhow::{Context, Result};
 use librespot_core::{authentication::Credentials, cache::Cache, config::SessionConfig, Session};
 use librespot_oauth::OAuthClientBuilder;
 
+/// Default Spotify client ID for standard playback.
+/// Users can override this in their config file via `client_id` field.
 pub const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
+/// Alternative client ID used by ncspot.
+/// Users can override this in their config file via `client_id` field.
 pub const NCSPOT_CLIENT_ID: &str = "d420a117a32841c2b3474932e49fb54b";
 // based on https://developer.spotify.com/documentation/web-api/concepts/scopes#list-of-scopes
 pub const OAUTH_SCOPES: &[&str] = &[
@@ -84,10 +88,14 @@ pub struct AuthConfig {
 
 impl Default for AuthConfig {
     fn default() -> Self {
-        match AuthConfig::try_default() {
-            Ok(config) => config,
-            Err(e) => panic!("failed to create default AuthConfig: {:#}", e),
-        }
+        AuthConfig::try_default().unwrap_or_else(|e| {
+            tracing::warn!("failed to create default AuthConfig, using fallback: {:#}", e);
+            AuthConfig {
+                cache: Cache::new(None::<String>, None, None, None).expect("failed to create cache"),
+                session_config: SessionConfig::default(),
+                login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+            }
+        })
     }
 }
 

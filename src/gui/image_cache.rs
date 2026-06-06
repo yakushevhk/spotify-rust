@@ -15,6 +15,7 @@ pub struct ImageCache {
     download_thread: Option<std::thread::JoinHandle<()>>,
     in_flight: HashSet<String>,
     done_rx: mpsc::Receiver<String>,
+    known_paths: HashSet<PathBuf>,
 }
 
 impl Drop for ImageCache {
@@ -99,6 +100,7 @@ impl ImageCache {
             download_tx,
             download_thread,
             in_flight: HashSet::new(),
+            known_paths: HashSet::new(),
             done_rx,
         }
     }
@@ -110,12 +112,19 @@ impl ImageCache {
         if self.download_thread.is_none() {
             return;
         }
-        
+
         // Drain completion channel
         while let Ok(done_url) = self.done_rx.try_recv() {
             self.in_flight.remove(&done_url);
         }
+        // Use cached path existence to avoid filesystem calls every frame
+        let path_buf = path.to_path_buf();
+        if self.known_paths.contains(&path_buf) {
+            self.in_flight.remove(url);
+            return;
+        }
         if path.exists() {
+            self.known_paths.insert(path_buf);
             self.in_flight.remove(url);
             return;
         }
@@ -140,11 +149,12 @@ impl ImageCache {
             return self.textures.get(&key);
         }
 
-        // Offload file existence check to background or cache result
-        // For now, we still check but this is much faster with the LRU cache
-        if !path.exists() {
+        // Use cached path existence to avoid filesystem calls
+        let path_buf = path.to_path_buf();
+        if !self.known_paths.contains(&path_buf) && !path.exists() {
             return None;
         }
+        self.known_paths.insert(path_buf);
 
         let img = image::open(path).ok()?;
         let rgba = img.to_rgba8();

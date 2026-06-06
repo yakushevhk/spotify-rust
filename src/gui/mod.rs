@@ -384,20 +384,26 @@ current_view: View::Library,
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
-                let data = self.state.data.read();
-                if let Some(state::PlaylistFolderItem::Playlist(playlist)) = data.user_data.playlists.get(idx) {
-                    let id = playlist.id.clone();
-                    let name = playlist.name.clone();
-                    drop(data);
+                let playlist_data = {
+                    let data = self.state.data.read();
+                    data.user_data.playlists.get(idx).and_then(|item| {
+                        if let state::PlaylistFolderItem::Playlist(playlist) = item {
+                            Some((playlist.id.clone(), playlist.name.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                };
+                if let Some((id, name)) = playlist_data {
                     self.context_title = name;
                     self.selected_track = None;
                     self.context_tracks.clear();
                     self.sort_state = None;
-                self.current_context_id = Some(state::ContextId::Playlist(id.clone()));
-                self.send_request(ClientRequest::GetContext(
-                    state::ContextId::Playlist(id),
-                ));
-                self.current_view = View::Tracks;
+                    self.current_context_id = Some(state::ContextId::Playlist(id.clone()));
+                    self.send_request(ClientRequest::GetContext(
+                        state::ContextId::Playlist(id),
+                    ));
+                    self.current_view = View::Tracks;
                 }
             }
             Action::OpenAlbum(idx) => {
@@ -405,19 +411,21 @@ current_view: View::Library,
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
-                let data = self.state.data.read();
-                if let Some(album) = data.user_data.saved_albums.get(idx) {
-                    let id = album.id.clone();
-                    let name = album.name.clone();
-                    drop(data);
+                let album_data = {
+                    let data = self.state.data.read();
+                    data.user_data.saved_albums.get(idx).map(|album| {
+                        (album.id.clone(), album.name.clone())
+                    })
+                };
+                if let Some((id, name)) = album_data {
                     self.context_title = name;
                     self.selected_track = None;
                     self.context_tracks.clear();
                     self.sort_state = None;
                     self.current_context_id = Some(state::ContextId::Album(id.clone()));
-                    let _ = self
-                        .client_pub
-                        .send(ClientRequest::GetContext(state::ContextId::Album(id)));
+                    if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(id))).is_err() {
+                        tracing::warn!("Failed to send GetContext request for album");
+                    }
                     self.current_view = View::Tracks;
                 }
             }
@@ -497,9 +505,9 @@ current_view: View::Library,
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Album(album.id.clone()));
-                let _ = self
-                    .client_pub
-                    .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
+                if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
+                    tracing::warn!("Failed to send GetContext request for album from search");
+                }
                 self.current_view = View::Tracks;
             }
             Action::OpenArtist(artist) => {
@@ -568,9 +576,9 @@ current_view: View::Library,
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Album(album.id.clone()));
-                let _ = self
-                    .client_pub
-                    .send(ClientRequest::GetContext(state::ContextId::Album(album.id)));
+                if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
+                    tracing::warn!("Failed to send GetContext request for album from context menu");
+                }
                 self.current_view = View::Tracks;
             }
             Action::ContextMenuNavigateShow(show) => {
@@ -635,29 +643,29 @@ current_view: View::Library,
                 self.current_view = View::ShowDetail;
             }
             Action::NavigateToCurrentTrack => {
-                // Navigate to the context of the currently playing track
-                let player = self.state.player.read();
-                if let Some(ref playback) = player.playback {
-                    if let Some(ref context) = playback.context {
-                        let uri = context.uri.clone();
-                        drop(player);
-                        
-                        // Parse context URI and navigate appropriately
-                        if uri.contains(":playlist:") || uri.contains(":album:") {
-                            self.navigate_to_view(View::Tracks);
-                        } else if uri.contains(":artist:") {
-                            self.navigate_to_view(View::Artist);
-                        } else if uri.contains(":show:") {
-                            self.navigate_to_view(View::ShowDetail);
+                let target_view = {
+                    let player = self.state.player.read();
+                    if let Some(ref playback) = player.playback {
+                        if let Some(ref context) = playback.context {
+                            let uri = &context.uri;
+                            if uri.contains(":playlist:") || uri.contains(":album:") {
+                                Some(View::Tracks)
+                            } else if uri.contains(":artist:") {
+                                Some(View::Artist)
+                            } else if uri.contains(":show:") {
+                                Some(View::ShowDetail)
+                            } else {
+                                Some(View::Queue)
+                            }
                         } else {
-                            self.navigate_to_view(View::Queue);
+                            Some(View::Queue)
                         }
                     } else {
-                        drop(player);
-                        self.navigate_to_view(View::Queue);
+                        None
                     }
-                } else {
-                    drop(player);
+                };
+                if let Some(view) = target_view {
+                    self.navigate_to_view(view);
                 }
             }
             Action::None => {}
@@ -694,8 +702,6 @@ current_view: View::Library,
     fn go_back(&mut self) {
         if let Some(prev) = self.view_history.pop() {
             self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
-            // B2: clear stale track selection and context when navigating back
-            self.selected_track = None;
             self.context_tracks.clear();
             self.sort_state = None;
         }
@@ -1348,6 +1354,10 @@ current_view: View::Library,
         }
     }
 
+    /// Updates context_tracks and context_title from the current playback context.
+    ///
+    /// Lock ordering: data lock MUST be acquired before player lock to avoid deadlocks.
+    /// This is consistent with other functions in this impl that acquire both locks.
     fn update_context_tracks(&mut self) {
         let data = self.state.data.read();
         let player = self.state.player.read();
@@ -1357,28 +1367,28 @@ current_view: View::Library,
                 if let Some(ctx) = data.caches.context.get(&uri) {
                     match ctx {
                         state::Context::Playlist { tracks, playlist } => {
-                            self.context_tracks = tracks.clone();
-                            self.context_title = playlist.name.clone();
+                            self.context_tracks.clone_from(tracks);
+                            self.context_title.clone_from(&playlist.name);
                         }
                         state::Context::Album { tracks, album } => {
-                            self.context_tracks = tracks.clone();
-                            self.context_title = album.name.clone();
+                            self.context_tracks.clone_from(tracks);
+                            self.context_title.clone_from(&album.name);
                         }
                         state::Context::Tracks { tracks, desc } => {
-                            self.context_tracks = tracks.clone();
-                            self.context_title = desc.clone();
+                            self.context_tracks.clone_from(tracks);
+                            self.context_title.clone_from(desc);
                         }
                         state::Context::Artist {
                             top_tracks,
                             artist,
                             ..
                         } => {
-                            self.context_tracks = top_tracks.clone();
-                            self.context_title = format!("{} — Top Tracks", artist.name);
+                            self.context_tracks.clone_from(top_tracks);
+                            self.context_title.clone_from(&artist.name);
+                            self.context_title.push_str(" — Top Tracks");
                         }
                         state::Context::Show { .. } => {}
                     }
-                    // Apply existing sort if any
                     if let Some(sort) = self.sort_state {
                         self.context_tracks.sort_by(|a, b| sort.compare(a, b));
                     }
@@ -3717,7 +3727,6 @@ impl SpotifyApp {
                                         if let Err(err) = crate::config::reload_config() {
                                             tracing::error!("Failed to reload config: {err:#}");
                                         }
-                                        // C5: reload keybindings after settings save
                                         let mut bindings = default_keybindings();
                                         crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
                                         self.keybindings = bindings;
@@ -3730,6 +3739,7 @@ impl SpotifyApp {
                                         }
                                     }
                                     Err(e) => {
+                                        let _ = std::fs::remove_file(&tmp_path);
                                         self.toast(format!("Failed to save: {}", e));
                                     }
                                 }

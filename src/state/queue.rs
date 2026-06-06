@@ -310,6 +310,10 @@ impl CustomQueue {
     /// takes effect at the next batch boundary without restarting the current
     /// track.
     pub fn set_shuffle_mode(&mut self, mode: ShuffleMode) {
+        if self.play_order.is_empty() {
+            return;
+        }
+
         let current_track = self.play_order[self.position].clone();
 
         match &mode {
@@ -321,7 +325,7 @@ impl CustomQueue {
                     .play_order
                     .iter()
                     .position(|t| *t == current_track)
-                    .unwrap_or(0);
+                    .expect("current track must exist in play_order");
                 self.batch_start = 0;
             }
             ShuffleMode::Shuffle => {
@@ -381,7 +385,8 @@ impl CustomQueue {
 
     /// Append radio recommendation tracks for autoplay continuation.
     pub fn append_radio_tracks(&mut self, tracks: Vec<PlayableId<'static>>) {
-        self.play_order.extend(tracks);
+        self.play_order.extend(tracks.clone());
+        self.original_tracks.extend(tracks);
     }
 
     /// Compute and load the next batch. Returns the batch URIs to send to

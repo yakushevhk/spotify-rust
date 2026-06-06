@@ -88,6 +88,7 @@ pub struct AppClient {
     /// The user-provided Spotify client, mainly used for interacting with Spotify Web APIs
     user_client: Option<rspotify::AuthCodePkceSpotify>,
     reauth_lock: Arc<tokio::sync::Mutex<()>>,
+    playback_init_handle: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
     #[cfg(feature = "streaming")]
     stream_conn: Arc<Mutex<Option<librespot_connect::Spirc>>>,
 }
@@ -205,6 +206,7 @@ impl AppClient {
             auth_config,
             user_client,
             reauth_lock: Arc::new(tokio::sync::Mutex::new(())),
+            playback_init_handle: Arc::new(tokio::sync::Mutex::new(None)),
 
             #[cfg(feature = "streaming")]
             stream_conn: Arc::new(Mutex::new(None)),
@@ -226,16 +228,11 @@ impl AppClient {
     }
 
     /// Initialize the application's playback upon creating a new session or during startup
-    pub fn initialize_playback(&self, state: &SharedState) {
-        tokio::task::spawn({
+    pub async fn initialize_playback(&self, state: &SharedState) {
+        let handle = tokio::task::spawn({
             let client = self.clone();
             let state = state.clone();
             async move {
-                // The main playback initialization logic is simple:
-                // if there is no playback, connect to an available device
-                //
-                // However, because it takes time for Spotify server to show up new changes,
-                // a retry logic is implemented to ensure the application's state is properly initialized
                 let delay = std::time::Duration::from_secs(1);
 
                 for _ in 0..5 {
@@ -246,7 +243,6 @@ impl AppClient {
                         continue;
                     }
 
-                    // if playback exists, don't connect to a new device
                     if state.player.read().playback.is_some() {
                         break;
                     }
@@ -268,10 +264,7 @@ impl AppClient {
                                     tracing::warn!("Connection failed (device_id={id}): {err:#}");
                                 } else {
                                     tracing::info!("Connection succeeded (device_id={id})!");
-                                    // upon new connection, reset the buffered playback
                                     state.player.write().buffered_playback = None;
-                                    // retrieve_current_playback at the top of this iteration
-                                    // already fetched the current state; no need for update_playback
                                     break;
                                 }
                             }
@@ -283,6 +276,10 @@ impl AppClient {
                 }
             }
         });
+        {
+            let mut guard = self.playback_init_handle.lock().await;
+            *guard = Some(handle);
+        }
     }
 
     /// Create a new client session
@@ -393,7 +390,7 @@ impl AppClient {
                 saved_albums: Vec::new(),
                 saved_tracks: std::collections::HashMap::new(),
             };
-            self.initialize_playback(state);
+            self.initialize_playback(state).await;
             // Clear transient UI state that should not survive account switches
             state.toast_queue.lock().clear();
             #[cfg(feature = "streaming")]
@@ -408,10 +405,12 @@ impl AppClient {
     /// Check if the current session is valid and if invalid, create a new session
     /// Also validates the user_client OAuth token and refreshes if needed
     pub async fn check_valid_session(&self, state: &SharedState) -> Result<()> {
+        // Acquire reauth_lock once to prevent race conditions and deadlocks
+        let _guard = self.reauth_lock.lock().await;
+
         // Check librespot streaming session
         let session = self.spotify.session().await?;
         if session.is_invalid() {
-            let _guard = self.reauth_lock.lock().await;
             // Re-check after acquiring the lock in case another task already fixed it
             let session = self.spotify.session().await?;
             if session.is_invalid() {
@@ -426,51 +425,43 @@ impl AppClient {
                 }
             }
         }
-        
+
         // Check and refresh user_client OAuth token if needed
         // This is critical for CLI commands that use user_client() directly
         if let Some(user_client) = &self.user_client {
-            // Get the token Arc and lock it separately to avoid borrow issues
             let token_arc = user_client.get_token();
             let token_guard = token_arc.lock().await
                 .map_err(|e| anyhow::anyhow!("Token mutex poisoned: {e:?}"))?;
-            
+
             let needs_refresh = match token_guard.as_ref() {
                 None => true,
                 Some(token) => {
-                    // Check if token is expired or about to expire (within 60 seconds)
                     token.expires_at.is_none_or(|expires_at| {
                         chrono::Utc::now() >= expires_at - chrono::Duration::seconds(60)
                     })
                 }
             };
-            
-            drop(token_guard);
-            
+
             if needs_refresh {
                 tracing::info!("User client token expired or expiring soon, refreshing...");
-                let _guard = self.reauth_lock.lock().await;
-                
+
                 // Try auto_reauth first
                 if let Err(err) = user_client.auto_reauth().await {
                     tracing::warn!("Auto reauth failed: {err:#}, attempting manual refresh");
-                    
-                    // If auto_reauth fails, try refresh_token
+
                     if let Err(refresh_err) = user_client.refresh_token().await {
                         tracing::error!("Token refresh failed: {refresh_err:#}");
-                        
-                        // Both failed - may need full re-authentication
-                        // For CLI, we can't re-prompt, so propagate the error
+
                         return Err(anyhow::anyhow!(
                             "Failed to refresh user client token. Please re-authenticate by running the GUI or clearing cache: {refresh_err:#}"
                         ));
                     }
                 }
-                
+
                 tracing::info!("User client token successfully refreshed");
             }
         }
-        
+
         Ok(())
     }
 
@@ -1164,38 +1155,48 @@ impl AppClient {
     }
 
     pub fn update_playback(&self, state: &SharedState) {
-        // #15: cooldown — skip if last dispatch was < 1s ago to prevent
-        // API flooding from rapid slider moves etc.
-        // Issue #4: Use compare-and-swap to fix race condition
         static LAST_DISPATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
-        // Use compare_exchange to atomically check and update timestamp
-        // This prevents race condition between check and swap
+
         loop {
             let last = LAST_DISPATCH.load(std::sync::atomic::Ordering::Acquire);
             if now_ms.saturating_sub(last) < 1000 {
-                return; // Too soon, another thread already updated
-            }
-            match LAST_DISPATCH.compare_exchange(
-                last,
-                now_ms,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            ) {
-                Ok(_) => break, // We won the race, proceed
-                Err(_) => continue, // Another thread updated, retry
+                std::thread::sleep(std::time::Duration::from_millis(
+                    1000 - now_ms.saturating_sub(last)
+                ));
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                match LAST_DISPATCH.compare_exchange(
+                    last,
+                    now_ms,
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(_) => continue,
+                }
+            } else {
+                match LAST_DISPATCH.compare_exchange(
+                    last,
+                    now_ms,
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(_) => continue,
+                }
             }
         }
 
         let client = self.clone();
         let state = state.clone();
         tokio::task::spawn(async move {
-            let delay = std::time::Duration::from_secs(1);
-            tokio::time::sleep(delay).await;
             if let Err(err) = client.retrieve_current_playback(&state, false).await {
                 tracing::error!(
                     "Encountered an error when updating the playback state: {err:#}"
@@ -1795,6 +1796,10 @@ impl AppClient {
             .context
             .get_mut(&playlist_id.uri())
         {
+            if range_start >= tracks.len() {
+                tracing::warn!("Range start {} out of bounds for tracks (len={})", range_start, tracks.len());
+                return Ok(());
+            }
             let track = tracks.remove(range_start);
             // After remove, indices shift. When insert_index > range_start,
             // the API's insert_before accounts for the original position,
