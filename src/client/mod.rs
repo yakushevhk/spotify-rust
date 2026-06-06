@@ -189,7 +189,10 @@ impl AppClient {
                 use std::os::unix::fs::PermissionsExt;
                 let token_path = configs.cache_folder.join("user_client_token.json");
                 if token_path.exists() {
-                    let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+                    let token_path = token_path.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600))
+                    }).await;
                 }
             }
         }
@@ -406,10 +409,12 @@ impl AppClient {
     /// Also validates the user_client OAuth token and refreshes if needed
     pub async fn check_valid_session(&self, state: &SharedState) -> Result<()> {
         // Check librespot streaming session
-        if self.spotify.session().await.is_invalid() {
+        let session = self.spotify.session().await?;
+        if session.is_invalid() {
             let _guard = self.reauth_lock.lock().await;
             // Re-check after acquiring the lock in case another task already fixed it
-            if self.spotify.session().await.is_invalid() {
+            let session = self.spotify.session().await?;
+            if session.is_invalid() {
                 tracing::info!("Client's current session is invalid, creating a new session...");
                 if let Err(err) = self.new_session(Some(state), false).await {
                     tracing::warn!(
@@ -516,7 +521,7 @@ impl AppClient {
                 #[cfg(feature = "streaming")]
                 {
                     if device_id.is_none() && self.stream_conn.lock().is_some() {
-                        let session = self.spotify.session().await;
+                        let session = self.spotify.session().await?;
                         device_id = Some(session.device_id().to_string());
                     }
                 }
@@ -868,7 +873,7 @@ impl AppClient {
                     {
                         use crate::state::DeviceType;
                         let configs = config::get_config();
-                        let session = self.spotify.session().await;
+                        let session = self.spotify.session().await?;
                         let local_device = Device {
                             id: session.device_id().to_string(),
                             name: configs.app_config.device.name.clone(),
@@ -1034,7 +1039,7 @@ impl AppClient {
             }
             ClientRequest::Logout => {
                 // Shutdown the librespot session
-                let session = self.spotify.session().await;
+                let session = self.spotify.session().await?;
                 if !session.is_invalid() {
                     session.shutdown();
                 }
@@ -1043,13 +1048,13 @@ impl AppClient {
                 let configs = config::get_config();
                 let credentials_file = configs.cache_folder.join("credentials.json");
                 if credentials_file.exists() {
-                    if let Err(err) = std::fs::remove_file(&credentials_file) {
+                    if let Err(err) = tokio::fs::remove_file(&credentials_file).await {
                         tracing::warn!("Failed to delete credentials file: {err:#}");
                     }
                 }
                 let token_file = configs.cache_folder.join("user_client_token.json");
                 if token_file.exists() {
-                    if let Err(err) = std::fs::remove_file(&token_file) {
+                    if let Err(err) = tokio::fs::remove_file(&token_file).await {
                         tracing::warn!("Failed to delete user client token file: {err:#}");
                     }
                 }
@@ -1134,7 +1139,7 @@ impl AppClient {
 
     /// Get lyrics of a given track, return None if no lyrics is available
     pub async fn lyrics(&self, track_id: TrackId<'static>) -> Result<Option<Lyrics>> {
-        let session = self.spotify.session().await;
+        let session = self.spotify.session().await?;
         let uri = SpotifyUri::from_uri(&track_id.uri())?;
         match uri {
             SpotifyUri::Track { id } => {
@@ -1217,8 +1222,11 @@ impl AppClient {
                     .as_ref()
                     .and_then(|p| p.device_id.clone());
                 if device_id.is_none() {
-                    let session = self.spotify.session().await;
-                    device_id = Some(session.device_id().to_string());
+                    if let Ok(session) = self.spotify.session().await {
+                        device_id = Some(session.device_id().to_string());
+                    } else {
+                        tracing::error!("Failed to get Spotify session for device_id");
+                    }
                 }
                 if let Err(err) = self
                     .start_playback(
@@ -1349,7 +1357,7 @@ impl AppClient {
         //    access to user's active devices.
         #[cfg(feature = "streaming")]
         {
-            let session = self.spotify.session().await;
+            let session = self.spotify.session().await?;
             devices.push((
                 configs.app_config.device.name.clone(),
                 session.device_id().to_string(),
@@ -1548,7 +1556,7 @@ impl AppClient {
             tracks: Vec<TrackData>,
         }
 
-        let session = self.spotify.session().await;
+        let session = self.spotify.session().await?;
 
         // Get an autoplay URI from the seed URI.
         // The return URI is a Spotify station's URI
@@ -2663,9 +2671,9 @@ impl AppClient {
             anyhow::bail!("Invalid image cache path: {e}");
         }
 
-        if path.exists() {
+        if tokio::fs::try_exists(path).await? {
             tracing::debug!("Retrieving image from file: {}", path.display());
-            return Ok(std::fs::read(path)?);
+            return Ok(tokio::fs::read(path).await?);
         }
 
         tracing::info!("Retrieving image from url: {url}");

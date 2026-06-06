@@ -648,9 +648,17 @@ pub fn get_cache_folder_path() -> Result<PathBuf> {
 pub fn get_config() -> Configs {
     CONFIGS
         .get()
-        .expect("configs is already initialized")
+        .expect("config not initialized: set_config must be called before get_config")
         .lock()
         .clone()
+}
+
+#[allow(dead_code)]
+pub fn try_get_config() -> Result<Configs> {
+    let config = CONFIGS
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("config not initialized: set_config must be called before get_config"))?;
+    Ok(config.lock().clone())
 }
 pub fn set_config(configs: Configs) {
     CONFIGS.get_or_init(|| parking_lot::Mutex::new(configs));
@@ -661,7 +669,7 @@ pub fn reload_config() -> anyhow::Result<()> {
     let config_folder = get_config_folder_path()?;
     let cache_folder = get_cache_folder_path()?;
     let new_configs = Configs::new(&config_folder, &cache_folder)?;
-    let lock = CONFIGS.get().expect("configs is already initialized");
+    let lock = CONFIGS.get().ok_or_else(|| anyhow::anyhow!("config not initialized, call set_config first"))?;
     *lock.lock() = new_configs;
     Ok(())
 }

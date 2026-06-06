@@ -55,12 +55,11 @@ impl Spotify {
         *self.session.lock().await = Some(session);
     }
 
-    pub async fn session(&self) -> Session {
-        self.session
-            .lock()
-            .await
-            .clone()
-            .expect("non-empty Spotify session")
+    pub async fn session(&self) -> Result<Session, ClientError> {
+        let session = self.session.lock().await;
+        session.clone().ok_or_else(|| {
+            ClientError::Cli("No active Spotify session".to_string())
+        })
     }
 }
 

@@ -1932,9 +1932,10 @@ pub fn render_search(
                     ui.horizontal(|ui| {
                         ui.add_space(24.0);
                         for album in results.albums.iter() {
+                            let artists = album.artists_display_ref();
                             let sub = format!(
                                 "{} · {}",
-                                album.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", "),
+                                artists,
                                 album.year()
                             );
                             let cover_path = image_cache::album_cover_path(album);
@@ -2487,11 +2488,13 @@ pub fn render_queue(
                             egui::FontId::proportional(15.0),
                             theme::green(),
                         );
-                        let artists: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
+                        let artists = crate::state::Track::try_from_full_track(track.clone())
+                            .map(|t| t.artists_display_ref().to_string())
+                            .unwrap_or_default();
                         ui.painter().text(
                             rect.left_center() + egui::vec2(24.0, 10.0),
                             egui::Align2::LEFT_CENTER,
-                            artists.join(", "),
+                            artists,
                             egui::FontId::proportional(12.0),
                             theme::text_dim(),
                         );
@@ -2567,11 +2570,13 @@ pub fn render_queue(
                                 egui::FontId::proportional(14.0),
                                 theme::text_primary(),
                             );
-                            let artists: Vec<_> = track.artists.iter().map(|a| a.name.as_str()).collect();
+                            let artists = crate::state::Track::try_from_full_track(track.clone())
+                                .map(|t| t.artists_display_ref().to_string())
+                                .unwrap_or_default();
                             ui.painter().text(
                                 row_rect.left_center() + egui::vec2(80.0, 10.0),
                                 egui::Align2::LEFT_CENTER,
-                                artists.join(", "),
+                                artists,
                                 egui::FontId::proportional(12.0),
                                 theme::text_dim(),
                             );
@@ -3747,8 +3752,9 @@ pub fn render_lyrics(
         if let Some(ref item) = pb.item {
             let (name, artists) = match item {
                 rspotify::model::PlayableItem::Track(t) => {
-                    let a: Vec<_> = t.artists.iter().map(|a| a.name.as_str()).collect();
-                    (t.name.clone(), a.join(", "))
+                    let track = crate::state::Track::try_from_full_track(t.clone());
+                    let artists = track.map(|t| t.artists_display_ref().to_string()).unwrap_or_default();
+                    (t.name.clone(), artists)
                 }
                 rspotify::model::PlayableItem::Episode(e) => {
                     (e.name.clone(), e.show.name.clone())
