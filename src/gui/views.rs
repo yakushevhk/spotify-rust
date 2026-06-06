@@ -36,9 +36,17 @@ pub fn render_library(
 
     theme::page_title(ui, "Your Library");
 
-    let data = state.data.read();
-    let library_empty = data.user_data.playlists.is_empty() && data.user_data.saved_albums.is_empty();
-    drop(data);
+    // Batch: read all needed data in one lock acquisition
+    let (library_empty, playlists, saved_albums) = {
+        let data = state.data.read();
+        let library_empty = data.user_data.playlists.is_empty() && data.user_data.saved_albums.is_empty();
+        let playlists: Vec<_> = data.user_data.playlists.iter().filter_map(|item| match item {
+            state::PlaylistFolderItem::Playlist(p) => Some(p.clone()),
+            _ => None,
+        }).collect();
+        let saved_albums_count = data.user_data.saved_albums.len();
+        (library_empty, playlists, saved_albums_count)
+    };
 
     if library_empty {
         ui.add_space(60.0);
@@ -56,6 +64,16 @@ pub fn render_library(
             );
         });
         return action;
+    }
+
+    // Sort playlists outside the UI closure
+    let mut playlists = playlists;
+    match library_sort_order {
+        crate::gui::LibrarySortOrder::Alphabetical => {
+            playlists.sort_by_key(|a| a.name_lower_ref());
+        }
+        crate::gui::LibrarySortOrder::RecentlyAdded => {}
+        crate::gui::LibrarySortOrder::Default => {}
     }
 
     egui::ScrollArea::vertical()
@@ -101,30 +119,6 @@ pub fn render_library(
                 );
             });
             ui.add_space(12.0);
-
-            let data = state.data.read();
-            let mut playlists: Vec<_> = data
-                .user_data
-                .playlists
-                .iter()
-                .filter_map(|item| match item {
-                    state::PlaylistFolderItem::Playlist(p) => Some(p.clone()),
-                    _ => None,
-                })
-                .collect();
-            drop(data);
-
-            match library_sort_order {
-                crate::gui::LibrarySortOrder::Alphabetical => {
-                    // Use cached lowercase names for sorting
-                    playlists.sort_by_key(|a| a.name_lower_ref());
-                }
-                crate::gui::LibrarySortOrder::RecentlyAdded => {
-                    // C7: API order is already reverse-chronological (most recently added first).
-                    // No additional sorting needed.
-                }
-                crate::gui::LibrarySortOrder::Default => {}
-            }
 
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
@@ -172,46 +166,47 @@ pub fn render_library(
 
             ui.add_space(32.0);
 
-            // Albums section
-            ui.horizontal(|ui| {
-                ui.add_space(24.0);
-                ui.label(
-                    egui::RichText::new("Albums")
-                        .size(22.0)
-                        .strong()
-                        .color(theme::text_primary()),
-                );
-            });
-            ui.add_space(12.0);
+            // Albums section - read albums data from single lock if needed
+            let albums_need_read = saved_albums > 0;
+            if albums_need_read {
+                let data = state.data.read();
 
-            let data = state.data.read();
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(
+                        egui::RichText::new("Albums")
+                            .size(22.0)
+                            .strong()
+                            .color(theme::text_primary()),
+                    );
+                });
+                ui.add_space(12.0);
 
-            // Responsive grid: calculate columns based on available width
-            let avail_width = ui.available_width();
-            let num_cols = theme::responsive_grid_columns(avail_width);
-            let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
-            egui::Grid::new("albums_grid")
-                .num_columns(num_cols)
-                .spacing([16.0, 16.0])
-                .show(ui, |ui| {
-                    for (_i, album) in data.user_data.saved_albums.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            ui.add_space(24.0);
-                            // Use pre-computed artists display string
-                            let sub = format!("{} · {}", album.artists_display_ref(), album.year());
-                            let cover_path = image_cache::album_cover_path(album);
-                            if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
-                                if !path.exists() {
-                                    image_cache.request_download(url, path);
+                // Responsive grid: calculate columns based on available width
+                let avail_width = ui.available_width();
+                let num_cols = theme::responsive_grid_columns(avail_width);
+                let grid_card_width = ((avail_width - 24.0 - 16.0 * (num_cols as f32 - 1.0)) / num_cols as f32).clamp(100.0, 200.0);
+                egui::Grid::new("albums_grid")
+                    .num_columns(num_cols)
+                    .spacing([16.0, 16.0])
+                    .show(ui, |ui| {
+                        for (_i, album) in data.user_data.saved_albums.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                let sub = format!("{} · {}", album.artists_display_ref(), album.year());
+                                let cover_path = image_cache::album_cover_path(album);
+                                if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
+                                    if !path.exists() {
+                                        image_cache.request_download(url, path);
+                                    }
                                 }
-                            }
-                            let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, grid_card_width, || {
-                                action = Action::OpenSearchResultAlbum(album.clone());
-                            });
-                            if response.secondary_clicked() {
-                                if let Some(click_pos) = response.interact_pointer_pos() {
-                                    context_menu.open(
-                                        ContextTarget::Album(album.clone()),
+                                let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, grid_card_width, || {
+                                    action = Action::OpenSearchResultAlbum(album.clone());
+                                });
+                                if response.secondary_clicked() {
+                                    if let Some(click_pos) = response.interact_pointer_pos() {
+                                        context_menu.open(
+                                            ContextTarget::Album(album.clone()),
                                         click_pos,
                                     );
                                 }
@@ -219,6 +214,7 @@ pub fn render_library(
                         });
                     }
                 });
+            }
 
             ui.add_space(24.0);
         });

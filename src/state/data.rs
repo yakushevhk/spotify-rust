@@ -247,9 +247,26 @@ pub fn store_data_into_file_cache<T: Serialize>(
         let mut f = BufWriter::new(std::fs::File::create(&temp_path)?);
         serde_json::to_writer(&mut f, data)?;
         f.flush()?;
-        std::fs::rename(&temp_path, &path)?;
+        if let Err(e) = std::fs::rename(&temp_path, &path) {
+            #[cfg(unix)]
+            let is_cross_device = e.raw_os_error() == Some(18); // EXDEV
+            #[cfg(not(unix))]
+            let is_cross_device = false;
+            if is_cross_device {
+                std::fs::copy(&temp_path, &path)?;
+                std::fs::remove_file(&temp_path)?;
+            } else {
+                let _ = std::fs::remove_file(&temp_path);
+                return Err(e);
+            }
+        }
         Ok(())
     })();
+    
+    // Clean up orphaned .tmp files on error
+    if result.is_err() {
+        let _ = std::fs::remove_file(path.with_extension("tmp"));
+    }
     
     // Issue #2: Handle write failures generically with user-friendly message
     if let Err(ref e) = result {

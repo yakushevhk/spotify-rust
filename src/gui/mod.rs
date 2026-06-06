@@ -973,7 +973,7 @@ current_view: View::Library,
                     if let Some(idx) = self.selected_track {
                         if idx < self.context_tracks.len() {
                             let track = self.context_tracks[idx].clone();
-                            let center = egui::pos2(400.0, 400.0);
+                            let center = ctx.screen_rect().center();
                             self.context_menu.open(
                                 context_menu::ContextTarget::Track {
                                     track,
@@ -991,7 +991,7 @@ current_view: View::Library,
                         if let Some(rspotify::model::PlayableItem::Track(t)) = &playback.item {
                             let track = crate::state::Track::try_from_full_track(t.clone());
                             if let Some(track) = track {
-                                let center = egui::pos2(400.0, 400.0);
+                                let center = ctx.screen_rect().center();
                                 self.context_menu.open(
                                     context_menu::ContextTarget::Track {
                                         track,
@@ -3461,7 +3461,7 @@ impl SpotifyApp {
         let max_visible = if self.toast_show_all { self.toast_messages.len() } else { self.toast_messages.len().min(3) };
         let total_height = max_visible as f32 * (toast_height + 8.0);
         
-        let start_y = screen.bottom() - 160.0 - total_height + toast_height;
+        let start_y = screen.bottom() - theme::PLAYBACK_BAR_HEIGHT - 24.0 - total_height + toast_height;
         
         // Track which toasts to dismiss (by message string, not index, to avoid
         // stale-index bugs when toasts expire between frames)

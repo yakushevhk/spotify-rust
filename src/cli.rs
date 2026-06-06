@@ -32,6 +32,27 @@ use clap::{Parser, Subcommand};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// Poll until a condition is met or timeout is reached
+async fn poll_until<F, Fut>(
+    condition: F,
+    timeout_secs: u64,
+    interval_ms: u64,
+    timeout_msg: &str,
+) where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        if condition().await { return; }
+        if std::time::Instant::now() > deadline {
+            println!("{timeout_msg}");
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "spotify-player-gui")]
 #[command(author = "Spotify Player GUI")]
@@ -112,15 +133,11 @@ pub async fn run_cli_command(
             println!("Searching for: {}", query);
             client_pub.send(ClientRequest::Search(query.clone()))?;
             
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            loop {
-                if state.data.read().caches.search.contains_key(&query) { break; }
-                if std::time::Instant::now() > deadline {
-                    println!("Search timed out after 5 seconds");
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
+            let q = query.clone();
+            poll_until(
+                || async { state.data.read().caches.search.contains_key(&q) },
+                5, 200, "Search timed out after 5 seconds",
+            ).await;
             
             let search_results = state.data.read().caches.search.get(&query).cloned();
             
@@ -145,15 +162,10 @@ pub async fn run_cli_command(
         CliCommand::Status => {
             client_pub.send(ClientRequest::GetCurrentPlayback)?;
             
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            loop {
-                if state.player.read().playback.is_some() { break; }
-                if std::time::Instant::now() > deadline {
-                    println!("Status timed out after 5 seconds");
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
+            poll_until(
+                || async { state.player.read().playback.is_some() },
+                5, 200, "Status timed out after 5 seconds",
+            ).await;
             
             let player = state.player.read();
             let playback = player.playback.clone();
@@ -226,15 +238,10 @@ pub async fn run_cli_command(
         CliCommand::Shuffle => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle))?;
             
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            loop {
-                if state.player.read().buffered_playback.is_some() { break; }
-                if std::time::Instant::now() > deadline {
-                    println!("Shuffle timed out after 5 seconds");
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
+            poll_until(
+                || async { state.player.read().buffered_playback.is_some() },
+                5, 200, "Shuffle timed out after 5 seconds",
+            ).await;
             
             if let Some(ref buffered) = state.player.read().buffered_playback {
                 let status = if buffered.shuffle_state { "enabled" } else { "disabled" };
@@ -247,15 +254,10 @@ pub async fn run_cli_command(
         CliCommand::Repeat => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Repeat))?;
             
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            loop {
-                if state.player.read().buffered_playback.is_some() { break; }
-                if std::time::Instant::now() > deadline {
-                    println!("Repeat timed out after 5 seconds");
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
+            poll_until(
+                || async { state.player.read().buffered_playback.is_some() },
+                5, 200, "Repeat timed out after 5 seconds",
+            ).await;
             
             if let Some(ref buffered) = state.player.read().buffered_playback {
                 let status = match buffered.repeat_state {
