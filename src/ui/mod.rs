@@ -7,8 +7,6 @@
 //!
 //! - `streaming` - Enables audio visualization via FFT
 
-pub mod utils;
-
 #[cfg(feature = "streaming")]
 pub mod streaming {
     //! Audio streaming and visualization support

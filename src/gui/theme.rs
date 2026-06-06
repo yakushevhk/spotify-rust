@@ -352,8 +352,8 @@ fn parse_hex_color(hex: &str) -> egui::Color32 {
             return egui::Color32::from_rgb(r, g, b);
         }
     }
-    tracing::warn!("Failed to parse hex color: '{hex}', using fallback magenta");
-    egui::Color32::from_rgb(255, 0, 255)
+    tracing::warn!("Failed to parse hex color: '{hex}', using fallback gray");
+    egui::Color32::from_gray(128)
 }
 
 impl GuiPalette {

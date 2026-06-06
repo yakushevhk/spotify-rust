@@ -31,10 +31,6 @@ pub mod theme;
 const DEFAULT_CONFIG_FOLDER: &str = ".config/spotify-player";
 const DEFAULT_CACHE_FOLDER: &str = ".cache/spotify-player";
 const APP_CONFIG_FILE: &str = "app.toml";
-#[allow(dead_code)]
-const THEME_CONFIG_FILE: &str = "theme.toml";
-#[allow(dead_code)]
-const KEYMAP_CONFIG_FILE: &str = "keymap.toml";
 
 use anyhow::{anyhow, Result};
 use config_parser2::{config_parser_impl, ConfigParse, ConfigParser};

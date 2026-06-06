@@ -1,5 +1,5 @@
 use super::model::{
-    AlbumId, ArtistId, ContextId, Device, PlaybackMetadata, PlaylistId, ShowId, TracksId,
+    AlbumId, ArtistId, ContextId, Device, PlaybackMetadata, PlaylistId, ShowId,
 };
 use super::queue::CustomQueue;
 
@@ -15,10 +15,6 @@ pub struct PlayerState {
     pub buffered_playback: Option<PlaybackMetadata>,
 
     pub queue: Option<rspotify::model::CurrentUserQueue>,
-
-    /// The currently playing Tracks context (for contexts not tracked by Spotify's playback, e.g. liked/top tracks)
-    #[allow(dead_code)]
-    pub currently_playing_tracks_id: Option<TracksId>,
 
     /// App-managed custom queue for full playlist/album playback.
     /// Active when the integrated librespot player is streaming and the user
@@ -150,15 +146,10 @@ impl PlayerState {
                         _ => None,
                     }
                 }
-                None => self
-                    .custom_queue
-                    .as_ref()
-                    .and_then(|q| q.source_context().cloned())
-                    .or_else(|| {
-                        self.currently_playing_tracks_id
-                            .clone()
-                            .map(ContextId::Tracks)
-                    }),
+            None => self
+                .custom_queue
+                .as_ref()
+                .and_then(|q| q.source_context().cloned()),
             },
             None => None,
         }
@@ -201,7 +192,7 @@ mod tests {
     #[test]
     fn test_playing_context_id_from_custom_queue() {
         use crate::state::queue::CustomQueue;
-        use crate::state::model::PlayableId;
+        use crate::state::model::{PlayableId, TracksId};
         
         let mut state = PlayerState::default();
         let tracks: Vec<PlayableId<'static>> = vec![];
@@ -226,25 +217,6 @@ mod tests {
             assert_eq!(r.uri(), "user:liked_tracks");
         }
         // If result is None, the test passes (implementation may vary)
-    }
-
-    /// Test playing_context_id from currently_playing_tracks_id
-    #[test]
-    fn test_playing_context_id_from_tracks_id() {
-        let state = PlayerState {
-            currently_playing_tracks_id: Some(TracksId {
-                uri: "user:top_tracks".to_string(),
-                kind: "Top Tracks".to_string(),
-            }),
-            ..Default::default()
-        };
-
-        let context = state.playing_context_id();
-        // When there's no playback context, currently_playing_tracks_id should be used
-        if let Some(c) = context {
-            assert_eq!(c.uri(), "user:top_tracks");
-        }
-        // If context is None, the test passes (implementation may vary)
     }
 
     /// Test PlayerState default values

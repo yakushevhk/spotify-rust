@@ -1,5 +1,4 @@
 use crate::config;
-use crate::ui::utils::to_bidi_string;
 use crate::utils::map_join;
 use html_escape::decode_html_entities;
 pub use rspotify::model::{
@@ -427,33 +426,6 @@ impl Track {
     /// gets the track's album name reference (zero-allocation)
     pub fn album_name_ref(&self) -> &str {
         self.album.as_ref().map(|a| a.name.as_str()).unwrap_or("")
-    }
-
-    /// gets cached lowercase name for sorting (computes if not cached)
-    #[allow(dead_code)]
-    pub fn name_lower_cached(&mut self) -> String {
-        if self.name_lower.is_none() {
-            self.name_lower = Some(self.name.to_ascii_lowercase());
-        }
-        self.name_lower.clone().unwrap()
-    }
-
-    /// gets cached lowercase artist info for sorting (computes if not cached)
-    #[allow(dead_code)]
-    pub fn artists_info_lower_cached(&mut self) -> String {
-        if self.artists_info_lower.is_none() {
-            self.artists_info_lower = Some(self.artists_info().to_ascii_lowercase());
-        }
-        self.artists_info_lower.clone().unwrap()
-    }
-
-    /// gets cached lowercase album info for sorting (computes if not cached)
-    #[allow(dead_code)]
-    pub fn album_info_lower_cached(&mut self) -> String {
-        if self.album_info_lower.is_none() {
-            self.album_info_lower = Some(self.album_info().to_ascii_lowercase());
-        }
-        self.album_info_lower.clone().unwrap()
     }
 
     /// gets cached lowercase name for sorting (immutable version)
@@ -1187,32 +1159,6 @@ mod tests {
     }
 
     #[test]
-    fn test_track_name_lower_cached() {
-        let mut track = Track {
-            id: TrackId::from_id("3n3Ppam7vgaVa1iaRUc9Lp").unwrap().into_static(),
-            name: "Test TRACK".to_string(),
-            artists: vec![],
-            album: None,
-            duration: std::time::Duration::from_secs(180),
-            explicit: false,
-            added_at: 0,
-            name_lower: None,
-            artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
-        };
-
-        // First call should compute and cache
-        let lower = track.name_lower_cached();
-        assert_eq!(lower, "test track");
-        assert_eq!(track.name_lower, Some("test track".to_string()));
-
-        // Second call should return cached value
-        let lower2 = track.name_lower_cached();
-        assert_eq!(lower2, "test track");
-    }
-
-    #[test]
     fn test_track_name_lower_ref() {
         let track = Track {
             id: TrackId::from_id("3n3Ppam7vgaVa1iaRUc9Lp").unwrap().into_static(),
@@ -1763,7 +1709,7 @@ impl From<librespot_metadata::lyrics::Lyrics> for Lyrics {
             .into_iter()
             .filter_map(|l| {
                 let t = chrono::Duration::milliseconds(l.start_time_ms.parse::<i64>().ok()?);
-                Some((t, to_bidi_string(&l.words)))
+                Some((t, l.words))
             })
             .collect::<Vec<_>>();
         lines.sort_by_key(|l| l.0);

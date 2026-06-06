@@ -294,12 +294,17 @@ pub async fn start_cli_headless(
         if err_msg.contains("400") || err_msg.contains("Bad Request") {
             eprintln!("\nERROR: Authentication failed with HTTP 400 Bad Request");
             eprintln!("This usually means the cached token is invalid or expired.");
-            eprintln!("Try running: rm ~/.cache/spotify-player/user_client_token.json");
+            if let Ok(cache_path) = config::get_cache_folder_path() {
+                let token_path = cache_path.join("user_client_token.json");
+                eprintln!("Try running: rm {}", token_path.display());
+            }
             eprintln!("Then run your command again to re-authenticate.\n");
         } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
             eprintln!("\nERROR: Authentication failed with HTTP 401 Unauthorized");
             eprintln!("The credentials are no longer valid.");
-            eprintln!("Try running: rm ~/.cache/spotify-player/credentials.json ~/.cache/spotify-player/user_client_token.json");
+            if let Ok(cache_path) = config::get_cache_folder_path() {
+                eprintln!("Try running: rm {} {}", cache_path.join("credentials.json").display(), cache_path.join("user_client_token.json").display());
+            }
             eprintln!("Then run your command again to re-authenticate.\n");
         }
     }

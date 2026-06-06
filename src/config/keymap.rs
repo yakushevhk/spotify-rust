@@ -37,17 +37,17 @@
 //! command = "page_search"
 //! ```
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::key::{CommandBinding, CommandCategory, CommandId, KeyBinding};
 
-#[derive(Debug, Deserialize, Default, Clone, Serialize)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct KeymapConfig {
     #[serde(default)]
     pub keymaps: Vec<Keymap>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Keymap {
     pub key_sequence: String,
     pub command: String,

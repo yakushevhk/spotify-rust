@@ -408,7 +408,7 @@ impl CustomQueue {
 
     /// Append radio recommendation tracks for autoplay continuation.
     pub fn append_radio_tracks(&mut self, tracks: Vec<PlayableId<'static>>) {
-        self.play_order.extend(tracks.clone());
+        self.play_order.extend(tracks.iter().cloned());
         self.original_tracks.extend(tracks);
     }
 
