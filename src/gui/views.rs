@@ -11,6 +11,7 @@ pub struct SearchDebounceState {
     pub last_input: Instant,
     pub pending_query: Option<String>,
     pub is_searching: bool,
+    pub last_sent_query: Option<String>,
 }
 
 impl Default for SearchDebounceState {
@@ -19,6 +20,7 @@ impl Default for SearchDebounceState {
             last_input: Instant::now(),
             pending_query: None,
             is_searching: false,
+            last_sent_query: None,
         }
     }
 }
@@ -1613,7 +1615,10 @@ pub fn render_search(
         // Check if debounce period has passed
         if let Some(ref pending) = debounce_state.pending_query {
             if now.duration_since(debounce_state.last_input) >= Duration::from_millis(300) {
-                let _ = client_pub.send(ClientRequest::Search(pending.clone()));
+                if debounce_state.last_sent_query.as_ref() != Some(pending) {
+                    let _ = client_pub.send(ClientRequest::Search(pending.clone()));
+                    debounce_state.last_sent_query = Some(pending.clone());
+                }
                 debounce_state.pending_query = None;
                 debounce_state.is_searching = true;
             }
@@ -1622,19 +1627,24 @@ pub fn render_search(
         // Still allow Enter key for immediate search
         let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
         if enter_pressed && !search_query.is_empty() {
-            // Cancel pending debounced search
+            if debounce_state.last_sent_query.as_ref() != Some(search_query) {
+                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
+                debounce_state.last_sent_query = Some(search_query.clone());
+            }
             debounce_state.pending_query = None;
             debounce_state.is_searching = true;
-            let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
         }
 
         // Search button
         if theme::secondary_button(ui, "Search").clicked()
             && !search_query.is_empty()
         {
+            if debounce_state.last_sent_query.as_ref() != Some(search_query) {
+                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
+                debounce_state.last_sent_query = Some(search_query.clone());
+            }
             debounce_state.pending_query = None;
             debounce_state.is_searching = true;
-            let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
         }
     });
 
@@ -3435,13 +3445,12 @@ fn render_settings_keybindings(
     egui::ScrollArea::vertical()
         .id_salt("settings_keybindings")
         .show(ui, |ui| {
-            let mut binding_idx = 0usize;
-
             for cat in &category_order {
                 let items: Vec<_> = keybindings
                     .iter()
-                    .filter(|b| b.category == *cat)
-                    .filter(|b| {
+                    .enumerate()
+                    .filter(|(_, b)| b.category == *cat)
+                    .filter(|(_, b)| {
                         filter.is_empty()
                             || b.description.to_lowercase().contains(&filter)
                             || b.command.0.to_lowercase().contains(&filter)
@@ -3452,7 +3461,6 @@ fn render_settings_keybindings(
                     .collect();
 
                 if items.is_empty() {
-                    binding_idx += keybindings.iter().filter(|b| b.category == *cat).count();
                     continue;
                 }
 
@@ -3468,8 +3476,9 @@ fn render_settings_keybindings(
                 });
                 ui.add_space(6.0);
 
-                for binding in &items {
-                    let is_editing = *editing_keybinding == Some(binding_idx);
+                for (actual_idx, binding) in &items {
+                    let actual_idx = *actual_idx;
+                    let is_editing = *editing_keybinding == Some(actual_idx);
 
                     ui.horizontal(|ui| {
                         ui.add_space(24.0);
@@ -3562,17 +3571,12 @@ fn render_settings_keybindings(
                                 },
                             );
                             if edit_resp.clicked() {
-                                *editing_keybinding = Some(binding_idx);
+                                *editing_keybinding = Some(actual_idx);
                             }
                         }
                     });
                     ui.add_space(2.0);
-                    binding_idx += 1;
                 }
-
-                // Skip remaining bindings for this category that weren't filtered
-                let total_in_cat = keybindings.iter().filter(|b| b.category == *cat).count();
-                binding_idx += total_in_cat - items.len();
             }
 
             // Handle keybinding editing (capture key presses)

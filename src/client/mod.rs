@@ -2710,13 +2710,13 @@ impl AppClient {
                 parent,
             )?;
             
-            // Write data to temp file using spawn_blocking to avoid blocking async runtime
-            let bytes_clone = bytes.clone();
+            // M1: Convert bytes to Vec once, move into spawn_blocking to avoid cloning MB-sized data
+            let mut bytes_vec = bytes.to_vec();
             let temp_path = temp_file.path().to_path_buf();
-            tokio::task::spawn_blocking(move || {
+            bytes_vec = tokio::task::spawn_blocking(move || {
                 let mut file = std::fs::File::create(&temp_path)?;
-                std::io::copy(&mut bytes_clone.as_ref(), &mut file)?;
-                Ok::<_, std::io::Error>(())
+                std::io::copy(&mut bytes_vec.as_slice(), &mut file)?;
+                Ok::<_, std::io::Error>(bytes_vec)
             }).await??;
             
             // Atomically persist the temp file to the final path
@@ -2729,9 +2729,10 @@ impl AppClient {
                     return Err(e.error.into());
                 }
             }
+            Ok(bytes_vec)
+        } else {
+            Ok(bytes.to_vec())
         }
-
-        Ok(bytes.to_vec())
     }
 
     #[cfg(feature = "pixelate")]

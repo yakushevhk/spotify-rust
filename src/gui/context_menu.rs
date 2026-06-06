@@ -90,6 +90,8 @@ pub struct ContextMenu {
     pub selected_item_index: Option<usize>,
     #[allow(dead_code)]
     pub trigger_element_id: Option<egui::Id>,
+    // M3: Prevent same-frame click-outside close
+    just_opened: bool,
 }
 
 impl ContextMenu {
@@ -105,6 +107,7 @@ impl ContextMenu {
             keyboard_nav_enabled: false,
             selected_item_index: None,
             trigger_element_id: None,
+            just_opened: false,
         }
     }
 
@@ -142,6 +145,7 @@ impl ContextMenu {
         self.confirm_action = None;
         self.keyboard_nav_enabled = false;
         self.selected_item_index = None;
+        self.just_opened = true;
     }
 
     /// Open context menu with keyboard (Shift+F10)
@@ -151,7 +155,8 @@ impl ContextMenu {
         self.position = position;
         self.confirm_action = None;
         self.keyboard_nav_enabled = true;
-        self.selected_item_index = Some(0); // Select first item
+        self.selected_item_index = Some(0);
+        self.just_opened = true;
         self.trigger_element_id = Some(trigger_id);
     }
 
@@ -633,20 +638,26 @@ impl ContextMenu {
             }
         }
 
+        // M3: Skip click-outside check on the frame the menu was opened
+        let was_just_opened = self.just_opened;
+        self.just_opened = false;
+
         let mut click_outside = false;
-        ctx.input(|i| {
-            if i.pointer.any_pressed() {
-                if let Some(click_pos) = i.pointer.latest_pos() {
-                    let menu_rect = egui::Rect::from_min_size(
-                        pos,
-                        egui::vec2(menu_width, menu_height),
-                    );
-                    if !menu_rect.contains(click_pos) {
-                        click_outside = true;
+        if !was_just_opened {
+            ctx.input(|i| {
+                if i.pointer.any_pressed() {
+                    if let Some(click_pos) = i.pointer.latest_pos() {
+                        let menu_rect = egui::Rect::from_min_size(
+                            pos,
+                            egui::vec2(menu_width, menu_height),
+                        );
+                        if !menu_rect.contains(click_pos) {
+                            click_outside = true;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         if click_outside && self.confirm_action.is_none() {
             self.close();

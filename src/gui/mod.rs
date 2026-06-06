@@ -373,17 +373,9 @@ current_view: View::Library,
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::Navigate(view) => {
-                if view != self.current_view && view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
-                self.current_view = view;
+                self.navigate_to_view(view);
             }
             Action::OpenPlaylist(uri) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 let playlist_data = {
                     let data = self.state.data.read();
                     data.user_data.playlists.iter().find_map(|item| {
@@ -407,14 +399,10 @@ current_view: View::Library,
                     self.send_request(ClientRequest::GetContext(
                         state::ContextId::Playlist(id),
                     ));
-                    self.current_view = View::Tracks;
+                    self.navigate_to_view(View::Tracks);
                 }
             }
             Action::OpenAlbum(uri) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 let album_data = {
                     let data = self.state.data.read();
                     data.user_data.saved_albums.iter().find(|album| album.id.uri() == uri).map(|album| {
@@ -430,14 +418,10 @@ current_view: View::Library,
                     if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(id))).is_err() {
                         tracing::warn!("Failed to send GetContext request for album");
                     }
-                    self.current_view = View::Tracks;
+                    self.navigate_to_view(View::Tracks);
                 }
             }
             Action::OpenLikedTracks => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = "Liked Tracks".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -448,13 +432,9 @@ current_view: View::Library,
                 ));
                 self.current_context_id = Some(ctx_id.clone());
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::OpenRecentlyPlayed => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = "Recently Played".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -465,13 +445,9 @@ current_view: View::Library,
                 ));
                 self.current_context_id = Some(ctx_id.clone());
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::OpenTopTracks => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = "Top Tracks".to_string();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -482,13 +458,9 @@ current_view: View::Library,
                 ));
                 self.current_context_id = Some(ctx_id.clone());
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::OpenSearchResultPlaylist(playlist) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -497,13 +469,9 @@ current_view: View::Library,
                 self.send_request(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
                 ));
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::OpenSearchResultAlbum(album) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -512,25 +480,17 @@ current_view: View::Library,
                 if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
                     tracing::warn!("Failed to send GetContext request for album from search");
                 }
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::OpenArtist(artist) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
                 let _ = self
                     .client_pub
                     .send(ClientRequest::GetContext(state::ContextId::Artist(artist.id)));
-                self.current_view = View::Artist;
+                self.navigate_to_view(View::Artist);
             }
             Action::OpenBrowseCategory(id, name) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.state.data.write().browse.category_playlists_loading = Some(id.clone());
                 self.send_request(ClientRequest::GetBrowseCategoryPlaylists(
                     state::Category {
@@ -539,13 +499,9 @@ current_view: View::Library,
                         icon_url: None,
                     },
                 ));
-                self.current_view = View::BrowseCategory { id, name };
+                self.navigate_to_view(View::BrowseCategory { id, name });
             }
             Action::OpenBrowsePlaylist(playlist) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = playlist.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -554,28 +510,20 @@ current_view: View::Library,
                 self.send_request(ClientRequest::GetContext(
                     state::ContextId::Playlist(playlist.id),
                 ));
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::BackToBrowse => {
-                self.current_view = View::Browse;
+                self.navigate_to_view(View::Browse);
             }
             Action::ContextMenuNavigateArtist(artist) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.artist_id = Some(artist.id.uri());
                 self.artist_context = None;
                 let _ = self
                     .client_pub
                     .send(ClientRequest::GetContext(state::ContextId::Artist(artist.id)));
-                self.current_view = View::Artist;
+                self.navigate_to_view(View::Artist);
             }
             Action::ContextMenuNavigateAlbum(album) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 self.context_title = album.name.clone();
                 self.context_tracks.clear();
                 self.sort_state = None;
@@ -584,20 +532,16 @@ current_view: View::Library,
                 if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
                     tracing::warn!("Failed to send GetContext request for album from context menu");
                 }
-                self.current_view = View::Tracks;
+                self.navigate_to_view(View::Tracks);
             }
             Action::ContextMenuNavigateShow(show) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.podcast_context_id = Some(ctx_id.clone());
                 self.podcast_detail_show = Some(show);
                 self.podcast_episodes.clear();
                 self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::ShowDetail;
+                self.navigate_to_view(View::ShowDetail);
             }
             Action::OpenCreatePlaylist => {
                 self.show_create_playlist_popup = true;
@@ -608,7 +552,7 @@ current_view: View::Library,
             }
             Action::OpenAuthModal => {
                 self.show_auth_modal = true;
-                self.auth_step = AuthStep::Step1;
+                self.auth_step = AuthStep::Idle;
             }
             Action::OpenShows => {
                 let data = self.state.data.read();
@@ -622,30 +566,22 @@ current_view: View::Library,
                 self.navigate_to_view(View::Shows);
             }
             Action::OpenShowDetail(show) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.podcast_context_id = Some(ctx_id.clone());
                 self.podcast_detail_show = Some(show);
                 self.podcast_episodes.clear();
                 self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::ShowDetail;
+                self.navigate_to_view(View::ShowDetail);
             }
             Action::OpenShowFromSearch(show) => {
-                if self.current_view != View::Help {
-                    self.view_history.push(self.current_view.clone());
-                    self.forward_history.clear();
-                }
                 let ctx_id = state::ContextId::Show(show.id.clone());
                 self.podcast_context_id = Some(ctx_id.clone());
                 self.podcast_detail_show = Some(show);
                 self.podcast_episodes.clear();
                 self.selected_podcast_episode = None;
                 self.send_request(ClientRequest::GetContext(ctx_id));
-                self.current_view = View::ShowDetail;
+                self.navigate_to_view(View::ShowDetail);
             }
             Action::NavigateToCurrentTrack => {
                 let target_view = {
@@ -1544,8 +1480,11 @@ impl eframe::App for SpotifyApp {
 
                         ui.add_space(8.0);
 
-                        let player = self.state.player.read();
-                        let devices = &player.devices;
+                        // M8: Clone devices and active_device_id before UI rendering to avoid holding lock
+                        let (devices, active_device_id) = {
+                            let player = self.state.player.read();
+                            (player.devices.clone(), player.playback.as_ref().and_then(|p| p.device.id.clone()))
+                        };
 
                         if devices.is_empty() {
                             ui.label(
@@ -1554,11 +1493,6 @@ impl eframe::App for SpotifyApp {
                                     .color(theme::text_dim()),
                             );
                         } else {
-                            let active_device_id = player
-                                .playback
-                                .as_ref()
-                                .and_then(|p| p.device.id.clone());
-
                             for device in devices.iter() {
                                 let is_active = device.is_active
                                     || active_device_id
@@ -1906,6 +1840,13 @@ impl eframe::App for SpotifyApp {
                     action = views::render_library(ui, &self.state, &mut self.image_cache, &mut self.context_menu, self.library_sort_order);
                 }
                 View::Tracks => {
+                    let playlist_id = self.current_context_id.as_ref().and_then(|ctx_id| {
+                        if let state::ContextId::Playlist(id) = ctx_id {
+                            Some(id)
+                        } else {
+                            None
+                        }
+                    });
                     let sort_action = views::render_tracks(
                         ui,
                         &self.state,
@@ -1915,7 +1856,7 @@ impl eframe::App for SpotifyApp {
                         &mut self.selected_track,
                         &mut self.image_cache,
                         &mut self.context_menu,
-                        None,
+                        playlist_id,
                         self.sort_state,
                         self.current_context_id.as_ref(),
                         self.scroll_to_selected,

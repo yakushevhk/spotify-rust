@@ -104,6 +104,9 @@ impl CommandPalette {
     ) -> Option<CommandId> {
         let mut result: Option<CommandId> = None;
 
+        // M4: Cache filtered entries once to avoid 4+ allocations per frame
+        let filtered = self.filtered_entries();
+
         // Dark overlay
         let screen = ctx.screen_rect();
         let overlay_id = egui::Id::new("cmd_palette_overlay");
@@ -165,9 +168,6 @@ impl CommandPalette {
                     let div_rect = ui.allocate_space(egui::vec2(ui.available_width(), 1.0)).1;
                     ui.painter()
                         .rect_filled(div_rect, 0, theme::divider());
-
-                    // Filtered entries
-                    let filtered = self.filtered_entries();
 
                     // Clamp selection
                     if filtered.is_empty() {
@@ -285,7 +285,6 @@ impl CommandPalette {
                     if i.key_pressed(egui::Key::ArrowDown)
                         || (i.modifiers.ctrl && i.key_pressed(egui::Key::N))
                     {
-                        let filtered = self.filtered_entries();
                         if !filtered.is_empty() {
                             self.selected = (self.selected + 1) % filtered.len();
                         }
@@ -295,7 +294,6 @@ impl CommandPalette {
                     if i.key_pressed(egui::Key::ArrowUp)
                         || (i.modifiers.ctrl && i.key_pressed(egui::Key::P))
                     {
-                        let filtered = self.filtered_entries();
                         if !filtered.is_empty() {
                             self.selected = if self.selected == 0 {
                                 filtered.len() - 1
@@ -307,7 +305,6 @@ impl CommandPalette {
 
                     // Enter
                     if i.key_pressed(egui::Key::Enter) {
-                        let filtered = self.filtered_entries();
                         if let Some(entry) = filtered.get(self.selected) {
                             result = Some(entry.command_id.clone());
                             close = true;
@@ -321,7 +318,6 @@ impl CommandPalette {
 
                     // End
                     if i.key_pressed(egui::Key::End) {
-                        let filtered = self.filtered_entries();
                         if !filtered.is_empty() {
                             self.selected = filtered.len() - 1;
                         }
