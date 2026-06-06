@@ -459,15 +459,7 @@ impl AppClient {
                 player.custom_queue = queue;
             }
             // reset user data to avoid stale data from a previous account
-            state.data.write().user_data = crate::state::UserData {
-                user: None,
-                playlists: Vec::new(),
-                playlist_folder_node: None,
-                followed_artists: Vec::new(),
-                saved_shows: Vec::new(),
-                saved_albums: Vec::new(),
-                saved_tracks: std::collections::HashMap::new(),
-            };
+            state.reset_user_data();
             self.initialize_playback(state).await;
             // Clear transient UI state that should not survive account switches
             state.toast_queue.lock().clear();
@@ -1019,42 +1011,6 @@ impl AppClient {
                         .collect();
                     futures::future::try_join_all(futs).await?;
                 }
-            }
-            ClientRequest::Logout => {
-                // Shutdown the librespot session
-                let session = self.spotify.session().await?;
-                if !session.is_invalid() {
-                    session.shutdown();
-                }
-
-                // Delete cached credential files
-                let configs = config::get_config();
-                let credentials_file = configs.cache_folder.join("credentials.json");
-                if credentials_file.exists() {
-                    if let Err(err) = tokio::fs::remove_file(&credentials_file).await {
-                        tracing::warn!("Failed to delete credentials file: {err:#}");
-                    }
-                }
-                let token_file = configs.cache_folder.join("user_client_token.json");
-                if token_file.exists() {
-                    if let Err(err) = tokio::fs::remove_file(&token_file).await {
-                        tracing::warn!("Failed to delete user client token file: {err:#}");
-                    }
-                }
-
-                // Reset state
-                state.data.write().user_data = crate::state::UserData {
-                    user: None,
-                    playlists: Vec::new(),
-                    playlist_folder_node: None,
-                    followed_artists: Vec::new(),
-                    saved_shows: Vec::new(),
-                    saved_albums: Vec::new(),
-                    saved_tracks: std::collections::HashMap::new(),
-                };
-                *state.player.write() = crate::state::PlayerState::default();
-
-                state.toast_queue.lock().push_back("Logged out successfully".to_string());
             }
             ClientRequest::DeleteTrackFromPlaylist(playlist_id, track_id) => {
                 self.delete_track_from_playlist(state, playlist_id, track_id)

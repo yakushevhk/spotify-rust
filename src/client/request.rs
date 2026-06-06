@@ -128,6 +128,4 @@ pub enum ClientRequest {
         collab: bool,
         desc: String,
     },
-    #[allow(dead_code)]
-    Logout,
 }

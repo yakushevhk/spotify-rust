@@ -40,12 +40,6 @@ mod views;
 use eframe::egui;
 use rspotify::prelude::Id;
 
-// Accessibility: Initialize reduced motion on startup
-#[allow(dead_code)]
-fn init_accessibility() {
-    theme::init_reduced_motion();
-}
-
 use crate::client::{ClientRequest, PlayerRequest};
 use crate::command::{self, ActionCommand, Command, NavCommand, PageCommand, PlaybackCommand, SortCommand, ThemeCommand};
 use crate::config::keymap::default_keybindings;
@@ -676,11 +670,6 @@ current_view: View::Library,
                 }
             }
         }
-    }
-
-    #[allow(dead_code, clippy::result_large_err)]
-    fn send_request_with_retry(&self, req: ClientRequest) -> Result<(), flume::TrySendError<ClientRequest>> {
-        self.client_pub.try_send(req)
     }
 
     fn execute_command(&mut self, cmd: &Command, count: usize, ctx: &egui::Context) {

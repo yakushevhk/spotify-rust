@@ -102,6 +102,19 @@ fn handle_playback_change_event(
         _ => return Ok(()),
     };
 
+    let send_queue_req = || -> anyhow::Result<()> {
+        match client_pub.try_send(ClientRequest::GetCurrentUserQueue) {
+            Ok(()) => Ok(()),
+            Err(flume::TrySendError::Full(_)) => {
+                tracing::warn!("Client channel full: GetCurrentUserQueue dropped");
+                Ok(())
+            }
+            Err(flume::TrySendError::Disconnected(req)) => {
+                Err(anyhow::anyhow!("Client channel disconnected: {:?}", req))
+            }
+        }
+    };
+
     let now = Instant::now();
     // M3: use server's reported progress (not estimated) for track end detection
     if let Some(progress) = player.playback.as_ref().and_then(|p| p.progress) {
@@ -128,27 +141,11 @@ fn handle_playback_change_event(
                     && now.duration_since(handler_state.last_queue_check) >= Duration::from_secs(5)
                 {
                     handler_state.last_queue_check = now;
-                    match client_pub.try_send(ClientRequest::GetCurrentUserQueue) {
-                        Ok(()) => {},
-                        Err(flume::TrySendError::Full(_)) => {
-                            tracing::warn!("Client request channel full, skipping GetCurrentUserQueue");
-                        }
-                        Err(flume::TrySendError::Disconnected(req)) => {
-                            return Err(anyhow::anyhow!("Client request channel disconnected: {:?}", req));
-                        }
-                    }
+                    send_queue_req()?;
                 }
             } else if now.duration_since(handler_state.last_queue_check) >= Duration::from_secs(5) {
                 handler_state.last_queue_check = now;
-                match client_pub.try_send(ClientRequest::GetCurrentUserQueue) {
-                    Ok(()) => {},
-                    Err(flume::TrySendError::Full(_)) => {
-                        tracing::warn!("Client request channel full, skipping GetCurrentUserQueue");
-                    }
-                    Err(flume::TrySendError::Disconnected(req)) => {
-                        return Err(anyhow::anyhow!("Client request channel disconnected: {:?}", req));
-                    }
-                }
+                send_queue_req()?;
             }
         }
     }

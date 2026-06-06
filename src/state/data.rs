@@ -627,7 +627,7 @@ mod tests {
         app_data.caches.context.insert(
             context_id.uri(),
             context,
-            std::time::Duration::from_secs(3600),
+            *TTL_CACHE_DURATION,
         );
         
         let context_tracks = app_data.context_tracks(&context_id);
@@ -659,7 +659,7 @@ mod tests {
         app_data.caches.context.insert(
             context_id.uri(),
             context,
-            std::time::Duration::from_secs(3600),
+            *TTL_CACHE_DURATION,
         );
         
         let context_tracks = app_data.context_tracks(&context_id);
@@ -709,7 +709,7 @@ mod tests {
         app_data.caches.context.insert(
             context_id.uri(),
             context,
-            std::time::Duration::from_secs(3600),
+            *TTL_CACHE_DURATION,
         );
         
         let context_tracks = app_data.context_tracks_mut(&context_id);

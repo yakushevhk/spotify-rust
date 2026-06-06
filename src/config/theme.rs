@@ -223,7 +223,7 @@ impl Default for Palette {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            name: "Dracula".to_string(),
+            name: "Default".to_string(),
             palette: Palette::default(),
         }
     }

@@ -155,7 +155,11 @@ pub async fn run_cli_command(
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
             
-            let playback = state.player.read().playback.clone();
+            let player = state.player.read();
+            let playback = player.playback.clone();
+            let progress = player.playback_progress();
+            let buffered = player.buffered_playback.clone();
+            drop(player);
             
             if let Some(pb) = playback {
                 if let Some(item) = pb.item {
@@ -177,7 +181,6 @@ pub async fn run_cli_command(
                         ),
                     };
                     
-                    let progress = state.player.read().playback_progress();
                     let progress_str = progress
                         .map(|p| format!("{:02}:{:02}", p.num_minutes(), p.num_seconds() % 60))
                         .unwrap_or_else(|| "--:--".to_string());
@@ -194,7 +197,7 @@ pub async fn run_cli_command(
                     println!("Device: {}", device);
                     println!("Volume: {}%", volume);
                     
-                    if let Some(ref buffered) = state.player.read().buffered_playback {
+                    if let Some(ref buffered) = buffered {
                         let shuffle = if buffered.shuffle_state { "On" } else { "Off" };
                         let repeat = match buffered.repeat_state {
                             rspotify::model::RepeatState::Off => "Off",

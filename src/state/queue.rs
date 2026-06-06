@@ -210,7 +210,7 @@ impl CustomQueue {
     /// The expected next track in the play order (if any and within the batch).
     /// Used for queue consistency checking.
     pub fn expected_next_track(&self) -> Option<&PlayableId<'static>> {
-        let next = self.position + 1;
+        let next = self.position.saturating_add(1);
         if next < self.batch_end {
             Some(&self.play_order[next])
         } else {

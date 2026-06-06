@@ -308,6 +308,8 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
     // Shutdown spawned tasks
     signal_handler.abort();
     client_handler.abort();
+    // Give tasks a moment to clean up
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     if let Err(_panic) = player_watcher.join() {
         tracing::error!("Player event watcher thread panicked");
     }

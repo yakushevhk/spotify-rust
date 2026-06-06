@@ -296,7 +296,7 @@ impl Command {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(stdout)
+        Ok(stdout.trim_end_matches(char::is_whitespace).to_string())
     }
 }
 
@@ -507,16 +507,20 @@ impl Default for LayoutConfig {
 
 impl LayoutConfig {
     pub fn check_values(&self) -> anyhow::Result<()> {
+        let mut errors = Vec::new();
         let total = self.library.album_percent + self.library.playlist_percent;
         if total == 0 {
-            anyhow::bail!("Invalid library layout: percentages cannot be zero!");
+            errors.push("percentages cannot be zero".to_string());
         }
         if total > 99 {
-            anyhow::bail!("Invalid library layout: summation of album_percent and playlist_percent cannot be greater than 99!");
+            errors.push("summation of album_percent and playlist_percent cannot be greater than 99".to_string());
         }
         // M7: Ensure each panel gets a reasonable minimum share
         if self.library.playlist_percent < 5 || self.library.album_percent < 5 {
-            anyhow::bail!("Invalid library layout: each panel must be at least 5%");
+            errors.push("each panel must be at least 5%".to_string());
+        }
+        if !errors.is_empty() {
+            anyhow::bail!("Invalid library layout: {}", errors.join("; "));
         }
         Ok(())
     }

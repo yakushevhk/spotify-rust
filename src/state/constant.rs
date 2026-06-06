@@ -1,4 +1,4 @@
-pub use super::*;
+use super::model::TracksId;
 use std::sync::LazyLock;
 
 pub const USER_TOP_TRACKS_URI: &str = "tracks:user-top-tracks";

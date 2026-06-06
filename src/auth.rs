@@ -226,7 +226,7 @@ pub fn check_user_token_expired(cache_folder: &Path) -> bool {
                     }
                 }
             }
-            tracing::debug!("Could not parse token expiration, treating as expired");
+            tracing::warn!("Could not parse token expiration, treating as expired");
             true
         }
         Err(e) => {

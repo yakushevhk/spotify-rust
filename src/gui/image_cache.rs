@@ -98,7 +98,7 @@ impl ImageCache {
         };
 
         Self {
-            textures: LruCache::new(std::num::NonZeroUsize::new(MAX_TEXTURES).unwrap()),
+            textures: LruCache::new(std::num::NonZeroUsize::new(MAX_TEXTURES).unwrap_or(std::num::NonZeroUsize::MIN)),
             download_tx,
             download_thread,
             in_flight: HashSet::new(),

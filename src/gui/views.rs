@@ -138,7 +138,7 @@ pub fn render_library(
                 .num_columns(num_cols)
                 .spacing([16.0, 16.0])
                 .show(ui, |ui| {
-                    for (i, playlist) in playlists.iter().enumerate() {
+                    for (_i, playlist) in playlists.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
                             let cover_path = image_cache::playlist_cover_path(playlist);
@@ -167,8 +167,6 @@ pub fn render_library(
                                 }
                             }
                         });
-                        if (i + 1) % num_cols == 0 {
-                        }
                     }
                 });
 
@@ -196,7 +194,7 @@ pub fn render_library(
                 .num_columns(num_cols)
                 .spacing([16.0, 16.0])
                 .show(ui, |ui| {
-                    for (i, album) in data.user_data.saved_albums.iter().enumerate() {
+                    for (_i, album) in data.user_data.saved_albums.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
                             // Use pre-computed artists display string
@@ -219,8 +217,6 @@ pub fn render_library(
                                 }
                             }
                         });
-                        if (i + 1) % num_cols == 0 {
-                        }
                     }
                 });
 
@@ -378,7 +374,7 @@ pub fn render_shows(
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (i, show) in data.user_data.saved_shows.iter().enumerate() {
+                        for (_i, show) in data.user_data.saved_shows.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::show_cover_path(show);
@@ -407,8 +403,6 @@ pub fn render_shows(
                                     }
                                 }
                             });
-                            if (i + 1) % num_cols == 0 {
-                            }
                         }
                     });
 
@@ -2235,7 +2229,7 @@ pub fn render_browse(
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (i, category) in categories.iter().enumerate() {
+                        for (_i, category) in categories.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::category_icon_path(category);
@@ -2257,8 +2251,6 @@ pub fn render_browse(
                                     },
                                 );
                             });
-                            if (i + 1) % num_cols == 0 {
-                            }
                         }
                     });
 
@@ -2417,7 +2409,7 @@ pub fn render_browse_category_playlists(
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (i, playlist) in playlists.iter().enumerate() {
+                    for (_i, playlist) in playlists.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::playlist_cover_path(playlist);
@@ -2446,8 +2438,6 @@ pub fn render_browse_category_playlists(
                                     }
                                 }
                             });
-                            if (i + 1) % num_cols == 0 {
-                            }
                         }
                     });
 

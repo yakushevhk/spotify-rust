@@ -59,6 +59,7 @@ pub mod streaming {
 
     impl librespot_playback::audio_backend::Sink for VisualizationSink {
         fn start(&mut self) -> librespot_playback::audio_backend::SinkResult<()> {
+            self.bands.lock().is_active = true;
             self.real.start()
         }
 
@@ -90,6 +91,7 @@ pub mod streaming {
         }
 
         fn stop(&mut self) -> librespot_playback::audio_backend::SinkResult<()> {
+            self.bands.lock().is_active = false;
             self.real.stop()
         }
     }

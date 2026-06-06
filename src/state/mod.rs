@@ -132,4 +132,17 @@ impl State {
             || (configs.app_config.enable_streaming == config::StreamingType::DaemonOnly
                 && self.is_daemon)
     }
+
+    /// Reset user data to avoid stale data from a previous account/session.
+    pub fn reset_user_data(&self) {
+        self.data.write().user_data = UserData {
+            user: None,
+            playlists: Vec::new(),
+            playlist_folder_node: None,
+            followed_artists: Vec::new(),
+            saved_shows: Vec::new(),
+            saved_albums: Vec::new(),
+            saved_tracks: std::collections::HashMap::new(),
+        };
+    }
 }
