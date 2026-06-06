@@ -366,7 +366,7 @@ pub fn render(
                     // Generate waveform bars (cached by track URI only - regenerate only when track changes)
                     let num_bars = ((bar_width / 3.0).max(1.0)) as usize;
                     let cache_key_uri = track_uri.clone();
-                    if waveform_cache.as_ref().is_none_or(|(uri, _, _)| *uri != cache_key_uri) {
+                    if waveform_cache.as_ref().is_none_or(|(uri, bars, _)| *uri != cache_key_uri || *bars != num_bars) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
                         *waveform_cache = Some((cache_key_uri, num_bars, bars));
                     }

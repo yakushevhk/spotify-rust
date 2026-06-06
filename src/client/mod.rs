@@ -166,11 +166,15 @@ impl AppClient {
             eprintln!("Please open this URL in your browser: {url}");
             #[cfg(target_os = "macos")]
             {
-                let _ = std::process::Command::new("open").arg(&url).spawn();
+                if let Err(e) = std::process::Command::new("open").arg(&url).spawn() {
+                    tracing::warn!("Failed to auto-open browser: {e:#}. URL: {url}");
+                }
             }
             #[cfg(target_os = "linux")]
             {
-                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                if let Err(e) = std::process::Command::new("xdg-open").arg(&url).spawn() {
+                    tracing::warn!("Failed to auto-open browser: {e:#}. URL: {url}");
+                }
             }
             client
                 .prompt_for_token(&url)
@@ -1009,13 +1013,13 @@ impl AppClient {
                     let device_id = state.player.read().playback.as_ref().and_then(|p| p.device.id.clone());
                     let device_id_ref = device_id.as_deref();
                     let uc = self.user_client()?;
-                    let futs: Vec<_> = tracks
-                        .into_iter()
-                        .map(|track| {
-                            uc.add_item_to_queue(PlayableId::Track(track.id), device_id_ref)
-                        })
-                        .collect();
-                    futures::future::try_join_all(futs).await?;
+                    const QUEUE_CHUNK_SIZE: usize = 15;
+                    for chunk in tracks.chunks(QUEUE_CHUNK_SIZE) {
+                        let futs: Vec<_> = chunk.iter().map(|track| {
+                            uc.add_item_to_queue(PlayableId::Track(track.id.clone()), device_id_ref)
+                        }).collect();
+                        futures::future::try_join_all(futs).await?;
+                    }
                 }
             }
             ClientRequest::DeleteTrackFromPlaylist(playlist_id, track_id) => {
@@ -1565,13 +1569,14 @@ impl AppClient {
 
         // Track-seeded radios in the official Spotify clients include the seed track itself
         // as the first item in the generated session.
-        if let Ok(track_id) = TrackId::from_uri(&seed_uri) {
-            match self.track(track_id).await {
+        match TrackId::from_uri(&seed_uri) {
+            Ok(track_id) => match self.track(track_id).await {
                 Ok(track) => move_seed_track_to_front(&mut tracks, track),
                 Err(err) => {
                     tracing::warn!("Failed to fetch track radio seed {seed_uri}: {err:#}");
                 }
-            }
+            },
+            Err(e) => tracing::warn!("Failed to parse seed URI as TrackId: {seed_uri}: {e:#}"),
         }
 
         Ok(tracks)
@@ -1976,9 +1981,8 @@ impl AppClient {
             .await?
             .into_iter()
             .filter_map(|t| {
-                // simplified track doesn't have album so
-                // we need to manually include one during
-                // converting into `state::Track`
+                // TODO: album.clone() is called once per track. If Album becomes large,
+                // consider using Arc<Album> to share ownership cheaply.
                 Track::try_from_simplified_track(t).map(|mut t| {
                     t.album = Some(album.clone());
                     t
@@ -2668,7 +2672,6 @@ impl AppClient {
             // Issue #5: Use tempfile with automatic cleanup to prevent temp file leakage
             let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
             let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-            let _extension = path.extension().and_then(|s| s.to_str()).unwrap_or("tmp");
             
             let temp_file = tempfile::NamedTempFile::with_prefix_in(
                 format!("{}.", file_stem),
