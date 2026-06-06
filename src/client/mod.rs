@@ -894,28 +894,29 @@ impl AppClient {
                 };
                 let playback = state.player.read().buffered_playback.clone();
                 let new_playback = self.handle_player_request(request, playback).await?;
-                let mut player = state.player.write();
-                if let Some(updated) = new_playback {
-                    if let Some(ref mut existing) = player.buffered_playback {
-                        existing.is_playing = updated.is_playing;
-                        existing.repeat_state = updated.repeat_state;
-                        existing.shuffle_state = updated.shuffle_state;
-                        existing.volume = updated.volume;
-                        existing.mute_state = updated.mute_state;
-                    } else {
-                        player.buffered_playback = Some(updated);
+                {
+                    let mut player = state.player.write();
+                    if let Some(updated) = new_playback {
+                        if let Some(ref mut existing) = player.buffered_playback {
+                            existing.is_playing = updated.is_playing;
+                            existing.repeat_state = updated.repeat_state;
+                            existing.shuffle_state = updated.shuffle_state;
+                            existing.volume = updated.volume;
+                            existing.mute_state = updated.mute_state;
+                        } else {
+                            player.buffered_playback = Some(updated);
+                        }
+                    }
+                    if let Some(position_ms) = seek_position {
+                        if let Some(ref mut pb) = player.playback {
+                            pb.progress = Some(position_ms);
+                        }
+                        player.playback_last_updated_time = Some(std::time::Instant::now());
+                        player.seek_deadline =
+                            Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
                     }
                 }
-                if let Some(position_ms) = seek_position {
-                    if let Some(ref mut pb) = player.playback {
-                        pb.progress = Some(position_ms);
-                    }
-                    player.playback_last_updated_time = Some(std::time::Instant::now());
-                    player.seek_deadline =
-                        Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
-                }
-                drop(player);
-                self.update_playback(state);
+                self.update_playback(state).await;
             }
             ClientRequest::GetCurrentPlayback => {
                 self.retrieve_current_playback(state, true).await?;
@@ -1227,10 +1228,10 @@ impl AppClient {
         Ok(self.user_client()?.device().await?)
     }
 
-    pub fn update_playback(&self, state: &SharedState) {
+    pub async fn update_playback(&self, state: &SharedState) {
         static LAST_DISPATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-        let now_ms = std::time::SystemTime::now()
+        let mut now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
@@ -1238,10 +1239,10 @@ impl AppClient {
         loop {
             let last = LAST_DISPATCH.load(std::sync::atomic::Ordering::Acquire);
             if now_ms.saturating_sub(last) < 1000 {
-                std::thread::sleep(std::time::Duration::from_millis(
+                tokio::time::sleep(std::time::Duration::from_millis(
                     1000 - now_ms.saturating_sub(last)
-                ));
-                let now_ms = std::time::SystemTime::now()
+                )).await;
+                now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
@@ -1282,87 +1283,93 @@ impl AppClient {
     pub async fn handle_custom_queue_advance(
         &self,
         state: &SharedState,
-        result: crate::state::AdvanceResult,
+        mut result: crate::state::AdvanceResult,
     ) {
-        match result {
-            crate::state::AdvanceResult::SameBatch => {
-                self.update_playback(state);
-            }
-            crate::state::AdvanceResult::NewBatch(tracks) => {
-                let mut device_id: Option<String> = state
-                    .player
-                    .read()
-                    .buffered_playback
-                    .as_ref()
-                    .and_then(|p| p.device_id.clone());
-                if device_id.is_none() {
-                    if let Ok(session) = self.spotify.session().await {
-                        device_id = Some(session.device_id().to_string());
-                    } else {
-                        tracing::error!("Failed to get Spotify session for device_id");
-                    }
+        loop {
+            match result {
+                crate::state::AdvanceResult::SameBatch => {
+                    self.update_playback(state).await;
+                    break;
                 }
-                if let Err(err) = self
-                    .start_playback(
-                        crate::state::Playback::URIs(tracks, None),
-                        device_id.as_deref(),
-                    )
-                    .await
-                {
-                    tracing::error!("Failed to start next batch playback: {err:#}");
-                }
-            }
-            crate::state::AdvanceResult::NeedsRadioTracks => {
-                let seed_uri = {
-                    let player = state.player.read();
-                    player
-                        .custom_queue
+                crate::state::AdvanceResult::NewBatch(tracks) => {
+                    let mut device_id: Option<String> = state
+                        .player
+                        .read()
+                        .buffered_playback
                         .as_ref()
-                        .and_then(|q| q.source_context().map(|ctx| ctx.uri()))
-                        .or_else(|| {
-                            player
-                                .custom_queue
-                                .as_ref()
-                                .and_then(|q| q.current_track().map(|t| t.uri()))
-                        })
-                };
+                        .and_then(|p| p.device_id.clone());
+                    if device_id.is_none() {
+                        if let Ok(session) = self.spotify.session().await {
+                            device_id = Some(session.device_id().to_string());
+                        } else {
+                            tracing::error!("Failed to get Spotify session for device_id");
+                        }
+                    }
+                    if let Err(err) = self
+                        .start_playback(
+                            crate::state::Playback::URIs(tracks, None),
+                            device_id.as_deref(),
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to start next batch playback: {err:#}");
+                    }
+                    break;
+                }
+                crate::state::AdvanceResult::NeedsRadioTracks => {
+                    let seed_uri = {
+                        let player = state.player.read();
+                        player
+                            .custom_queue
+                            .as_ref()
+                            .and_then(|q| q.source_context().map(|ctx| ctx.uri()))
+                            .or_else(|| {
+                                player
+                                    .custom_queue
+                                    .as_ref()
+                                    .and_then(|q| q.current_track().map(|t| t.uri()))
+                            })
+                    };
 
-                let tracks = match seed_uri {
-                    Some(uri) => match self.radio_tracks(uri).await {
-                        Ok(t) => t,
-                        Err(err) => {
-                            tracing::error!("Failed to fetch radio tracks: {err:#}");
+                    let tracks = match seed_uri {
+                        Some(uri) => match self.radio_tracks(uri).await {
+                            Ok(t) => t,
+                            Err(err) => {
+                                tracing::error!("Failed to fetch radio tracks: {err:#}");
+                                return;
+                            }
+                        },
+                        None => {
+                            tracing::error!("No seed URI available for radio tracks");
                             return;
                         }
-                    },
-                    None => {
-                        tracing::error!("No seed URI available for radio tracks");
-                        return;
-                    }
-                };
+                    };
 
-                let radio_ids: Vec<PlayableId<'static>> = tracks
-                    .into_iter()
-                    .map(|t| PlayableId::Track(t.id))
-                    .collect();
+                    let radio_ids: Vec<PlayableId<'static>> = tracks
+                        .into_iter()
+                        .map(|t| PlayableId::Track(t.id))
+                        .collect();
 
-                let new_result = {
-                    let mut player = state.player.write();
-                    match player.custom_queue.as_mut() {
-                        Some(queue) => {
-                            queue.append_radio_tracks(radio_ids);
-                            queue.advance()
+                    let new_result = {
+                        let mut player = state.player.write();
+                        match player.custom_queue.as_mut() {
+                            Some(queue) => {
+                                queue.append_radio_tracks(radio_ids);
+                                queue.advance()
+                            }
+                            None => return,
                         }
-                        None => return,
-                    }
-                };
+                    };
 
-                Box::pin(self.handle_custom_queue_advance(state, new_result)).await;
-            }
-            crate::state::AdvanceResult::EndOfQueue => {
-                let mut player = state.player.write();
-                if let Some(ref mut playback) = player.buffered_playback {
-                    playback.is_playing = false;
+                    result = new_result;
+                    continue;
+                }
+                crate::state::AdvanceResult::EndOfQueue => {
+                    let mut player = state.player.write();
+                    if let Some(ref mut playback) = player.buffered_playback {
+                        playback.is_playing = false;
+                    }
+                    break;
                 }
             }
         }
@@ -2519,7 +2526,8 @@ impl AppClient {
         let raw_filename = match curr_item {
             rspotify::model::PlayableItem::Track(ref track) => {
                 let artist_name = track.album.artists.first().map_or("unknown", |a| &a.name);
-                let album_id_prefix = track.album.id.as_ref().map_or("unknown", |id| &id.id()[..6.min(id.id().len())]);
+                let album_id_str = track.album.id.as_ref().map_or("unknown", |id| id.id());
+                let album_id_prefix = album_id_str.chars().take(6).collect::<String>();
                 format!(
                     "{}-{}-cover-{}.jpg",
                     track.album.name,
@@ -2533,7 +2541,7 @@ impl AppClient {
                     episode.show.name,
                     episode.show.publisher,
                     // first 6 characters of the show's id
-                    &episode.show.id.as_ref().id()[..6]
+                    episode.show.id.as_ref().id().chars().take(6).collect::<String>()
                 )
             }
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),

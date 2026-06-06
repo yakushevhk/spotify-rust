@@ -124,7 +124,7 @@ pub async fn new_connection(
                                 client.handle_custom_queue_advance(&state, result).await;
                             }
                             None => {
-                                client.update_playback(&state);
+                                client.update_playback(&state).await;
                             }
                         }
                     }
