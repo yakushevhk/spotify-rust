@@ -132,24 +132,4 @@ impl State {
             || (configs.app_config.enable_streaming == config::StreamingType::DaemonOnly
                 && self.is_daemon)
     }
-
-    /// Returns `true` when the custom queue system should be used for new playback.
-    ///
-    /// Requires streaming to be enabled and the `custom_queue` config option
-    /// to be `true`.
-    #[cfg(feature = "streaming")]
-    #[allow(dead_code)]
-    pub fn should_use_custom_queue(&self) -> bool {
-        self.is_streaming_enabled() && config::get_config().app_config.custom_queue
-    }
-
-    /// Returns `true` when the local librespot player is actively streaming
-    /// audio (i.e. a `Playing` event has been received and no `Paused` / `stop`
-    /// has occurred since).  Used by the UI to decide whether to allocate and
-    /// render the audio-visualization area.
-    #[cfg(feature = "streaming")]
-    #[allow(dead_code)]
-    pub fn is_local_streaming_active(&self) -> bool {
-        self.vis_bands.as_ref().is_some_and(|b| b.lock().is_active)
-    }
 }

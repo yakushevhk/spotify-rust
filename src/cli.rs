@@ -244,7 +244,9 @@ pub async fn start_cli_headless(
     client_pub: flume::Sender<ClientRequest>,
     client_sub: flume::Receiver<ClientRequest>,
 ) -> Result<()> {
-    eprintln!("Opening browser for Spotify login...");
+    if config::get_config().app_config.get_user_client_id().ok().flatten().is_some() {
+        eprintln!("Opening browser for Spotify login...");
+    }
     let client = AppClient::new().await.context("construct app client")?;
     eprintln!("Authenticating with Spotify...");
     

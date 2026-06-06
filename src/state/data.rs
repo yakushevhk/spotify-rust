@@ -32,8 +32,6 @@ pub struct AppData {
     pub caches: MemoryCaches,
     pub browse: BrowseData,
     pub shows_loading: bool,
-    #[allow(dead_code)]
-    pub library_loading: bool,
 }
 
 #[derive(Debug)]
@@ -100,7 +98,6 @@ impl AppData {
             caches: MemoryCaches::new(),
             browse: BrowseData::default(),
             shows_loading: false,
-            library_loading: false,
         }
     }
 
@@ -239,14 +236,22 @@ pub fn store_data_into_file_cache<T: Serialize>(
         Ok(())
     })();
     
-    // Issue #2: Check for disk full error
+    // Issue #2: Handle write failures generically with user-friendly message
     if let Err(ref e) = result {
-        if e.kind() == std::io::ErrorKind::StorageFull {
-            tracing::error!("Disk full when writing to {}: {e}", path.display());
-            // Return a custom error with user-friendly message
+        #[cfg(unix)]
+        if e.raw_os_error().is_some() {
+            tracing::error!("Disk full or write failed when writing to {}: {e}", path.display());
             return Err(std::io::Error::new(
-                std::io::ErrorKind::StorageFull,
-                format!("Disk full - free space and retry (path: {})", path.display())
+                std::io::ErrorKind::Other,
+                format!("Write failed - check disk space and permissions (path: {})", path.display())
+            ));
+        }
+        #[cfg(not(unix))]
+        if e.kind() == std::io::ErrorKind::WriteZero {
+            tracing::error!("Write failed (possibly disk full) when writing to {}: {e}", path.display());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Write failed - check disk space and permissions (path: {})", path.display())
             ));
         }
     }
@@ -389,7 +394,6 @@ mod tests {
         let app_data = AppData::new(temp_dir.path());
         
         assert!(!app_data.shows_loading);
-        assert!(!app_data.library_loading);
     }
 
     /// Test UserData is_liked_track

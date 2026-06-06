@@ -15,6 +15,3 @@ impl Default for UIState {
         }
     }
 }
-
-#[allow(dead_code)]
-pub type UIStateGuard<'a> = parking_lot::MutexGuard<'a, UIState>;

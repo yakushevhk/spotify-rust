@@ -824,9 +824,9 @@ impl AppClient {
                             player.buffered_playback = Some(updated);
                         }
                     }
-                    if let Some(position_ms) = seek_position {
+                    if let Some(pos_ms) = seek_position {
                         if let Some(ref mut pb) = player.playback {
-                            pb.progress = Some(position_ms);
+                            pb.progress = Some(pos_ms);
                         }
                         player.playback_last_updated_time = Some(std::time::Instant::now());
                         player.seek_deadline =
@@ -2257,6 +2257,7 @@ impl AppClient {
             let results = futures::future::join_all(futures).await;
             let mut found_empty = false;
             let mut any_ok = false;
+            let mut failed_count = 0;
             for result in results {
                 match result {
                     Ok(mut paging) => {
@@ -2267,8 +2268,14 @@ impl AppClient {
                             all_items.append(&mut paging.items);
                         }
                     }
-                    Err(e) => tracing::warn!("Page fetch failed: {e:#}"),
+                    Err(e) => {
+                        tracing::warn!("Page fetch failed: {e:#}");
+                        failed_count += 1;
+                    }
                 }
+            }
+            if failed_count > 0 && any_ok {
+                tracing::warn!("{failed_count} page(s) failed during paging");
             }
             if !any_ok {
                 return Err(anyhow::anyhow!("all page requests failed"));
@@ -2434,40 +2441,33 @@ impl AppClient {
             }
         }
 
-        let url = match curr_item {
-            rspotify::model::PlayableItem::Track(ref track) => {
-                crate::utils::get_track_album_image_url(track)
-                    .ok_or(anyhow::anyhow!("missing image"))?
-            }
-            rspotify::model::PlayableItem::Episode(ref episode) => {
-                crate::utils::get_episode_show_image_url(episode)
-                    .ok_or(anyhow::anyhow!("missing image"))?
-            }
-            rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
-        };
-
-        // Build filename and sanitize it to prevent path traversal
-        let raw_filename = match curr_item {
+        let (url, raw_filename) = match curr_item {
             rspotify::model::PlayableItem::Track(ref track) => {
                 let artist_name = track.album.artists.first().map_or("unknown", |a| &a.name);
                 let album_id_str = track.album.id.as_ref().map_or("unknown", |id| id.id());
                 let album_id_prefix = album_id_str.chars().take(6).collect::<String>();
-                format!(
+                let filename = format!(
                     "{}-{}-cover-{}.jpg",
                     track.album.name,
                     artist_name,
                     album_id_prefix
+                );
+                (
+                    crate::utils::get_track_album_image_url(track)
+                        .ok_or(anyhow::anyhow!("missing image"))?,
+                    filename,
                 )
             }
-            rspotify::model::PlayableItem::Episode(ref episode) => {
+            rspotify::model::PlayableItem::Episode(ref episode) => (
+                crate::utils::get_episode_show_image_url(episode)
+                    .ok_or(anyhow::anyhow!("missing image"))?,
                 format!(
                     "{}-{}-cover-{}.jpg",
                     episode.show.name,
                     episode.show.publisher,
-                    // first 6 characters of the show's id
                     episode.show.id.as_ref().id().chars().take(6).collect::<String>()
-                )
-            }
+                ),
+            ),
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
         };
         let filename = Self::sanitize_image_filename(&raw_filename);
@@ -2501,18 +2501,12 @@ impl AppClient {
                 .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
         }
 
-        // notify user about the playback's change if any
-        #[cfg(all(feature = "notify", feature = "streaming"))]
-        if configs.app_config.enable_notify
-            && (!configs.app_config.notify_streaming_only || self.stream_conn.lock().is_some())
-        {
-            if let Err(e) = Self::notify_new_playback(&curr_item, &path) {
-                tracing::warn!("Notification failed: {e:#}");
-            }
-        }
-
-        #[cfg(all(feature = "notify", not(feature = "streaming")))]
-        if configs.app_config.enable_notify {
+        #[cfg(feature = "notify")]
+        if configs.app_config.enable_notify && (
+            !cfg!(feature = "streaming")
+            || !configs.app_config.notify_streaming_only
+            || self.stream_conn.lock().is_some()
+        ) {
             if let Err(e) = Self::notify_new_playback(&curr_item, &path) {
                 tracing::warn!("Notification failed: {e:#}");
             }

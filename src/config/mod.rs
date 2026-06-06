@@ -142,15 +142,6 @@ pub struct AppConfig {
     pub explicit_icon: String,
 
     // layout configs
-    // Unused in GUI
-    #[allow(dead_code)]
-    pub border_type: BorderType,
-    // Unused in GUI
-    #[allow(dead_code)]
-    pub progress_bar_type: ProgressBarType,
-    // Unused in GUI
-    #[allow(dead_code)]
-    pub progress_bar_position: ProgressBarPosition,
 
     pub layout: LayoutConfig,
 
@@ -212,40 +203,9 @@ pub struct AppConfig {
     pub custom_queue: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub enum Position {
-    Top,
-    Bottom,
-}
-config_parser_impl!(Position);
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub enum BorderType {
-    Hidden,
-    Plain,
-    Rounded,
-    Double,
-    Thick,
-}
-config_parser_impl!(BorderType);
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub enum ProgressBarType {
-    Line,
-    Rectangle,
-}
-config_parser_impl!(ProgressBarType);
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub enum ProgressBarPosition {
-    Bottom,
-    Right,
-}
-config_parser_impl!(ProgressBarPosition);
-
 #[derive(Debug, Deserialize, Serialize, ConfigParse, Clone)]
 pub struct Command {
-    pub command: String,
+    pub executable: String,
     #[serde(default)]
     pub args: Vec<String>,
 }
@@ -274,13 +234,13 @@ const ALLOWED_COMMANDS: &[&str] = &[
 
 impl Command {
     #[allow(dead_code)]
-    pub fn new<C, A>(command: C, args: &[A]) -> Self
+    pub fn new<C, A>(executable: C, args: &[A]) -> Self
     where
         C: std::fmt::Display,
         A: std::fmt::Display,
     {
         Self {
-            command: command.to_string(),
+            executable: executable.to_string(),
             args: args.iter().map(std::string::ToString::to_string).collect(),
         }
     }
@@ -292,19 +252,19 @@ impl Command {
     /// metacharacters are rejected to prevent command injection.
     pub fn execute(&self, extra_args: Option<Vec<String>>) -> anyhow::Result<String> {
         // Validate command is an absolute path
-        let cmd_path = std::path::Path::new(&self.command);
+        let cmd_path = std::path::Path::new(&self.executable);
         if !cmd_path.is_absolute() {
             anyhow::bail!(
                 "Command must be an absolute path, got: {}",
-                self.command
+                self.executable
             );
         }
 
         // Validate command is in whitelist
-        if !ALLOWED_COMMANDS.contains(&self.command.as_str()) {
+        if !ALLOWED_COMMANDS.contains(&self.executable.as_str()) {
             anyhow::bail!(
                 "Command not in allowed list: {}. Allowed commands: {:?}",
-                self.command,
+                self.executable,
                 ALLOWED_COMMANDS
             );
         }
@@ -326,7 +286,7 @@ impl Command {
             args.extend(extra);
         }
 
-        let output = std::process::Command::new(&self.command)
+        let output = std::process::Command::new(&self.executable)
             .args(&args)
             .output()?;
 
@@ -360,15 +320,8 @@ pub struct NotifyFormat {
 }
 
 #[derive(Debug, Deserialize, Serialize, ConfigParse, Clone)]
-// Application layout configurations
 pub struct LayoutConfig {
     pub library: LibraryLayoutConfig,
-    // Unused in GUI
-    #[allow(dead_code)]
-    pub playback_window_position: Position,
-    // Unused in GUI
-    #[allow(dead_code)]
-    pub playback_window_height: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize, ConfigParse, Clone)]
@@ -474,10 +427,6 @@ impl Default for AppConfig {
             liked_icon: "♥".to_string(),
             explicit_icon: "(E)".to_string(),
 
-            border_type: BorderType::Plain,
-            progress_bar_type: ProgressBarType::Rectangle,
-            progress_bar_position: ProgressBarPosition::Bottom,
-
             layout: LayoutConfig::default(),
 
             genre_num: 2,
@@ -552,8 +501,6 @@ impl Default for LayoutConfig {
                 playlist_percent: 40,
                 album_percent: 40,
             },
-            playback_window_position: Position::Top,
-            playback_window_height: 6,
         }
     }
 }
@@ -588,6 +535,15 @@ impl AppConfig {
             config.seek_duration_secs = 1;
         }
 
+        if config.device.volume > 100 {
+            tracing::warn!("device.volume {} clamped to 100", config.device.volume);
+            config.device.volume = 100;
+        }
+        if ![96, 160, 320].contains(&config.device.bitrate) {
+            tracing::warn!("device.bitrate {} is invalid, using 320", config.device.bitrate);
+            config.device.bitrate = 320;
+        }
+
         config.layout.check_values()?;
         Ok(config)
     }
@@ -614,7 +570,7 @@ impl AppConfig {
                 if let Some(parent) = config_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                let temp_path = config_path.with_extension("tmp");
+                let temp_path = config_path.with_extension("toml.tmp");
                 std::fs::write(&temp_path, content)?;
                 std::fs::rename(&temp_path, &config_path)?;
                 Ok(())
@@ -771,8 +727,6 @@ mod tests {
                 playlist_percent: 60,
                 album_percent: 50, // Sum = 110 > 99
             },
-            playback_window_position: Position::Top,
-            playback_window_height: 6,
         };
         
         let result = config.check_values();
@@ -793,45 +747,11 @@ mod tests {
         assert!(matches!(never, StreamingType::Never));
     }
 
-    /// Test Position variants
-    #[test]
-    fn test_position_variants() {
-        let top = Position::Top;
-        let bottom = Position::Bottom;
-        
-        assert!(matches!(top, Position::Top));
-        assert!(matches!(bottom, Position::Bottom));
-    }
-
-    /// Test BorderType variants
-    #[test]
-    fn test_border_type_variants() {
-        assert!(matches!(BorderType::Hidden, BorderType::Hidden));
-        assert!(matches!(BorderType::Plain, BorderType::Plain));
-        assert!(matches!(BorderType::Rounded, BorderType::Rounded));
-        assert!(matches!(BorderType::Double, BorderType::Double));
-        assert!(matches!(BorderType::Thick, BorderType::Thick));
-    }
-
-    /// Test ProgressBarType variants
-    #[test]
-    fn test_progress_bar_type_variants() {
-        assert!(matches!(ProgressBarType::Line, ProgressBarType::Line));
-        assert!(matches!(ProgressBarType::Rectangle, ProgressBarType::Rectangle));
-    }
-
-    /// Test ProgressBarPosition variants
-    #[test]
-    fn test_progress_bar_position_variants() {
-        assert!(matches!(ProgressBarPosition::Bottom, ProgressBarPosition::Bottom));
-        assert!(matches!(ProgressBarPosition::Right, ProgressBarPosition::Right));
-    }
-
     /// Test Command::new
     #[test]
     fn test_command_new() {
         let cmd = Command::new("/usr/bin/echo", &["hello", "world"]);
-        assert_eq!(cmd.command, "/usr/bin/echo");
+        assert_eq!(cmd.executable, "/usr/bin/echo");
         assert_eq!(cmd.args, vec!["hello", "world"]);
     }
 
@@ -1014,7 +934,7 @@ album_percent = 50
     #[test]
     fn test_command_serialization() {
         let cmd = Command {
-            command: "/bin/echo".to_string(),
+            executable: "/bin/echo".to_string(),
             args: vec!["hello".to_string()],
         };
         

@@ -11,10 +11,6 @@ use crate::{
 
 use super::ClientRequest;
 
-/// Issue #3: Maximum size for the client request channel buffer
-#[allow(dead_code)]
-const MAX_CHANNEL_SIZE: usize = 1024;
-
 struct PlayerEventHandlerState {
     last_playback_refresh_timer: Instant,
     last_track_end_check: Instant,
@@ -77,34 +73,6 @@ pub async fn start_client_handler(
                 tracing::info!("Client request channel closed");
                 break;
             }
-        }
-    }
-}
-
-/// Issue #3: Create a bounded channel for client requests with backpressure
-/// Returns a sender that will drop old requests if the channel is full
-#[allow(dead_code)]
-pub fn create_client_channel() -> (flume::Sender<ClientRequest>, flume::Receiver<ClientRequest>) {
-    flume::bounded::<ClientRequest>(MAX_CHANNEL_SIZE)
-}
-
-/// Issue #3: Send a request to the client channel with backpressure handling.
-/// If the channel is full, waits for space to become available.
-#[allow(dead_code)]
-pub fn send_client_request(
-    sender: &flume::Sender<ClientRequest>,
-    request: ClientRequest,
-) -> Result<(), flume::SendError<ClientRequest>> {
-    // Try to send without blocking first
-    match sender.try_send(request) {
-        Ok(()) => Ok(()),
-        Err(flume::TrySendError::Full(req)) => {
-            // Channel is full - use blocking send which will wait
-            tracing::warn!("Client request channel full, waiting for space");
-            sender.send(req)
-        }
-        Err(flume::TrySendError::Disconnected(req)) => {
-            Err(flume::SendError(req))
         }
     }
 }

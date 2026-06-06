@@ -166,7 +166,6 @@ pub fn render_library(
                             }
                         });
                         if (i + 1) % num_cols == 0 {
-                            ui.end_row();
                         }
                     }
                 });
@@ -219,7 +218,6 @@ pub fn render_library(
                             }
                         });
                         if (i + 1) % num_cols == 0 {
-                            ui.end_row();
                         }
                     }
                 });
@@ -408,7 +406,6 @@ pub fn render_shows(
                                 }
                             });
                             if (i + 1) % num_cols == 0 {
-                                ui.end_row();
                             }
                         }
                     });
@@ -2251,7 +2248,6 @@ pub fn render_browse(
                                 );
                             });
                             if (i + 1) % num_cols == 0 {
-                                ui.end_row();
                             }
                         }
                     });
@@ -2441,7 +2437,6 @@ pub fn render_browse_category_playlists(
                                 }
                             });
                             if (i + 1) % num_cols == 0 {
-                                ui.end_row();
                             }
                         }
                     });
