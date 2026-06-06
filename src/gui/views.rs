@@ -1656,7 +1656,8 @@ pub fn render_search(
     ui.add_space(24.0);
 
     let data = state.data.read();
-    if let Some(results) = data.caches.search.get(search_query) {
+    let normalized_query = search_query.trim().to_lowercase();
+    if let Some(results) = data.caches.search.get(&normalized_query) {
         if !results.tracks.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);

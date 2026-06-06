@@ -144,8 +144,15 @@ pub async fn new_connection(
         .await
         .context("initialize spirc")?;
 
-    tokio::task::spawn(spirc_task);
-    tokio::task::spawn(player_event_task);
+    tokio::task::spawn(async move {
+        spirc_task.await;
+        tracing::debug!("Spirc task completed");
+    });
+    tokio::task::spawn(async move {
+        if let Err(e) = player_event_task.await {
+            tracing::error!("Player event task failed: {e:#}");
+        }
+    });
 
     tracing::info!("New streaming connection has been established!");
 

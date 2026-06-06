@@ -83,50 +83,39 @@ pub fn start_event_watcher(
 
     controls.attach(move |e| {
         tracing::info!("Media control event: {e:?}");
+        let send_with_timeout = |req: ClientRequest| {
+            if let Err(e) = client_pub.send_timeout(req, std::time::Duration::from_millis(500)) {
+                tracing::warn!("Media control event could not be sent after 500ms: {e:#}");
+            }
+        };
         match e {
             MediaControlEvent::Play => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Resume)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::Resume));
             }
             MediaControlEvent::Pause => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::Pause));
             }
             MediaControlEvent::Toggle => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::ResumePause)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::ResumePause));
             }
             MediaControlEvent::SetPosition(MediaPosition(dur)) => {
                 if let Ok(dur) = chrono::Duration::from_std(dur) {
-                    if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))) {
-                        tracing::warn!("Media control event dropped (channel full): {e:#}");
-                    }
+                    send_with_timeout(ClientRequest::Player(PlayerRequest::SeekTrack(dur)));
                 }
             }
             MediaControlEvent::Next => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::NextTrack)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::NextTrack));
             }
             MediaControlEvent::Previous => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::PreviousTrack)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::PreviousTrack));
             }
             MediaControlEvent::SetVolume(volume) => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Volume(
+                send_with_timeout(ClientRequest::Player(PlayerRequest::Volume(
                     (volume * 100.0) as u8,
-                ))) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                )));
             }
             MediaControlEvent::Stop => {
-                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)) {
-                    tracing::warn!("Media control event dropped (channel full): {e:#}");
-                }
+                send_with_timeout(ClientRequest::Player(PlayerRequest::Pause));
             }
             _ => {}
         }

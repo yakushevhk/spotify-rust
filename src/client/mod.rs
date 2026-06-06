@@ -231,10 +231,12 @@ impl AppClient {
             let client = self.clone();
             let state = state.clone();
             async move {
-                let delay = std::time::Duration::from_secs(1);
-
-                for _ in 0..5 {
-                    tokio::time::sleep(delay).await;
+                for attempt in 0..5 {
+                    if attempt > 0 {
+                        let delay = std::time::Duration::from_secs(1 << attempt)
+                            .min(std::time::Duration::from_secs(30));
+                        tokio::time::sleep(delay).await;
+                    }
 
                     if let Err(err) = client.retrieve_current_playback(&state, false).await {
                         tracing::error!("Failed to retrieve current playback: {err:#}");
@@ -466,7 +468,12 @@ impl AppClient {
             state.reset_user_data();
             self.initialize_playback(state).await;
             // Clear transient UI state that should not survive account switches
-            state.toast_queue.lock().clear();
+            // Clear transient "Connecting..." toasts since initialize_playback already completed
+            // (keep "Connected" or error toasts that the user should see)
+            {
+                let mut toasts = state.toast_queue.lock();
+                toasts.retain(|t| !t.contains("Connecting"));
+            }
             #[cfg(feature = "streaming")]
             if let Some(ref bands) = state.vis_bands {
                 bands.lock().is_active = false;
@@ -910,18 +917,22 @@ impl AppClient {
                 state.data.write().user_data.saved_albums = albums;
             }
             ClientRequest::GetUserSavedShows => {
-                let result = self.current_user_saved_shows().await;
-                if result.is_ok() {
-                    let shows = result.unwrap();
-                    if let Err(e) = store_data_into_file_cache(
-                        FileCacheKey::SavedShows,
-                        &config::get_config().cache_folder,
-                        &shows,
-                    ) {
-                        tracing::warn!("Failed to cache shows: {e:#}");
+                match self.current_user_saved_shows().await {
+                    Ok(shows) => {
+                        if let Err(e) = store_data_into_file_cache(
+                            FileCacheKey::SavedShows,
+                            &config::get_config().cache_folder,
+                            &shows,
+                        ) {
+                            tracing::warn!("Failed to cache shows: {e:#}");
+                        }
+                        let mut data = state.data.write();
+                        data.user_data.saved_shows = shows;
                     }
-                    let mut data = state.data.write();
-                    data.user_data.saved_shows = shows;
+                    Err(e) => {
+                        tracing::error!("Failed to fetch saved shows: {e:#}");
+                        state.push_toast(format!("Failed to load saved shows: {e}"));
+                    }
                 }
                 state.data.write().shows_loading = false;
             }
@@ -985,7 +996,9 @@ impl AppClient {
             ClientRequest::Search(query) => {
                 // #40: do the search first, then check-and-insert atomically
                 // to avoid duplicate API calls from concurrent requests.
-                let already_cached = state.data.read().caches.search.contains_key(&query);
+                // Normalize query to lowercase for case-insensitive cache lookups
+                let normalized_query = query.trim().to_lowercase();
+                let already_cached = state.data.read().caches.search.contains_key(&normalized_query);
                 if !already_cached {
                     let results = self.search(&query).await?;
 
@@ -994,7 +1007,7 @@ impl AppClient {
                         .write()
                         .caches
                         .search
-                        .insert(query, results, *TTL_CACHE_DURATION);
+                        .insert(normalized_query, results, *TTL_CACHE_DURATION);
                 }
             }
 
@@ -1680,16 +1693,18 @@ impl AppClient {
         playlist_id: PlaylistId<'_>,
         playable_id: PlayableId<'_>,
     ) -> Result<()> {
-        // remove all the occurrences of the track to ensure no duplication in the playlist
+        // Add the item FIRST — if this succeeds and remove fails later,
+        // we'll have a duplicate (minor) rather than losing the track (major)
+        self.user_client()?.playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
+            .await?;
+
+        // Then remove all old occurrences (except the newly added one)
         self.user_client()?.playlist_remove_all_occurrences_of_items(
             playlist_id.as_ref(),
             [playable_id.as_ref()],
             None,
         )
         .await?;
-
-        self.user_client()?.playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
-            .await?;
 
         // After adding a new track to a playlist, remove the cache of that playlist to force refetching new data
         state.data.write().caches.context.remove(&playlist_id.uri());
@@ -2246,9 +2261,11 @@ impl AppClient {
                 }
             }
             if failed_count > 0 && any_ok {
-                return Err(anyhow::anyhow!(
-                    "{failed_count} of {n_jobs} page requests failed — data may be incomplete",
-                ));
+                tracing::warn!(
+                    "{failed_count} of {n_jobs} page requests failed — returning {successful_items} partial items",
+                );
+                // Don't discard successfully fetched data; return partial results
+                // so the user gets something rather than nothing
             }
             if !any_ok {
                 return Err(anyhow::anyhow!("all page requests failed"));
@@ -2447,31 +2464,55 @@ impl AppClient {
         let path = configs.cache_folder.join("image").join(filename);
 
         if configs.app_config.enable_cover_image_cache {
-            self.retrieve_image(url, &path, true).await?;
-        }
+            let _bytes = self.retrieve_image(url, &path, true).await?;
 
-        #[cfg(feature = "image")]
-        if !state.data.read().caches.images.contains_key(url) {
-            let bytes = self.retrieve_image(url, &path, false).await?;
+            #[cfg(feature = "image")]
+            if !state.data.read().caches.images.contains_key(url) {
+                let bytes = &*_bytes;
 
-            #[cfg(not(feature = "pixelate"))]
-            let image =
-                image::load_from_memory(&bytes).context("Failed to load image from memory")?;
-            #[cfg(feature = "pixelate")]
-            let mut image =
-                image::load_from_memory(&bytes).context("Failed to load image from memory")?;
+                #[cfg(not(feature = "pixelate"))]
+                let image =
+                    image::load_from_memory(bytes).context("Failed to load image from memory")?;
+                #[cfg(feature = "pixelate")]
+                let mut image =
+                    image::load_from_memory(bytes).context("Failed to load image from memory")?;
 
-            #[cfg(feature = "pixelate")]
-            {
-                Self::pixelate_image(&mut image);
+                #[cfg(feature = "pixelate")]
+                {
+                    Self::pixelate_image(&mut image);
+                }
+
+                state
+                    .data
+                    .write()
+                    .caches
+                    .images
+                    .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
             }
+        } else {
+            #[cfg(feature = "image")]
+            if !state.data.read().caches.images.contains_key(url) {
+                let bytes = self.retrieve_image(url, &path, false).await?;
 
-            state
-                .data
-                .write()
-                .caches
-                .images
-                .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
+                #[cfg(not(feature = "pixelate"))]
+                let image =
+                    image::load_from_memory(&bytes).context("Failed to load image from memory")?;
+                #[cfg(feature = "pixelate")]
+                let mut image =
+                    image::load_from_memory(&bytes).context("Failed to load image from memory")?;
+
+                #[cfg(feature = "pixelate")]
+                {
+                    Self::pixelate_image(&mut image);
+                }
+
+                state
+                    .data
+                    .write()
+                    .caches
+                    .images
+                    .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
+            }
         }
 
         #[cfg(feature = "notify")]

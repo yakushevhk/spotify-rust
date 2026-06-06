@@ -639,12 +639,7 @@ current_view: View::Library,
 
     fn go_back(&mut self) {
         if let Some(prev) = self.view_history.pop() {
-            let going_to_tracks = matches!(prev, View::Tracks);
             self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
-            if matches!(self.current_view, View::Tracks) && !going_to_tracks {
-                self.context_tracks.clear();
-                self.sort_state = None;
-            }
         }
     }
 

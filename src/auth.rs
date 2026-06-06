@@ -175,6 +175,10 @@ pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool)
 
                 let login_redirect_uri = auth_config.login_redirect_uri.clone();
                 let mut handle = tokio::task::spawn_blocking(move || {
+                    // NOTE: The underlying HTTP call (get_access_token) cannot be cancelled.
+                    // On timeout, we abort the tokio task handle but the blocking HTTP thread
+                    // will stay alive until the HTTP layer times out internally. This is a known
+                    // limitation of spawn_blocking with non-cancellable blocking I/O.
                     let client_builder = OAuthClientBuilder::new(
                         SPOTIFY_CLIENT_ID,
                         &login_redirect_uri,
