@@ -212,9 +212,6 @@ pub struct Command {
 
 /// Whitelist of allowed commands for security
 const ALLOWED_COMMANDS: &[&str] = &[
-    "/usr/bin/cat",
-    "/usr/bin/head",
-    "/usr/bin/tail",
     "/usr/bin/printf",
     "/usr/bin/echo",
     "/usr/bin/pass",
@@ -228,7 +225,6 @@ const ALLOWED_COMMANDS: &[&str] = &[
     "/usr/local/bin/op",
     "/opt/homebrew/bin/bw",
     "/opt/homebrew/bin/op",
-    "/bin/cat",
     "/bin/echo",
 ];
 

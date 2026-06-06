@@ -89,17 +89,18 @@ pub struct AuthConfig {
 
 impl Default for AuthConfig {
     fn default() -> Self {
-        AuthConfig::try_default().unwrap_or_else(|e| {
-            tracing::warn!("failed to create default AuthConfig, using fallback: {:#}", e);
-            AuthConfig {
-                cache: Cache::new(None::<String>, None, None, None)
-                    .unwrap_or_else(|e| {
-                        panic!("failed to create cache in fallback - this should not happen: {:#}", e)
-                    }),
-                session_config: SessionConfig::default(),
-                login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+        match AuthConfig::try_default() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("AuthConfig::try_default failed: {e}. Using minimal fallback.");
+                AuthConfig {
+                    cache: Cache::new(None::<String>, None, None, None)
+                        .expect("Cache::new with None paths must succeed"),
+                    session_config: SessionConfig::default(),
+                    login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+                }
             }
-        })
+        }
     }
 }
 

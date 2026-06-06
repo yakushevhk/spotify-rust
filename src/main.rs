@@ -120,7 +120,7 @@ fn init_logging(
                     return;
                 }
             }
-            let backtrace = backtrace::Backtrace::new();
+            let backtrace = backtrace::Backtrace::new_unresolved();
             let _ = writeln!(&mut file, "Got a panic: {info:#?}\n");
             let _ = writeln!(&mut file, "Stack backtrace:\n{backtrace:?}");
         }
@@ -140,9 +140,14 @@ fn init_logging(
     let env_filter = tracing_subscriber::EnvFilter::try_from_env("RUST_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("spotify_player_gui=info,librespot=info"));
 
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut log_opts = std::fs::OpenOptions::new();
+    log_opts.create(true).append(true);
+    #[cfg(unix)]
+    log_opts.mode(0o600);
+    let log_file = log_opts
         .open(log_folder.join(format!("{log_prefix}.log")))
         .context("failed to create/open log file")?;
 
@@ -352,7 +357,6 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
     let lock_path = config_folder.join(".lock");
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
-        .truncate(true)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -416,7 +420,6 @@ async fn run_daemon() -> Result<()> {
     let lock_path = config_folder.join(".lock");
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
-        .truncate(true)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -481,7 +484,6 @@ fn run_gui() -> Result<()> {
     let lock_path = config_folder.join(".lock");
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
-        .truncate(true)
         .read(true)
         .write(true)
         .open(&lock_path)
