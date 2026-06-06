@@ -239,19 +239,17 @@ pub fn store_data_into_file_cache<T: Serialize>(
     // Issue #2: Handle write failures generically with user-friendly message
     if let Err(ref e) = result {
         #[cfg(unix)]
-        if e.raw_os_error().is_some() {
-            tracing::error!("Disk full or write failed when writing to {}: {e}", path.display());
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Write failed - check disk space and permissions (path: {})", path.display())
-            ));
-        }
+        let is_disk_full = e.kind() == std::io::ErrorKind::StorageFull
+            || e.raw_os_error() == Some(28) // ENOSPC
+            || e.raw_os_error() == Some(69); // EDQUOT
         #[cfg(not(unix))]
-        if e.kind() == std::io::ErrorKind::WriteZero {
-            tracing::error!("Write failed (possibly disk full) when writing to {}: {e}", path.display());
+        let is_disk_full = e.kind() == std::io::ErrorKind::StorageFull;
+
+        if is_disk_full {
+            tracing::error!("Disk full when writing to {}: {e}", path.display());
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("Write failed - check disk space and permissions (path: {})", path.display())
+                format!("Write failed - check disk space (path: {})", path.display())
             ));
         }
     }

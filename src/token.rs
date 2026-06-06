@@ -15,13 +15,15 @@ pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
     }
 
     let mut last_err = None;
-    let mut retry_count = 0;
+    let mut attempts = 0;
     let token = 'retry: {
-        for attempt in 0..MAX_RETRIES {
+        for _attempt in 0..MAX_RETRIES {
+            attempts += 1;
             let fut = session.login5().auth_token();
             match tokio::time::timeout(TIMEOUT, fut).await {
                 Ok(Ok(token)) => break 'retry token,
                 Ok(Err(err)) => {
+                    last_err = Some(format!("{err:#}"));
                     let err_str = format!("{:?}", err);
                     let is_retryable = err_str.contains("timeout")
                         || err_str.contains("connection")
@@ -31,35 +33,36 @@ pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
                         || err_str.contains("unavailable")
                         || err_str.contains("temporary");
 
-                    if is_retryable && retry_count < MAX_RETRIES {
-                        retry_count += 1;
+                    if is_retryable && attempts < MAX_RETRIES {
                         tracing::warn!(
-                            "Token request failed (retry {}/{}): {:#}",
-                            retry_count,
+                            "Token request failed (attempt {}/{}): {:#}",
+                            attempts,
                             MAX_RETRIES,
                             err
                         );
-                        tokio::time::sleep(std::time::Duration::from_secs(1 << retry_count)).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(1 << attempts)).await;
                         continue;
                     }
-                    anyhow::bail!("Failed to get token after {} attempts: {:#}", retry_count + 1, err);
+                    anyhow::bail!("Failed after {} attempts: {}", attempts, last_err.unwrap());
                 }
                 Err(_) => {
+                    last_err = Some("timeout when getting the token".to_string());
                     tracing::warn!(
                         "Token acquisition timed out (attempt {}/{})",
-                        attempt + 1,
+                        attempts,
                         MAX_RETRIES
                     );
-                    last_err = Some("timeout when getting the token");
-                    if attempt + 1 < MAX_RETRIES {
+                    if attempts < MAX_RETRIES {
+                        tokio::time::sleep(std::time::Duration::from_secs(1 << attempts)).await;
                         continue;
                     }
                 }
             }
         }
         anyhow::bail!(
-            "{}",
-            last_err.unwrap_or("timeout when getting the token")
+            "Failed after {} attempts: {}",
+            attempts,
+            last_err.unwrap_or("timeout when getting the token".to_string())
         );
     };
 

@@ -85,32 +85,48 @@ pub fn start_event_watcher(
         tracing::info!("Media control event: {e:?}");
         match e {
             MediaControlEvent::Play => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::Resume)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Resume)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::Pause => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::Toggle => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::ResumePause)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::ResumePause)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::SetPosition(MediaPosition(dur)) => {
                 if let Ok(dur) = chrono::Duration::from_std(dur) {
-                    client_pub.try_send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))).ok();
+                    if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))) {
+                        tracing::warn!("Media control event dropped (channel full): {e:#}");
+                    }
                 }
             }
             MediaControlEvent::Next => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::NextTrack)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::NextTrack)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::Previous => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::PreviousTrack)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::PreviousTrack)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::SetVolume(volume) => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::Volume(
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Volume(
                     (volume * 100.0) as u8,
-                ))).ok();
+                ))) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             MediaControlEvent::Stop => {
-                client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)).ok();
+                if let Err(e) = client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)) {
+                    tracing::warn!("Media control event dropped (channel full): {e:#}");
+                }
             }
             _ => {}
         }

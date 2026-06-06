@@ -112,7 +112,15 @@ pub async fn run_cli_command(
             println!("Searching for: {}", query);
             client_pub.send(ClientRequest::Search(query.clone()))?;
             
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if state.data.read().caches.search.contains_key(&query) { break; }
+                if std::time::Instant::now() > deadline {
+                    println!("Search timed out after 5 seconds");
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
             
             let search_results = state.data.read().caches.search.get(&query).cloned();
             
@@ -137,7 +145,15 @@ pub async fn run_cli_command(
         CliCommand::Status => {
             client_pub.send(ClientRequest::GetCurrentPlayback)?;
             
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if state.player.read().playback.is_some() { break; }
+                if std::time::Instant::now() > deadline {
+                    println!("Status timed out after 5 seconds");
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
             
             let playback = state.player.read().playback.clone();
             
@@ -207,7 +223,15 @@ pub async fn run_cli_command(
         CliCommand::Shuffle => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle))?;
             
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if state.player.read().buffered_playback.is_some() { break; }
+                if std::time::Instant::now() > deadline {
+                    println!("Shuffle timed out after 5 seconds");
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
             
             if let Some(ref buffered) = state.player.read().buffered_playback {
                 let status = if buffered.shuffle_state { "enabled" } else { "disabled" };
@@ -220,7 +244,15 @@ pub async fn run_cli_command(
         CliCommand::Repeat => {
             client_pub.send(ClientRequest::Player(PlayerRequest::Repeat))?;
             
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if state.player.read().buffered_playback.is_some() { break; }
+                if std::time::Instant::now() > deadline {
+                    println!("Repeat timed out after 5 seconds");
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
             
             if let Some(ref buffered) = state.player.read().buffered_playback {
                 let status = match buffered.repeat_state {

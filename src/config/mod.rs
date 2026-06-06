@@ -51,7 +51,7 @@ use theme::ThemeConfig;
 
 pub use theme::Theme;
 
-use crate::auth::{NCSPOT_CLIENT_ID, SPOTIFY_CLIENT_ID};
+use crate::auth::NCSPOT_CLIENT_ID;
 
 static CONFIGS: OnceLock<parking_lot::Mutex<Configs>> = OnceLock::new();
 
@@ -591,7 +591,7 @@ impl AppConfig {
         let client_id = self
             .client_id
             .as_deref()
-            .unwrap_or(SPOTIFY_CLIENT_ID)
+            .unwrap_or(NCSPOT_CLIENT_ID)
             .to_string();
         SessionConfig {
             proxy,

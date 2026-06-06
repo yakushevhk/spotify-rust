@@ -79,8 +79,13 @@ impl tracing::field::Visit for MessageVisitor {
 
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn core::fmt::Debug) {
         if field.name() == "message" {
-            // M5: use Display formatting for strings to avoid escaped quotes
-            self.message = format!("{value:?}");
+            // M5: strip outer Debug quotes to get Display-like formatting for strings
+            let debug_str = format!("{value:?}");
+            self.message = debug_str
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(&debug_str)
+                .to_string();
         } else {
             // Capture other fields as key=value pairs
             self.append_field(field.name(), format_args!("{value:?}"));
