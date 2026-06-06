@@ -19,6 +19,7 @@ pub struct CommandPalette {
     selected: usize,
     entries: Vec<PaletteEntry>,
     recent: Vec<CommandId>,
+    close: bool,
 }
 
 impl CommandPalette {
@@ -29,6 +30,7 @@ impl CommandPalette {
             selected: 0,
             entries,
             recent: Vec::new(),
+            close: false,
         }
     }
 
@@ -93,6 +95,7 @@ impl CommandPalette {
     pub fn open(&mut self) {
         self.query.clear();
         self.selected = 0;
+        self.close = false;
     }
 
     pub fn render(
@@ -327,9 +330,14 @@ impl CommandPalette {
             });
 
         if close {
+            self.close = true;
             return result;
         }
 
         result
+    }
+
+    pub fn should_close(&self) -> bool {
+        self.close
     }
 }

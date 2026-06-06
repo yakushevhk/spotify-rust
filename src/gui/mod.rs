@@ -705,9 +705,12 @@ current_view: View::Library,
 
     fn go_back(&mut self) {
         if let Some(prev) = self.view_history.pop() {
+            let going_to_tracks = matches!(prev, View::Tracks);
             self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
-            self.context_tracks.clear();
-            self.sort_state = None;
+            if !going_to_tracks {
+                self.context_tracks.clear();
+                self.sort_state = None;
+            }
         }
     }
 
@@ -2147,9 +2150,9 @@ impl eframe::App for SpotifyApp {
                     self.execute_command(&cmd, count, ctx);
                 }
                 self.show_command_palette = false;
+            } else if self.command_palette.should_close() {
+                self.show_command_palette = false;
             }
-            // Close if flag was cleared (e.g. by Escape inside render)
-            // We need to check if the render returned None but should still be showing
         }
     }
 }

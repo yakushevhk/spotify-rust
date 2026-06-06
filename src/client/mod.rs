@@ -283,10 +283,11 @@ impl AppClient {
                 }
             }
         });
-        {
-            let mut guard = self.playback_init_handle.lock().await;
-            *guard = Some(handle);
+        let mut guard = self.playback_init_handle.lock().await;
+        if let Some(old) = guard.take() {
+            old.abort();
         }
+        *guard = Some(handle);
     }
 
     /// Create a new client session
@@ -2229,15 +2230,24 @@ impl AppClient {
                 });
             }
 
-            let results = futures::future::try_join_all(futures).await?;
-
+            let results = futures::future::join_all(futures).await;
             let mut found_empty = false;
-            for mut page in results {
-                if page.items.is_empty() {
-                    found_empty = true;
-                    break;
+            let mut any_ok = false;
+            for result in results {
+                match result {
+                    Ok(mut paging) => {
+                        any_ok = true;
+                        if paging.items.is_empty() {
+                            found_empty = true;
+                        } else {
+                            all_items.append(&mut paging.items);
+                        }
+                    }
+                    Err(e) => tracing::warn!("Page fetch failed: {e:#}"),
                 }
-                all_items.append(&mut page.items);
+            }
+            if !any_ok {
+                return Err(anyhow::anyhow!("all page requests failed"));
             }
 
             if found_empty {
@@ -2707,8 +2717,6 @@ impl AppClient {
     /// - sort albums by the release date
     /// - sort albums by the type if `sort_artist_albums_by_type` config is enabled
     fn process_artist_albums(mut albums: Vec<Album>) -> Vec<Album> {
-        albums.sort_by(|x, y| y.release_date.partial_cmp(&x.release_date).unwrap_or(std::cmp::Ordering::Equal));
-
         if config::get_config().app_config.sort_artist_albums_by_type {
             fn get_priority(album_type: &str) -> usize {
                 match album_type {
@@ -2719,7 +2727,13 @@ impl AppClient {
                     _ => 4,
                 }
             }
-            albums.sort_by_key(|a| get_priority(&a.album_type()));
+            albums.sort_by(|a, b| {
+                get_priority(&a.album_type())
+                    .cmp(&get_priority(&b.album_type()))
+                    .then_with(|| b.release_date.partial_cmp(&a.release_date).unwrap_or(std::cmp::Ordering::Equal))
+            });
+        } else {
+            albums.sort_by(|x, y| y.release_date.partial_cmp(&x.release_date).unwrap_or(std::cmp::Ordering::Equal));
         }
 
         albums
