@@ -147,12 +147,6 @@ fn init_logging(
     Ok(())
 }
 
-// Architecture note (M8): `start_app` runs inside `#[tokio::main]` so the
-// OAuth browser flow can use async.  `eframe::run_native` is a blocking call
-// that takes over the main thread for the GUI event loop.  This is intentional
-// – the tokio runtime stays alive behind the scenes (spawned tasks keep
-// running) while the GUI drives the UI on the main thread.
-#[tokio::main]
 async fn start_app(state: &state::SharedState) -> Result<()> {
     let (client_pub, client_sub) = flume::bounded::<client::ClientRequest>(1024);
 
@@ -496,5 +490,16 @@ fn run_gui() -> Result<()> {
     tracing::info!("Starting Spotify Player GUI");
 
     let state = Arc::new(state::State::new(false, log_buffer));
-    start_app(&state)
+
+    // Use the current runtime if already in a tokio context, otherwise create a new one.
+    // This prevents nested runtime issues that can cause panics in the multi-threaded scheduler.
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.block_on(start_app(&state))
+    } else {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("failed to create tokio runtime")?;
+        rt.block_on(start_app(&state))
+    }
 }

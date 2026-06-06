@@ -533,32 +533,135 @@ impl AppClient {
         let mut playback = playback.context("no playback found")?;
         let device_id = playback.device_id.as_deref();
 
+        let uc = self.user_client()?;
+        let max_retries = 3;
+        
+        // Helper to check if error is retryable
+        let is_retryable = |e: &rspotify::ClientError| -> bool {
+            let err_str = e.to_string().to_lowercase();
+            err_str.contains("http error 429")
+                || err_str.contains("http error 500")
+                || err_str.contains("http error 502")
+                || err_str.contains("http error 503")
+                || err_str.contains("http error 504")
+                || err_str.contains("timeout")
+                || err_str.contains("connection")
+        };
+        
         match request {
-            PlayerRequest::NextTrack => self.user_client()?.next_track(device_id).await?,
-            PlayerRequest::PreviousTrack => self.user_client()?.previous_track(device_id).await?,
+            PlayerRequest::NextTrack => {
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.next_track(device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("NextTrack failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
+            }
+            PlayerRequest::PreviousTrack => {
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.previous_track(device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("PreviousTrack failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
+            }
             PlayerRequest::Resume => {
                 if !playback.is_playing {
-                    self.user_client()?.resume_playback(device_id, None).await?;
+                    let mut last_err = None;
+                    for attempt in 0..max_retries {
+                        match uc.resume_playback(device_id, None).await {
+                            Ok(()) => { last_err = None; break; }
+                            Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                tracing::warn!("Resume failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                last_err = Some(e);
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                    if let Some(e) = last_err { return Err(e.into()); }
                     playback.is_playing = true;
                 }
             }
 
             PlayerRequest::Pause => {
                 if playback.is_playing {
-                    self.user_client()?.pause_playback(device_id).await?;
+                    let mut last_err = None;
+                    for attempt in 0..max_retries {
+                        match uc.pause_playback(device_id).await {
+                            Ok(()) => { last_err = None; break; }
+                            Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                tracing::warn!("Pause failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                last_err = Some(e);
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                    if let Some(e) = last_err { return Err(e.into()); }
                     playback.is_playing = false;
                 }
             }
             PlayerRequest::ResumePause => {
                 if playback.is_playing {
-                    self.user_client()?.pause_playback(device_id).await?;
+                    let mut last_err = None;
+                    for attempt in 0..max_retries {
+                        match uc.pause_playback(device_id).await {
+                            Ok(()) => { last_err = None; break; }
+                            Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                tracing::warn!("ResumePause pause failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                last_err = Some(e);
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                    if let Some(e) = last_err { return Err(e.into()); }
                 } else {
-                    self.user_client()?.resume_playback(device_id, None).await?;
+                    let mut last_err = None;
+                    for attempt in 0..max_retries {
+                        match uc.resume_playback(device_id, None).await {
+                            Ok(()) => { last_err = None; break; }
+                            Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                tracing::warn!("ResumePause resume failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                last_err = Some(e);
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                    if let Some(e) = last_err { return Err(e.into()); }
                 }
                 playback.is_playing = !playback.is_playing;
             }
             PlayerRequest::SeekTrack(position_ms) => {
-                self.user_client()?.seek_track(position_ms, device_id).await?;
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.seek_track(position_ms, device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("SeekTrack failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
             }
             PlayerRequest::Repeat => {
                 let next_repeat_state = match playback.repeat_state {
@@ -567,17 +670,53 @@ impl AppClient {
                     rspotify::model::RepeatState::Context => rspotify::model::RepeatState::Off,
                 };
 
-                self.user_client()?.repeat(next_repeat_state, device_id).await?;
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.repeat(next_repeat_state, device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("Repeat failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
 
                 playback.repeat_state = next_repeat_state;
             }
             PlayerRequest::Shuffle => {
-                self.user_client()?.shuffle(!playback.shuffle_state, device_id).await?;
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.shuffle(!playback.shuffle_state, device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("Shuffle failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
 
                 playback.shuffle_state = !playback.shuffle_state;
             }
             PlayerRequest::Volume(volume) => {
-                self.user_client()?.volume(volume, device_id).await?;
+                let mut last_err = None;
+                for attempt in 0..max_retries {
+                    match uc.volume(volume, device_id).await {
+                        Ok(()) => { last_err = None; break; }
+                        Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                            tracing::warn!("Volume failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                            tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                            last_err = Some(e);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+                if let Some(e) = last_err { return Err(e.into()); }
 
                 playback.volume = Some(u32::from(volume));
                 playback.mute_state = None;
@@ -586,12 +725,36 @@ impl AppClient {
                 let new_mute_state = match playback.mute_state {
                     None => {
                         let restore_volume = playback.volume.unwrap_or(50).min(100);
-                        self.user_client()?.volume(0, device_id).await?;
+                        let mut last_err = None;
+                        for attempt in 0..max_retries {
+                            match uc.volume(0, device_id).await {
+                                Ok(()) => { last_err = None; break; }
+                                Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                    tracing::warn!("ToggleMute volume 0 failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                    tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                    last_err = Some(e);
+                                }
+                                Err(e) => return Err(e.into()),
+                            }
+                        }
+                        if let Some(e) = last_err { return Err(e.into()); }
                         Some(restore_volume)
                     }
                     Some(volume) => {
                         let vol = volume.min(100) as u8;
-                        self.user_client()?.volume(vol, device_id).await?;
+                        let mut last_err = None;
+                        for attempt in 0..max_retries {
+                            match uc.volume(vol, device_id).await {
+                                Ok(()) => { last_err = None; break; }
+                                Err(e) if is_retryable(&e) && attempt + 1 < max_retries => {
+                                    tracing::warn!("ToggleMute volume restore failed (attempt {}/{}): {}", attempt + 1, max_retries, e);
+                                    tokio::time::sleep(std::time::Duration::from_millis(200 * (1 << attempt))).await;
+                                    last_err = Some(e);
+                                }
+                                Err(e) => return Err(e.into()),
+                            }
+                        }
+                        if let Some(e) = last_err { return Err(e.into()); }
                         None
                     }
                 };
