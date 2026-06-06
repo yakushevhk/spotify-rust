@@ -621,6 +621,9 @@ current_view: View::Library,
                 self.view_history.push(self.current_view.clone());
                 self.forward_history.clear();
             }
+            // Reset selection state when switching between fundamentally different views
+            self.selected_track = None;
+            self.sort_state = None;
         }
         self.current_view = view;
     }
@@ -638,7 +641,7 @@ current_view: View::Library,
         if let Some(prev) = self.view_history.pop() {
             let going_to_tracks = matches!(prev, View::Tracks);
             self.forward_history.push(std::mem::replace(&mut self.current_view, prev));
-            if !going_to_tracks {
+            if matches!(self.current_view, View::Tracks) && !going_to_tracks {
                 self.context_tracks.clear();
                 self.sort_state = None;
             }
@@ -2140,7 +2143,7 @@ impl SpotifyApp {
         egui::Area::new(egui::Id::new("settings_confirm_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(false)
+            .interactable(true)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
                 ui.painter().rect_filled(
@@ -3395,7 +3398,9 @@ impl SpotifyApp {
                     if !self.in_page_search_query.is_empty() {
                         let query = std::mem::take(&mut self.in_page_search_query);
                         self.send_request(ClientRequest::Search(query.clone()));
-                        self.search_query = query;
+                        self.search_query = query.clone();
+                        self.search_debounce_state.is_searching = true;
+                        self.search_debounce_state.last_sent_query = Some(query);
                         self.navigate_to_view(View::Search);
                     } else {
                         self.in_page_search_query.clear();

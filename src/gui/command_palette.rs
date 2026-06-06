@@ -113,7 +113,7 @@ impl CommandPalette {
         egui::Area::new(overlay_id)
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(true)
+            .interactable(false)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
                 ui.painter().rect_filled(

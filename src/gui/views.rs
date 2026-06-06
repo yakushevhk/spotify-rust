@@ -884,7 +884,7 @@ fn failed_image_icon(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl In
     );
 }
 
-fn truncate_text_binary(
+pub fn truncate_text_binary(
     ui: &egui::Ui,
     text: &str,
     font: &egui::FontId,
@@ -906,7 +906,7 @@ fn truncate_text_binary(
         if g.rect.width() <= max_width {
             lo = mid;
         } else {
-            hi = mid - 1;
+            hi = mid;
         }
     }
     let truncated: String = chars[..lo].iter().collect();
@@ -1603,7 +1603,8 @@ pub fn render_search(
         if response.changed() && !search_query.is_empty() {
             debounce_state.last_input = now;
             debounce_state.pending_query = Some(search_query.clone());
-            debounce_state.is_searching = false;
+            // Keep is_searching true until new results arrive to avoid showing stale results
+            debounce_state.last_sent_query = None;
         }
 
         // Check if debounce period has passed

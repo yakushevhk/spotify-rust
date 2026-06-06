@@ -533,15 +533,24 @@ impl AppConfig {
         if config.seek_duration_secs == 0 {
             tracing::warn!("seek_duration_secs was 0, setting to 1 (minimum)");
             config.seek_duration_secs = 1;
+            if let Err(e) = config.write_config_file(path) {
+                tracing::warn!("failed to write corrected config: {e}");
+            }
         }
 
         if config.device.volume > 100 {
             tracing::warn!("device.volume {} clamped to 100", config.device.volume);
             config.device.volume = 100;
+            if let Err(e) = config.write_config_file(path) {
+                tracing::warn!("failed to write corrected config: {e}");
+            }
         }
         if ![96, 160, 320].contains(&config.device.bitrate) {
             tracing::warn!("device.bitrate {} is invalid, using 320", config.device.bitrate);
             config.device.bitrate = 320;
+            if let Err(e) = config.write_config_file(path) {
+                tracing::warn!("failed to write corrected config: {e}");
+            }
         }
 
         config.layout.check_values()?;

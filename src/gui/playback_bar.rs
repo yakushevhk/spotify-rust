@@ -156,23 +156,11 @@ pub fn render(
                     egui::FontId::proportional(14.0),
                     theme::text_primary(),
                 );
-                let truncated_name = if track_name_galley.size().x > track_name_rect.width() {
-                    // Truncate with ellipsis
-                    let mut s = name.clone();
-                    while s.len() > 1 {
-                        s.pop();
-                        let test = format!("{s}...");
-                        let galley = ui.painter().layout_no_wrap(
-                            test.clone(),
-                            egui::FontId::proportional(14.0),
-                            theme::text_primary(),
-                        );
-                        if galley.size().x <= track_name_rect.width() {
-                            s = test;
-                            break;
-                        }
-                    }
-                    s
+                let max_track_width = track_name_rect.width();
+                let truncated_name = if track_name_galley.size().x > max_track_width {
+                    crate::gui::views::truncate_text_binary(
+                        ui, &name, &egui::FontId::proportional(14.0), theme::text_primary(), max_track_width,
+                    )
                 } else {
                     name
                 };
@@ -194,22 +182,11 @@ pub fn render(
                     egui::FontId::proportional(12.0),
                     theme::text_dim(),
                 );
-                let truncated_artist = if artist_galley.size().x > artist_rect.width() {
-                    let mut s = artists_str;
-                    while s.len() > 1 {
-                        s.pop();
-                        let test = format!("{s}...");
-                        let galley = ui.painter().layout_no_wrap(
-                            test.clone(),
-                            egui::FontId::proportional(12.0),
-                            theme::text_dim(),
-                        );
-                        if galley.size().x <= artist_rect.width() {
-                            s = test;
-                            break;
-                        }
-                    }
-                    s
+                let max_artist_width = artist_rect.width();
+                let truncated_artist = if artist_galley.size().x > max_artist_width {
+                    crate::gui::views::truncate_text_binary(
+                        ui, &artists_str, &egui::FontId::proportional(12.0), theme::text_dim(), max_artist_width,
+                    )
                 } else {
                     artists_str
                 };
