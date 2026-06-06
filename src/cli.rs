@@ -29,6 +29,8 @@ use crate::config;
 use crate::state::{Playback, SharedState};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "spotify-player-gui")]
@@ -315,37 +317,48 @@ pub async fn start_daemon(
         }
     });
     
+    let player_watcher_running = Arc::new(AtomicBool::new(true));
+    let player_watcher_running_clone = player_watcher_running.clone();
     let player_watcher = std::thread::Builder::new()
         .name("player-event-watcher".to_string())
         .spawn({
             let state = state.clone();
             let client_pub = client_pub.clone();
             move || {
-                crate::client::start_player_event_watcher(&state, &client_pub);
+                while player_watcher_running_clone.load(Ordering::Acquire) {
+                    crate::client::start_player_event_watcher(&state, &client_pub);
+                }
             }
         })?;
-    
+
     #[cfg(feature = "media-control")]
-    let media_control_handle: Option<std::thread::JoinHandle<()>> = {
+    let (media_control_handle, media_control_running) = {
+        let media_control_running = Arc::new(AtomicBool::new(true));
+        let media_control_running_clone = media_control_running.clone();
         let configs = config::get_config();
         if configs.app_config.enable_media_control {
             let media_client_pub = client_pub.clone();
-            Some(
+            let handle = Some(
                 std::thread::Builder::new()
                     .name("media-control".to_string())
                     .spawn({
                         let state = state.clone();
                         move || {
-                            if let Err(err) = crate::media_control::start_event_watcher(&state, media_client_pub) {
-                                tracing::error!("Media control event watcher failed: {err:#}");
+                            while media_control_running_clone.load(Ordering::Acquire) {
+                                if let Err(err) = crate::media_control::start_event_watcher(&state, media_client_pub.clone()) {
+                                    tracing::error!("Media control event watcher failed: {err:#}");
+                                }
                             }
                         }
                     })?,
-            )
+            );
+            (handle, Some(media_control_running))
         } else {
-            None
+            (None, Some(media_control_running))
         }
     };
+    #[cfg(not(feature = "media-control"))]
+    let media_control_handle: Option<std::thread::JoinHandle<()>> = None;
     
     let signal_state = state.clone();
     tokio::spawn(async move {
@@ -387,7 +400,13 @@ pub async fn start_daemon(
     }
     
     tracing::info!("Daemon shutting down...");
-    
+
+    player_watcher_running.store(false, Ordering::Release);
+    #[cfg(feature = "media-control")]
+    if let Some(ref mc_running) = media_control_running {
+        mc_running.store(false, Ordering::Release);
+    }
+
     client_handler.abort();
     if let Err(_panic) = player_watcher.join() {
         tracing::error!("Player event watcher thread panicked");

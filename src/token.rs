@@ -15,13 +15,34 @@ pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
     }
 
     let mut last_err = None;
+    let mut retry_count = 0;
     let token = 'retry: {
         for attempt in 0..MAX_RETRIES {
             let fut = session.login5().auth_token();
             match tokio::time::timeout(TIMEOUT, fut).await {
                 Ok(Ok(token)) => break 'retry token,
                 Ok(Err(err)) => {
-                    anyhow::bail!("failed to get the token: {err:?}");
+                    let err_str = format!("{:?}", err);
+                    let is_retryable = err_str.contains("timeout")
+                        || err_str.contains("connection")
+                        || err_str.contains("retry")
+                        || err_str.contains("rate")
+                        || err_str.contains("timed out")
+                        || err_str.contains("unavailable")
+                        || err_str.contains("temporary");
+
+                    if is_retryable && retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        tracing::warn!(
+                            "Token request failed (retry {}/{}): {:#}",
+                            retry_count,
+                            MAX_RETRIES,
+                            err
+                        );
+                        tokio::time::sleep(std::time::Duration::from_secs(1 << retry_count)).await;
+                        continue;
+                    }
+                    anyhow::bail!("Failed to get token after {} attempts: {:#}", retry_count + 1, err);
                 }
                 Err(_) => {
                     tracing::warn!(

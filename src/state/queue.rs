@@ -102,6 +102,23 @@ impl CustomQueue {
         source_context: Option<ContextId>,
         autoplay: bool,
     ) -> Self {
+        if tracks.is_empty() {
+            return Self {
+                original_tracks: tracks,
+                play_order: vec![],
+                position: 0,
+                batch_start: 0,
+                batch_end: 0,
+                max_batch_size,
+                source_context,
+                repeat: rspotify::model::RepeatState::Off,
+                shuffle_mode: ShuffleMode::Off,
+                autoplay,
+                last_batch_transition: None,
+            };
+        }
+
+        let start_position = start_position.min(tracks.len().saturating_sub(1));
         let play_order = tracks.clone();
         let batch_start = start_position;
         let batch_end = (batch_start + max_batch_size).min(play_order.len());
@@ -254,6 +271,10 @@ impl CustomQueue {
 
     /// Retreat to the previous track. Returns what action the caller should take.
     pub fn retreat(&mut self) -> RetreatResult {
+        if self.play_order.is_empty() {
+            return RetreatResult::BeginningOfQueue;
+        }
+
         if self.position == 0 {
             if self.repeat == rspotify::model::RepeatState::Context {
                 // Wrap to end of queue.
@@ -314,7 +335,9 @@ impl CustomQueue {
             return;
         }
 
-        let current_track = self.play_order[self.position].clone();
+        let Some(current_track) = self.play_order.get(self.position).cloned() else {
+            return;
+        };
 
         match &mode {
             ShuffleMode::Off => {
