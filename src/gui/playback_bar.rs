@@ -365,7 +365,7 @@ pub fn render(
                     }).unwrap_or_default();
 
                     // Generate waveform bars (cached by track URI only - regenerate only when track changes)
-                    let num_bars = (bar_width / 3.0) as usize;
+                    let num_bars = ((bar_width / 3.0).max(1.0)) as usize;
                     let cache_key_uri = track_uri.clone();
                     if waveform_cache.as_ref().is_none_or(|(uri, _, _)| *uri != cache_key_uri) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
@@ -475,7 +475,7 @@ pub fn render(
                         ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
 
                     // Static waveform placeholder
-                    let num_bars = (bar_width / 3.0) as usize;
+                    let num_bars = ((bar_width / 3.0).max(1.0)) as usize;
                     let bar_gap = 1.0;
                     let bar_w = (bar_width / num_bars as f32) - bar_gap;
                     for i in 0..num_bars {

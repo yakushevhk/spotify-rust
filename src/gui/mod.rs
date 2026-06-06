@@ -1412,7 +1412,11 @@ impl eframe::App for SpotifyApp {
             let player = self.state.player.read();
             player.playback.is_some()
         };
-        let repaint_ms = if is_playing { 100 } else { 1000 };
+        let repaint_ms = match self.current_view {
+            View::Lyrics | View::Tracks if is_playing => 100,
+            _ if is_playing => 500,
+            _ => 1000,
+        };
         ctx.request_repaint_after(std::time::Duration::from_millis(repaint_ms));
 
         // Check if this is first launch (no auth token)

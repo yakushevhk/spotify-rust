@@ -1350,7 +1350,7 @@ impl AppClient {
             .position(|d| d.0 == configs.app_config.default_device)
             .unwrap_or_default();
 
-        Ok(Some(devices.remove(id).1))
+        Ok(Some(devices.swap_remove(id).1))
     }
 
     /// Get the saved (liked) tracks of the current user
@@ -1816,7 +1816,7 @@ impl AppClient {
                     self.user_client()?.current_user_saved_albums_add([album.id.as_ref()])
                         .await?;
                     // update the in-memory `user_data`
-                    state.data.write().user_data.saved_albums.insert(0, album);
+                    state.data.write().user_data.saved_albums.push(album);
                 }
             }
             Item::Artist(artist) => {
@@ -1829,7 +1829,7 @@ impl AppClient {
                         .write()
                         .user_data
                         .followed_artists
-                        .insert(0, artist);
+                        .push(artist);
                 }
             }
             Item::Playlist(playlist) => {
@@ -1854,7 +1854,7 @@ impl AppClient {
                             .write()
                             .user_data
                             .playlists
-                            .insert(0, PlaylistFolderItem::Playlist(playlist));
+                            .push(PlaylistFolderItem::Playlist(playlist));
                     }
                 }
             }
@@ -1863,7 +1863,7 @@ impl AppClient {
                 if !follows[0] {
                     self.user_client()?.save_shows([show.id.as_ref()]).await?;
                     // update the in-memory `user_data`
-                    state.data.write().user_data.saved_shows.insert(0, show);
+                    state.data.write().user_data.saved_shows.push(show);
                 }
             }
         }

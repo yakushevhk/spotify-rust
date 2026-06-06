@@ -157,7 +157,7 @@ impl ImageCache {
         let key = path.to_string_lossy().to_string();
 
         // O(1) LRU cache lookup
-        if self.textures.get(&key).is_some() {
+        if self.textures.contains(&key) {
             return self.textures.get(&key);
         }
 
