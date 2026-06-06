@@ -873,7 +873,7 @@ impl AppClient {
                         let local_device = Device {
                             id: session.device_id().to_string(),
                             name: configs.app_config.device.name.clone(),
-                            is_active: true,
+                            is_active: self.stream_conn.lock().is_some(),
                             device_type: DeviceType::Computer,
                         };
 
@@ -1298,26 +1298,22 @@ impl AppClient {
             playlists: rspotify::model::Page<serde_json::Value>,
         }
 
-        Ok(self
-            .http_get::<BrowseCategoryPlaylistsResponse>(
-                &format!("{SPOTIFY_API_ENDPOINT}/browse/categories/{category_id}/playlists"),
-                &Query::from([("limit", "50")]),
-            )
-            .await?
-            .playlists
-            .items
-            .into_iter()
-            .filter_map(|item| {
-                match serde_json::from_value::<rspotify::model::SimplifiedPlaylist>(item) {
-                    Ok(p) => Some(p),
-                    Err(e) => {
-                        tracing::warn!("Skipping unparseable playlist: {e:#}");
-                        None
-                    }
+        let mut all_playlists = Vec::new();
+        let mut url = format!("{SPOTIFY_API_ENDPOINT}/browse/categories/{category_id}/playlists?limit=50");
+        while !url.is_empty() {
+            let resp: BrowseCategoryPlaylistsResponse = self.http_get(&url, &Query::new()).await?;
+            all_playlists.extend(resp.playlists.items);
+            url = resp.playlists.next.unwrap_or_default();
+        }
+        Ok(all_playlists.into_iter().filter_map(|item| {
+            match serde_json::from_value::<rspotify::model::SimplifiedPlaylist>(item) {
+                Ok(p) => Some(Playlist::from(p)),
+                Err(e) => {
+                    tracing::warn!("Skipping unparseable playlist: {e:#}");
+                    None
                 }
-            })
-            .map(Into::into)
-            .collect())
+            }
+        }).collect())
     }
 
     /// Find an available device. If found, return the device's ID.
@@ -1604,7 +1600,7 @@ impl AppClient {
                     tracing::warn!("Failed to fetch track radio seed {seed_uri}: {err:#}");
                 }
             },
-            Err(e) => tracing::warn!("Failed to parse seed URI as TrackId: {seed_uri}: {e:#}"),
+            Err(e) => tracing::warn!("Failed to parse seed URI as TrackId: {e:#}"),
         }
 
         Ok(tracks)
@@ -2175,8 +2171,8 @@ impl AppClient {
                         continue;
                     }
                     Err(err) => {
-                        last_err = Some(err);
-                        continue;
+                        tracing::error!("Token re-fetch failed after 401: {err:#}");
+                        return Err(anyhow::anyhow!("Failed to refresh token after 401: {err:#}"));
                     }
                 }
             }
@@ -2462,12 +2458,19 @@ impl AppClient {
             rspotify::model::PlayableItem::Episode(ref episode) => (
                 crate::utils::get_episode_show_image_url(episode)
                     .ok_or(anyhow::anyhow!("missing image"))?,
-                format!(
-                    "{}-{}-cover-{}.jpg",
-                    episode.show.name,
-                    episode.show.publisher,
-                    episode.show.id.as_ref().id().chars().take(6).collect::<String>()
-                ),
+                {
+                    let publisher = if episode.show.publisher.is_empty() {
+                        "unknown"
+                    } else {
+                        &episode.show.publisher
+                    };
+                    format!(
+                        "{}-{}-cover-{}.jpg",
+                        episode.show.name,
+                        publisher,
+                        episode.show.id.as_ref().id().chars().take(6).collect::<String>()
+                    )
+                },
             ),
             rspotify::model::PlayableItem::Unknown(_) => return Ok(()),
         };

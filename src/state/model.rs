@@ -303,6 +303,7 @@ pub struct Episode {
     /// Resume point within the episode, if reported by the Spotify API.
     /// Not always populated; defaults to `None` for episodes converted
     /// from `SimplifiedEpisode` which omits this field.
+    #[serde(skip)]
     pub resume_point: Option<chrono::Duration>,
 }
 

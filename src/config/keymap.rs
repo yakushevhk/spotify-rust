@@ -126,7 +126,11 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         ];
         for sk in &special_keys {
             if rest == *sk {
-                return vec![KeyBinding::Special(sk.to_string())];
+                let mut parts = Vec::new();
+                if ctrl { parts.push("C"); }
+                if shift { parts.push("S"); }
+                parts.push(sk);
+                return vec![KeyBinding::Special(parts.join("-"))];
             }
         }
         if let Some(ch) = rest.chars().next() {
@@ -619,7 +623,7 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
             command: CommandId("page_currently_playing"),
             keybindings: vec![KeyBinding::Sequence(vec![
                 "g".to_string(),
-                " ".to_string(),
+                "Space".to_string(),
             ])],
             description: "Go to currently playing context page",
             category: CommandCategory::Pages,

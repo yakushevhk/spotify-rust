@@ -253,7 +253,7 @@ impl CustomQueue {
             self.batch_end = (self.batch_start + self.max_batch_size).min(self.play_order.len());
             self.mark_batch_transition();
             AdvanceResult::NewBatch(self.current_batch().expect("batch indices just set; batch must exist").to_vec())
-        } else if self.repeat == rspotify::model::RepeatState::Context {
+        } else if self.repeat == rspotify::model::RepeatState::Context && !self.play_order.is_empty() {
             // End of queue with repeat-context — wrap to beginning.
             self.position = 0;
             self.batch_start = 0;

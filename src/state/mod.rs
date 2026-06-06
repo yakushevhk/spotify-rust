@@ -147,5 +147,6 @@ impl State {
         };
         data.caches = data::MemoryCaches::new();
         data.browse = data::BrowseData::default();
+        data.shows_loading = false;
     }
 }

@@ -85,8 +85,8 @@ pub fn render_library(
             state::PlaylistFolderItem::Playlist(p) => Some(p.clone()),
             _ => None,
         }).collect();
-        let saved_albums_count = data.user_data.saved_albums.len();
-        (library_empty, playlists, saved_albums_count)
+        let saved_albums: Vec<_> = data.user_data.saved_albums.iter().cloned().collect();
+        (library_empty, playlists, saved_albums)
     };
 
     if library_empty {
@@ -207,11 +207,9 @@ pub fn render_library(
 
             ui.add_space(32.0);
 
-            // Albums section - read albums data from single lock if needed
-            let albums_need_read = saved_albums > 0;
+            // Albums section - albums already collected outside the UI closure
+            let albums_need_read = !saved_albums.is_empty();
             if albums_need_read {
-                let data = state.data.read();
-
                 ui.horizontal(|ui| {
                     ui.add_space(24.0);
                     ui.label(
@@ -231,7 +229,7 @@ pub fn render_library(
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (_i, album) in data.user_data.saved_albums.iter().enumerate() {
+                        for (_i, album) in saved_albums.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let sub = format!("{} · {}", album.artists_display_ref(), album.year());
@@ -1362,6 +1360,11 @@ pub fn render_tracks(
                 
                 if let Some(ref album) = track.album {
                     if let Some(path) = image_cache::album_cover_path(album) {
+                        if let Some(url) = &album.cover_url {
+                            if !path.exists() {
+                                image_cache.request_download(url, &path);
+                            }
+                        }
                         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                             ui.painter().rect_filled(
                                 thumb_rect,
@@ -2141,6 +2144,16 @@ fn search_grid_card(
             egui::Image::new(texture)
                 .corner_radius(theme::ART_CORNER_RADIUS)
                 .paint_at(ui, art_rect);
+            art_drawn = true;
+        } else if image_cache.is_failed(path) {
+            ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
+            ui.painter().text(
+                art_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "⚠",
+                egui::FontId::proportional(24.0),
+                theme::text_muted(),
+            );
             art_drawn = true;
         }
     }
@@ -3316,6 +3329,16 @@ fn render_settings_appearance(
     dirty: &mut bool,
     _current_theme_name: &str,
 ) {
+    // Cache theme data once per render to avoid repeated get_config() in render loop
+    let built_in = theme::built_in_themes();
+    let theme_config = crate::config::get_config();
+    let custom_themes: Vec<_> = theme_config.theme_config.themes.clone();
+    let all_theme_names: Vec<String> = built_in
+        .iter()
+        .map(|t| t.name.to_string())
+        .chain(custom_themes.iter().map(|ct| ct.name.clone()))
+        .collect();
+
     egui::ScrollArea::vertical()
         .id_salt("settings_appearance")
         .show(ui, |ui| {
@@ -3345,18 +3368,6 @@ fn render_settings_appearance(
                             .color(theme::text_dim()),
                     );
                     ui.add_space(4.0);
-
-                    let built_in = theme::built_in_themes();
-                    let theme_config = crate::config::get_config();
-                    let custom_themes: Vec<_> = theme_config.theme_config.themes.clone();
-
-                    let mut all_theme_names: Vec<String> = built_in
-                        .iter()
-                        .map(|t| t.name.to_string())
-                        .collect();
-                    for ct in &custom_themes {
-                        all_theme_names.push(ct.name.clone());
-                    }
 
                     let current = config.theme.clone();
                     egui::ComboBox::from_id_salt("theme_select")
@@ -4221,6 +4232,11 @@ pub fn render_artist(
                 let mut thumb_drawn = false;
                 if let Some(ref album) = track.album {
                     if let Some(path) = image_cache::album_cover_path(album) {
+                        if let Some(url) = &album.cover_url {
+                            if !path.exists() {
+                                image_cache.request_download(url, &path);
+                            }
+                        }
                         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                             ui.painter().rect_filled(
                                 thumb_rect,
