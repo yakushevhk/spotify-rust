@@ -78,6 +78,10 @@ const PLAYBACK_TYPES: [&rspotify::model::AdditionalType; 2] = [
     &rspotify::model::AdditionalType::Episode,
 ];
 
+#[cfg(feature = "notify")]
+static NOTIFY_TEMPLATE_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"\{.*?\}").unwrap());
+
 /// The application's Spotify client
 #[derive(Clone)]
 pub struct AppClient {
@@ -450,8 +454,10 @@ impl AppClient {
             {
                 let mut player = state.player.write();
                 let generation = player.streaming_generation;
+                let queue = std::mem::take(&mut player.custom_queue);
                 *player = crate::state::PlayerState::default();
                 player.streaming_generation = generation;
+                player.custom_queue = queue;
             }
             // reset user data to avoid stale data from a previous account
             state.data.write().user_data = crate::state::UserData {
@@ -1367,16 +1373,13 @@ impl AppClient {
 
         let play_histories = self.all_cursor_based_paging_items(first_page).await?;
 
-        // de-duplicate the tracks returned from the recently-played API using iterator methods
+        // de-duplicate the tracks returned from the recently-played API using HashSet
+        let mut seen = std::collections::HashSet::new();
         let tracks: Vec<Track> = play_histories
             .into_iter()
             .filter_map(|history| Track::try_from_full_track(history.track))
-            .fold(Vec::new(), |mut acc, track| {
-                if !acc.iter().any(|t| t.id == track.id) {
-                    acc.push(track);
-                }
-                acc
-            });
+            .filter(|t| seen.insert(t.id.clone()))
+            .collect();
         Ok(tracks)
     }
 
@@ -2520,8 +2523,6 @@ impl AppClient {
     ) -> Result<()> {
         let mut n = notify_rust::Notification::new();
 
-        let re = regex::Regex::new(r"\{.*?\}")
-            .map_err(|e| anyhow::anyhow!("failed to compile regex for notification: {}", e))?;
         // Generate a text described a track from a format string.
         // For example, a format string "{track} - {artists}" will generate
         // a text consisting of the track's name followed by a dash then artists' names.
@@ -2529,7 +2530,7 @@ impl AppClient {
             let mut text = String::new();
 
             let mut ptr = 0;
-            for m in re.find_iter(format_str) {
+            for m in NOTIFY_TEMPLATE_RE.find_iter(format_str) {
                 let s = m.start();
                 let e = m.end();
 

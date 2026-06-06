@@ -161,8 +161,8 @@ impl ToastMessage {
 
 enum Action {
     Navigate(View),
-    OpenPlaylist(usize),
-    OpenAlbum(usize),
+    OpenPlaylist(String),
+    OpenAlbum(String),
     OpenLikedTracks,
     OpenRecentlyPlayed,
     OpenTopTracks,
@@ -379,16 +379,20 @@ current_view: View::Library,
                 }
                 self.current_view = view;
             }
-            Action::OpenPlaylist(idx) => {
+            Action::OpenPlaylist(uri) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
                 let playlist_data = {
                     let data = self.state.data.read();
-                    data.user_data.playlists.get(idx).and_then(|item| {
+                    data.user_data.playlists.iter().find_map(|item| {
                         if let state::PlaylistFolderItem::Playlist(playlist) = item {
-                            Some((playlist.id.clone(), playlist.name.clone()))
+                            if playlist.id.uri() == uri {
+                                Some((playlist.id.clone(), playlist.name.clone()))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
@@ -406,14 +410,14 @@ current_view: View::Library,
                     self.current_view = View::Tracks;
                 }
             }
-            Action::OpenAlbum(idx) => {
+            Action::OpenAlbum(uri) => {
                 if self.current_view != View::Help {
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
                 let album_data = {
                     let data = self.state.data.read();
-                    data.user_data.saved_albums.get(idx).map(|album| {
+                    data.user_data.saved_albums.iter().find(|album| album.id.uri() == uri).map(|album| {
                         (album.id.clone(), album.name.clone())
                     })
                 };
@@ -3158,7 +3162,7 @@ impl SpotifyApp {
         );
 
         let mut close = false;
-        let mut open_playlist_idx: Option<usize> = None;
+        let mut open_playlist_uri: Option<String> = None;
 
         egui::Area::new(egui::Id::new("browse_playlists_overlay"))
             .order(egui::Order::Foreground)
@@ -3196,11 +3200,11 @@ impl SpotifyApp {
 
                     let filter = self.browse_popup_filter.to_lowercase();
                     let data = self.state.data.read();
-                    let playlists: Vec<_> = data.user_data.playlists.iter().enumerate()
-                        .filter_map(|(i, item)| match item {
+                    let playlists: Vec<_> = data.user_data.playlists.iter()
+                        .filter_map(|item| match item {
                             state::PlaylistFolderItem::Playlist(p) => {
                                 if filter.is_empty() || p.name.to_lowercase().contains(&filter) {
-                                    Some((i, p.clone()))
+                                    Some(p.clone())
                                 } else {
                                     None
                                 }
@@ -3215,13 +3219,13 @@ impl SpotifyApp {
                             ui.add_space(20.0);
                             ui.label(egui::RichText::new("No playlists found").size(12.0).color(theme::text_dim()));
                         }
-                        for (i, playlist) in &playlists {
+                        for playlist in &playlists {
                             let (item_rect, item_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
                             let bg = if item_resp.hovered() { theme::bg_hover() } else { egui::Color32::TRANSPARENT };
                             ui.painter().rect_filled(item_rect, 4.0, bg);
                             ui.painter().text(item_rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, &playlist.name, egui::FontId::proportional(13.0), if item_resp.hovered() { theme::text_primary() } else { theme::text_secondary() });
                             if item_resp.clicked() {
-                                open_playlist_idx = Some(*i);
+                                open_playlist_uri = Some(playlist.id.uri());
                             }
                         }
                     });
@@ -3238,8 +3242,8 @@ impl SpotifyApp {
             if click_outside { close = true; }
         }
 
-        if let Some(idx) = open_playlist_idx {
-            self.handle_action(Action::OpenPlaylist(idx));
+        if let Some(uri) = open_playlist_uri {
+            self.handle_action(Action::OpenPlaylist(uri));
             close = true;
         }
 
@@ -3339,7 +3343,7 @@ impl SpotifyApp {
         let popup_pos = egui::pos2(screen.center().x - popup_width / 2.0, screen.center().y - popup_height / 2.0);
 
         let mut close = false;
-        let mut open_album_idx: Option<usize> = None;
+        let mut open_album_uri: Option<String> = None;
 
         egui::Area::new(egui::Id::new("browse_albums_overlay"))
             .order(egui::Order::Foreground)
@@ -3371,9 +3375,9 @@ impl SpotifyApp {
 
                     let filter = self.browse_popup_filter.to_lowercase();
                     let data = self.state.data.read();
-                    let albums: Vec<_> = data.user_data.saved_albums.iter().enumerate()
-                        .filter(|(_, a)| filter.is_empty() || a.name.to_lowercase().contains(&filter))
-                        .map(|(i, a)| (i, a.clone()))
+                    let albums: Vec<_> = data.user_data.saved_albums.iter()
+                        .filter(|a| filter.is_empty() || a.name.to_lowercase().contains(&filter))
+                        .map(|a| a.clone())
                         .collect();
                     drop(data);
 
@@ -3382,14 +3386,14 @@ impl SpotifyApp {
                             ui.add_space(20.0);
                             ui.label(egui::RichText::new("No albums found").size(12.0).color(theme::text_dim()));
                         }
-                        for (i, album) in &albums {
+                        for album in &albums {
                             let (item_rect, item_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
                             let bg = if item_resp.hovered() { theme::bg_hover() } else { egui::Color32::TRANSPARENT };
                             ui.painter().rect_filled(item_rect, 4.0, bg);
                             let label = format!("{} — {}", album.name, album.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", "));
                             ui.painter().text(item_rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, &label, egui::FontId::proportional(13.0), if item_resp.hovered() { theme::text_primary() } else { theme::text_secondary() });
                             if item_resp.clicked() {
-                                open_album_idx = Some(*i);
+                                open_album_uri = Some(album.id.uri());
                             }
                         }
                     });
@@ -3406,8 +3410,8 @@ impl SpotifyApp {
             if click_outside { close = true; }
         }
 
-        if let Some(idx) = open_album_idx {
-            self.handle_action(Action::OpenAlbum(idx));
+        if let Some(uri) = open_album_uri {
+            self.handle_action(Action::OpenAlbum(uri));
             close = true;
         }
 

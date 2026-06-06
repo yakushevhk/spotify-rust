@@ -1,4 +1,5 @@
 use eframe::egui;
+use rspotify::prelude::Id;
 
 use crate::gui::{theme, Action, View};
 use crate::state::{self, SharedState};
@@ -273,7 +274,7 @@ pub fn render(
     };
 
     {
-        for (i, item) in playlists_snapshot.iter().enumerate() {
+        for item in playlists_snapshot.iter() {
             match item {
                 state::PlaylistFolderItem::Playlist(playlist) => {
                     if collapsed {
@@ -290,10 +291,10 @@ pub fn render(
                             if resp.hovered() { theme::text_primary() } else { theme::text_secondary() },
                         );
                         if resp.clicked() {
-                            action = Action::OpenPlaylist(i);
+                            action = Action::OpenPlaylist(playlist.id.uri());
                         }
                     } else if theme::list_item(ui, &playlist.name, &playlist.owner.0, false).clicked() {
-                        action = Action::OpenPlaylist(i);
+                        action = Action::OpenPlaylist(playlist.id.uri());
                     }
                 }
                 state::PlaylistFolderItem::Folder(folder) => {
@@ -323,7 +324,7 @@ pub fn render(
         theme::section_header(ui, "ALBUMS");
 
         {
-            for (i, album) in albums_snapshot.iter().enumerate() {
+            for album in albums_snapshot.iter() {
                 let sub = format!(
                     "{} · {}",
                     album
@@ -335,7 +336,7 @@ pub fn render(
                     album.year()
                 );
                 if theme::list_item(ui, &album.name, &sub, false).clicked() {
-                    action = Action::OpenAlbum(i);
+                    action = Action::OpenAlbum(album.id.uri());
                 }
             }
         }
