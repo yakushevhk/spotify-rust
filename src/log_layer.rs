@@ -59,15 +59,21 @@ struct MessageVisitor {
     message: String,
 }
 
+impl MessageVisitor {
+    fn append_field(&mut self, name: &str, value: impl std::fmt::Display) {
+        if !self.message.is_empty() {
+            self.message.push(' ');
+        }
+        self.message.push_str(&format!("{}={}", name, value));
+    }
+}
+
 impl tracing::field::Visit for MessageVisitor {
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
         if field.name() == "message" {
             self.message = value.to_string();
         } else {
-            if !self.message.is_empty() {
-                self.message.push(' ');
-            }
-            self.message.push_str(&format!("{}={}", field.name(), value));
+            self.append_field(field.name(), value);
         }
     }
 
@@ -77,10 +83,7 @@ impl tracing::field::Visit for MessageVisitor {
             self.message = format!("{value:?}");
         } else {
             // Capture other fields as key=value pairs
-            if !self.message.is_empty() {
-                self.message.push(' ');
-            }
-            self.message.push_str(&format!("{}={value:?}", field.name()));
+            self.append_field(field.name(), format_args!("{value:?}"));
         }
     }
 }

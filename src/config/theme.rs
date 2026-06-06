@@ -49,16 +49,16 @@
 //! accent = "#1ed760"
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Theme {
     pub name: String,
     #[serde(default)]
     pub palette: Palette,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Palette {
     #[serde(default = "default_background")]
     pub background: String,
@@ -295,7 +295,7 @@ impl ThemeConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ThemeConfig {
     #[serde(default)]
     pub themes: Vec<Theme>,

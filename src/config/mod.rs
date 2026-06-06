@@ -614,7 +614,10 @@ impl AppConfig {
                 if let Some(parent) = config_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::write(config_path, content).map_err(From::from)
+                let temp_path = config_path.with_extension("tmp");
+                std::fs::write(&temp_path, content)?;
+                std::fs::rename(&temp_path, &config_path)?;
+                Ok(())
             })
     }
 
@@ -652,20 +655,20 @@ impl AppConfig {
     }
 }
 
+fn get_folder_path(subdir: &str) -> Result<PathBuf> {
+    dirs_next::home_dir()
+        .map(|h| h.join(subdir))
+        .ok_or_else(|| anyhow!("cannot find the $HOME folder"))
+}
+
 /// gets the application's configuration folder path
 pub fn get_config_folder_path() -> Result<PathBuf> {
-    match dirs_next::home_dir() {
-        Some(home) => Ok(home.join(DEFAULT_CONFIG_FOLDER)),
-        None => Err(anyhow!("cannot find the $HOME folder")),
-    }
+    get_folder_path(DEFAULT_CONFIG_FOLDER)
 }
 
 /// gets the application's cache folder path
 pub fn get_cache_folder_path() -> Result<PathBuf> {
-    match dirs_next::home_dir() {
-        Some(home) => Ok(home.join(DEFAULT_CACHE_FOLDER)),
-        None => Err(anyhow!("cannot find the $HOME folder")),
-    }
+    get_folder_path(DEFAULT_CACHE_FOLDER)
 }
 
 pub fn get_config() -> Configs {
@@ -676,13 +679,6 @@ pub fn get_config() -> Configs {
         .clone()
 }
 
-#[allow(dead_code)]
-pub fn try_get_config() -> Result<Configs> {
-    let config = CONFIGS
-        .get()
-        .ok_or_else(|| anyhow::anyhow!("config not initialized: set_config must be called before get_config"))?;
-    Ok(config.lock().clone())
-}
 pub fn set_config(configs: Configs) {
     CONFIGS.get_or_init(|| parking_lot::Mutex::new(configs));
 }

@@ -344,7 +344,7 @@ pub enum PlaylistFolderItem {
     Folder(PlaylistFolder),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 /// A reference node retrieved by running <https://github.com/mikez/spotify-folders>
 /// Helps building a playlist folder hierarchy
 pub struct PlaylistFolderNode {

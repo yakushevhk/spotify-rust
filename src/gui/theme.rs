@@ -407,6 +407,8 @@ pub fn set_palette(name: &str) {
     let themes = built_in_themes();
     if let Some(builtin) = themes.iter().find(|t| t.name.eq_ignore_ascii_case(name)) {
         set_palette_from_config(&builtin.palette);
+    } else {
+        tracing::warn!("theme '{name}' not found among built-in themes, using current theme");
     }
 }
 

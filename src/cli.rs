@@ -286,8 +286,6 @@ pub async fn start_cli_headless(
         return Err(err);
     }
     
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    
     client_handler.abort();
     
     Ok(())

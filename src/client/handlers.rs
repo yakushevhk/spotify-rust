@@ -31,10 +31,6 @@ pub async fn start_client_handler(
     // #16: limit concurrent handler tasks to prevent unbounded spawning
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
     
-    // Issue #3: Track dropped requests for backpressure
-    let _dropped_count = 0u64;
-    let _drop_log_interval = 10u64;
-
     loop {
         match client_sub.recv_async().await {
             Ok(request) => {

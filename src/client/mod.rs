@@ -53,17 +53,6 @@ use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rspotify::{http::Query, prelude::*};
 
-// Lock hierarchy documentation to prevent deadlocks (Issue #8):
-// When multiple locks need to be acquired, ALWAYS follow this order:
-// 1. state.ui (Mutex<UIState>)
-// 2. state.player (RwLock<PlayerState>)
-// 3. state.data (RwLock<AppData>)
-// 4. state.toast_queue (Mutex<VecDeque<String>>)
-// 5. stream_conn (Mutex<Option<Spirc>>) - only when feature = "streaming"
-//
-// Never acquire locks in a different order, and never hold multiple locks
-// while performing async operations or blocking I/O.
-
 mod handlers;
 mod request;
 mod spotify;

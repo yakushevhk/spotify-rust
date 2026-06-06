@@ -107,7 +107,11 @@ fn init_logging(
     let backtrace_file = std::fs::File::create(&backtrace_path)
         .context("failed to create backtrace file")?;
     let backtrace_file = std::sync::Mutex::new(backtrace_file);
+    static IN_PANIC_HOOK: AtomicBool = AtomicBool::new(false);
     std::panic::set_hook(Box::new(move |info| {
+        if IN_PANIC_HOOK.swap(true, Ordering::Relaxed) {
+            return;
+        }
         if let Ok(mut file) = backtrace_file.lock() {
             // Check file size before writing
             if let Ok(metadata) = file.metadata() {
@@ -343,7 +347,10 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
         .open(&lock_path)
         .context("failed to open lock file")?;
     fs2::FileExt::try_lock_exclusive(&lock_file)
-        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+        .map_err(|_| anyhow::anyhow!(
+            "Another instance is already running. If no other instance is running, delete {}",
+            lock_path.to_string_lossy()
+        ))?;
     let _lock_file = lock_file;
 
     let cache_folder = config::get_cache_folder_path()?;
@@ -404,7 +411,10 @@ async fn run_daemon() -> Result<()> {
         .open(&lock_path)
         .context("failed to open lock file")?;
     fs2::FileExt::try_lock_exclusive(&lock_file)
-        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+        .map_err(|_| anyhow::anyhow!(
+            "Another instance is already running. If no other instance is running, delete {}",
+            lock_path.to_string_lossy()
+        ))?;
     let _lock_file = lock_file;
 
     let cache_folder = config::get_cache_folder_path()?;
@@ -466,9 +476,12 @@ fn run_gui() -> Result<()> {
         .open(&lock_path)
         .context("failed to open lock file")?;
     fs2::FileExt::try_lock_exclusive(&lock_file)
-        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+        .map_err(|_| anyhow::anyhow!(
+            "Another instance is already running. If no other instance is running, delete {}",
+            lock_path.to_string_lossy()
+        ))?;
     let _lock_file = lock_file;
-    
+
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
     if !cache_audio_folder.exists() {

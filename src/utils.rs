@@ -4,7 +4,16 @@ pub fn map_join<T, F>(v: &[T], f: F, sep: &str) -> String
 where
     F: Fn(&T) -> &str,
 {
-    v.iter().map(f).collect::<Vec<_>>().join(sep)
+    let mut iter = v.iter().map(f);
+    let mut out = String::new();
+    if let Some(first) = iter.next() {
+        out.push_str(first);
+    }
+    for item in iter {
+        out.push_str(sep);
+        out.push_str(item);
+    }
+    out
 }
 
 pub fn get_track_album_image_url(track: &rspotify::model::FullTrack) -> Option<&str> {
