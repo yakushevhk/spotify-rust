@@ -49,16 +49,16 @@
 //! accent = "#1ed760"
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Theme {
     pub name: String,
     #[serde(default)]
     pub palette: Palette,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Palette {
     #[serde(default = "default_background")]
     pub background: String,
@@ -223,7 +223,7 @@ impl Default for Palette {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            name: "Default".to_string(),
+            name: "Spotify".to_string(),
             palette: Palette::default(),
         }
     }
@@ -232,12 +232,14 @@ impl Default for Theme {
 impl ThemeConfig {
     pub fn new(path: &std::path::Path) -> anyhow::Result<Self> {
         let file_path = path.join("theme.toml");
-        match std::fs::read_to_string(file_path) {
+        match std::fs::read_to_string(&file_path) {
             Ok(content) => match toml::from_str::<ThemeConfig>(&content) {
                 Ok(mut config) => {
+                    let mut any_invalid = false;
                     for theme in &mut config.themes {
                         let invalid = theme.palette.validate();
                         if !invalid.is_empty() {
+                            any_invalid = true;
                             tracing::warn!(
                                 "theme '{}' has invalid color values: {:?}, using defaults for those",
                                 theme.name,
@@ -278,6 +280,13 @@ impl ThemeConfig {
                             }
                         }
                     }
+                    // Write corrected theme config back to disk
+                    if any_invalid {
+                        let theme_path = path.join("theme.toml");
+                        if let Ok(toml_str) = toml::to_string_pretty(&config) {
+                            let _ = std::fs::write(&theme_path, toml_str);
+                        }
+                    }
                     Ok(config)
                 }
                 Err(e) => {
@@ -295,7 +304,7 @@ impl ThemeConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ThemeConfig {
     #[serde(default)]
     pub themes: Vec<Theme>,

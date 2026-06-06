@@ -156,9 +156,9 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // M8: Handle multi-character non-modifier strings as implicit sequences (e.g. "gg")
-    if sl.chars().count() > 1 {
+    if s.chars().count() > 1 {
         return vec![KeyBinding::Sequence(
-            sl.chars().map(|c| c.to_string()).collect(),
+            s.chars().map(|c| c.to_string()).collect(),
         )];
     }
 

@@ -525,25 +525,34 @@ impl AppConfig {
             config.write_config_file(path)?;
         }
 
+        let mut modified = false;
+
         // M6: seek_duration_secs of 0 makes seeking a no-op with no feedback
         if config.seek_duration_secs == 0 {
             tracing::warn!("seek_duration_secs was 0, setting to 1 (minimum)");
             config.seek_duration_secs = 1;
-            if let Err(e) = config.write_config_file(path) {
-                tracing::warn!("failed to write corrected config: {e}");
-            }
+            modified = true;
+        }
+
+        // H14: volume_scroll_step of 0 makes volume scroll a silent no-op
+        if config.volume_scroll_step == 0 {
+            tracing::warn!("volume_scroll_step was 0, setting to 1 (minimum)");
+            config.volume_scroll_step = 1;
+            modified = true;
         }
 
         if config.device.volume > 100 {
             tracing::warn!("device.volume {} clamped to 100", config.device.volume);
             config.device.volume = 100;
-            if let Err(e) = config.write_config_file(path) {
-                tracing::warn!("failed to write corrected config: {e}");
-            }
+            modified = true;
         }
         if ![96, 160, 320].contains(&config.device.bitrate) {
             tracing::warn!("device.bitrate {} is invalid, using 320", config.device.bitrate);
             config.device.bitrate = 320;
+            modified = true;
+        }
+
+        if modified {
             if let Err(e) = config.write_config_file(path) {
                 tracing::warn!("failed to write corrected config: {e}");
             }

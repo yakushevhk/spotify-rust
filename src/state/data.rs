@@ -243,10 +243,7 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         }
     }
 
@@ -260,7 +257,6 @@ mod tests {
             current_folder_id: 0,
             snapshot_id: "snapshot".to_string(),
             cover_url: None,
-            name_lower: None,
             image_path: None,
         }
     }

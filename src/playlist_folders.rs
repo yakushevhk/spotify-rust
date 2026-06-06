@@ -87,7 +87,6 @@ mod tests {
             current_folder_id: 0,
             snapshot_id: "snapshot".to_string(),
             cover_url: None,
-            name_lower: None,
             image_path: None,
         }
     }

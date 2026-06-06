@@ -185,20 +185,8 @@ pub struct Track {
     #[allow(dead_code)]
     pub added_at: u64,
     #[serde(skip)]
-    /// Cached lowercase name for sorting (computed on first access)
-    #[allow(dead_code)]
-    pub name_lower: Option<String>,
-    #[serde(skip)]
     /// Cached artists display string (pre-computed for hot paths)
     pub artists_display: Option<String>,
-    #[serde(skip)]
-    /// Cached lowercase artist info for sorting
-    #[allow(dead_code)]
-    pub artists_info_lower: Option<String>,
-    #[serde(skip)]
-    /// Cached lowercase album info for sorting
-    #[allow(dead_code)]
-    pub album_info_lower: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -213,10 +201,6 @@ pub struct Album {
     pub added_at: u64,
     #[serde(default)]
     pub cover_url: Option<String>,
-    #[serde(skip)]
-    /// Cached lowercase name for sorting
-    #[allow(dead_code)]
-    pub name_lower: Option<String>,
     #[serde(skip)]
     /// Cached artists display string (pre-computed)
     #[allow(dead_code)]
@@ -254,10 +238,6 @@ pub struct Playlist {
     pub snapshot_id: String,
     #[serde(default)]
     pub cover_url: Option<String>,
-    #[serde(skip)]
-    /// Cached lowercase name for sorting
-    #[allow(dead_code)]
-    pub name_lower: Option<String>,
     #[serde(skip)]
     /// Cached image path (computed once)
     #[allow(dead_code)]
@@ -428,20 +408,19 @@ impl Track {
         self.album.as_ref().map(|a| a.name.as_str()).unwrap_or("")
     }
 
-    /// gets cached lowercase name for sorting (immutable version)
-    #[allow(dead_code)]
-    pub fn name_lower_ref(&self) -> &str {
-        self.name_lower.as_deref().unwrap_or(self.name.as_str())
+    /// gets cached lowercase name for sorting (computed on the fly)
+    pub fn name_lower_ref(&self) -> String {
+        self.name.to_ascii_lowercase()
     }
 
-    /// gets cached lowercase artist info for sorting (immutable version)
+    /// gets cached lowercase artist info for sorting (computed on the fly)
     pub fn artists_info_lower_ref(&self) -> String {
-        self.artists_info_lower.clone().unwrap_or_else(|| self.artists_info().to_ascii_lowercase())
+        self.artists_info().to_ascii_lowercase()
     }
 
-    /// gets cached lowercase album info for sorting (immutable version)
+    /// gets cached lowercase album info for sorting (computed on the fly)
     pub fn album_info_lower_ref(&self) -> String {
-        self.album_info_lower.clone().unwrap_or_else(|| self.album_info().to_ascii_lowercase())
+        self.album_info().to_ascii_lowercase()
     }
 
     /// gets the track's name, including an explicit label
@@ -486,10 +465,7 @@ impl Track {
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: 0,
-                name_lower: None,
                 artists_display,
-                artists_info_lower: None,
-                album_info_lower: None,
             })
         } else {
             None
@@ -528,10 +504,7 @@ impl Track {
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: added_at.map(|t| t.timestamp() as u64).unwrap_or_default(),
-                name_lower: None,
                 artists_display,
-                artists_info_lower: None,
-                album_info_lower: None,
             })
         } else {
             None
@@ -587,7 +560,6 @@ impl Album {
                 }),
             added_at: 0,
             cover_url: album.images.first().map(|img| img.url.clone()),
-            name_lower: None,
             artists_display,
             image_path: None,
         })
@@ -623,7 +595,6 @@ impl From<rspotify::model::FullAlbum> for Album {
             typ: Some(album.album_type),
             added_at: 0,
             cover_url: album.images.first().map(|img| img.url.clone()),
-            name_lower: None,
             artists_display,
             image_path: None,
         }
@@ -639,10 +610,10 @@ impl From<rspotify::model::SavedAlbum> for Album {
 }
 
 impl Album {
-    /// gets cached lowercase name for sorting (immutable version)
+    /// gets cached lowercase name for sorting (computed on the fly)
     #[allow(dead_code)]
     pub fn name_lower_ref(&self) -> String {
-        self.name_lower.clone().unwrap_or_else(|| self.name.to_ascii_lowercase())
+        self.name.to_ascii_lowercase()
     }
 
     /// gets cached artists display string (pre-computed)
@@ -728,7 +699,6 @@ impl From<rspotify::model::SimplifiedPlaylist> for Playlist {
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
             cover_url: playlist.images.first().map(|img| img.url.clone()),
-            name_lower: None,
             image_path: None,
         }
     }
@@ -754,7 +724,6 @@ impl From<rspotify::model::FullPlaylist> for Playlist {
             current_folder_id: 0,
             snapshot_id: playlist.snapshot_id,
             cover_url: playlist.images.first().map(|img| img.url.clone()),
-            name_lower: None,
             image_path: None,
         }
     }
@@ -767,9 +736,9 @@ impl std::fmt::Display for Playlist {
 }
 
 impl Playlist {
-    /// gets cached lowercase name for sorting (immutable version)
+    /// gets cached lowercase name for sorting (computed on the fly)
     pub fn name_lower_ref(&self) -> String {
-        self.name_lower.clone().unwrap_or_else(|| self.name.to_ascii_lowercase())
+        self.name.to_ascii_lowercase()
     }
 }
 
@@ -1100,10 +1069,7 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
         assert_eq!(track.artists_info(), "Artist 1, Artist 2");
@@ -1119,10 +1085,7 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
         assert_eq!(track.album_info(), "");
@@ -1142,17 +1105,13 @@ mod tests {
                 typ: None,
                 added_at: 0,
                 cover_url: None,
-                name_lower: None,
                 artists_display: None,
                 image_path: None,
             }),
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
         assert_eq!(track.album_info(), "Test Album");
@@ -1168,18 +1127,15 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: Some("cached".to_string()),
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
-        // Should return cached value
-        assert_eq!(track.name_lower_ref(), "cached");
+        // Should return lowercase computed on the fly
+        assert_eq!(track.name_lower_ref(), "test track");
     }
 
     #[test]
-    fn test_track_name_lower_ref_no_cache() {
+    fn test_track_name_lower_ref_lowercase() {
         let track = Track {
             id: TrackId::from_id("3n3Ppam7vgaVa1iaRUc9Lp").unwrap().into_static(),
             name: "Test TRACK".to_string(),
@@ -1188,14 +1144,11 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
-        // Should return original name when no cache
-        assert_eq!(track.name_lower_ref(), "Test TRACK");
+        // Should return lowercased name
+        assert_eq!(track.name_lower_ref(), "test track");
     }
 
     #[test]
@@ -1208,10 +1161,7 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
 
         let name = track.display_name();
@@ -1230,7 +1180,6 @@ mod tests {
             typ: None,
             added_at: 0,
             cover_url: None,
-            name_lower: None,
             artists_display: None,
             image_path: None,
         };
@@ -1248,7 +1197,6 @@ mod tests {
             typ: None,
             added_at: 0,
             cover_url: None,
-            name_lower: None,
             artists_display: None,
             image_path: None,
         };
@@ -1266,7 +1214,6 @@ mod tests {
             typ: None,
             added_at: 0,
             cover_url: None,
-            name_lower: None,
             artists_display: None,
             image_path: None,
         };
@@ -1284,7 +1231,6 @@ mod tests {
             typ: Some(rspotify::model::AlbumType::Album),
             added_at: 0,
             cover_url: None,
-            name_lower: None,
             artists_display: None,
             image_path: None,
         };
@@ -1302,7 +1248,6 @@ mod tests {
             typ: None,
             added_at: 0,
             cover_url: None,
-            name_lower: None,
             artists_display: None,
             image_path: None,
         };
@@ -1320,7 +1265,6 @@ mod tests {
             typ: None,
             added_at: 0,
             cover_url: None,
-            name_lower: Some("test album".to_string()),
             artists_display: None,
             image_path: None,
         };
@@ -1328,23 +1272,7 @@ mod tests {
         assert_eq!(album.name_lower_ref(), "test album");
     }
 
-    #[test]
-    fn test_album_name_lower_ref_no_cache() {
-        let album = Album {
-            id: AlbumId::from_id("4uLU6hMCjMI75M1A2tKUQC").unwrap().into_static(),
-            release_date: "2024".to_string(),
-            name: "TEST Album".to_string(),
-            artists: vec![],
-            typ: None,
-            added_at: 0,
-            cover_url: None,
-            name_lower: None,
-            artists_display: None,
-            image_path: None,
-        };
-
-        assert_eq!(album.name_lower_ref(), "test album");
-    }
+    // test_album_name_lower_ref_no_cache removed: now identical to above since cache was deleted
 
     // ============ Artist Tests ============
 
@@ -1401,30 +1329,13 @@ mod tests {
             current_folder_id: 0,
             snapshot_id: "snapshot".to_string(),
             cover_url: None,
-            name_lower: Some("test playlist".to_string()),
             image_path: None,
         };
 
         assert_eq!(playlist.name_lower_ref(), "test playlist");
     }
 
-    #[test]
-    fn test_playlist_name_lower_ref_no_cache() {
-        let playlist = Playlist {
-            id: PlaylistId::from_id("37i9dQZF1DXcBWIGoYBM5M").unwrap().into_static(),
-            collaborative: false,
-            name: "TEST Playlist".to_string(),
-            owner: ("Owner".to_string(), UserId::from_id("owner_id").unwrap().into_static()),
-            desc: "Description".to_string(),
-            current_folder_id: 0,
-            snapshot_id: "snapshot".to_string(),
-            cover_url: None,
-            name_lower: None,
-            image_path: None,
-        };
-
-        assert_eq!(playlist.name_lower_ref(), "test playlist");
-    }
+    // test_playlist_name_lower_ref_no_cache removed: now identical to above since cache was deleted
 
     // ============ TracksId Tests ============
 
@@ -1560,7 +1471,6 @@ mod tests {
             current_folder_id: 0,
             snapshot_id: "snapshot".to_string(),
             cover_url: None,
-            name_lower: None,
             image_path: None,
         };
 
@@ -1680,10 +1590,7 @@ mod tests {
             duration: std::time::Duration::from_secs(180),
             explicit: false,
             added_at: 0,
-            name_lower: None,
             artists_display: None,
-            artists_info_lower: None,
-            album_info_lower: None,
         };
         let item = Item::Track(track);
         assert!(matches!(item, Item::Track(_)));

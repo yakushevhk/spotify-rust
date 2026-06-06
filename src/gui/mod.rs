@@ -112,7 +112,7 @@ impl SortState {
     pub fn compare(&self, a: &state::Track, b: &state::Track) -> std::cmp::Ordering {
         let ord = match self.column {
             // Use cached lowercase values for sorting (avoids O(n log n) allocations)
-            SortColumn::Title => a.name_lower_ref().cmp(b.name_lower_ref()),
+            SortColumn::Title => a.name_lower_ref().cmp(&b.name_lower_ref()),
             SortColumn::Artist => a.artists_info_lower_ref().cmp(&b.artists_info_lower_ref()),
             SortColumn::Album => a.album_info_lower_ref().cmp(&b.album_info_lower_ref()),
             SortColumn::Duration => a.duration.cmp(&b.duration),
