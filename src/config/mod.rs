@@ -574,7 +574,7 @@ impl AppConfig {
                 if let Some(parent) = config_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                let temp_path = config_path.with_extension("toml.tmp");
+                let temp_path = config_path.with_extension(format!("toml.tmp.{}", std::process::id()));
                 std::fs::write(&temp_path, content)?;
                 std::fs::rename(&temp_path, &config_path)?;
                 Ok(())

@@ -118,6 +118,17 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
                 break;
             }
         }
+        let special_keys = [
+            "space", "enter", "escape", "tab", "backtab", "backspace",
+            "home", "end", "pageup", "pagedown",
+            "arrowup", "arrowdown", "arrowleft", "arrowright",
+            "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+        ];
+        for sk in &special_keys {
+            if rest == *sk {
+                return vec![KeyBinding::Special(sk.to_string())];
+            }
+        }
         if let Some(ch) = rest.chars().next() {
             return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
         }

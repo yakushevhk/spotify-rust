@@ -173,24 +173,27 @@ pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool)
                 eprintln!("{msg}");
 
                 let login_redirect_uri = auth_config.login_redirect_uri.clone();
-                let creds = tokio::time::timeout(
-                    std::time::Duration::from_secs(300),
-                    tokio::task::spawn_blocking(move || {
-                        let client_builder = OAuthClientBuilder::new(
-                            SPOTIFY_CLIENT_ID,
-                            &login_redirect_uri,
-                            OAUTH_SCOPES.to_vec(),
-                        )
-                        .open_in_browser();
-                        let oauth_client = client_builder.build()?;
-                        oauth_client
-                            .get_access_token()
-                            .map(|t| Credentials::with_access_token(t.access_token))
-                    }),
-                )
-                .await
-                .map_err(|_| anyhow::anyhow!("OAuth login timed out. Please try again."))?
-                .context("blocking task panicked")??;
+                let mut handle = tokio::task::spawn_blocking(move || {
+                    let client_builder = OAuthClientBuilder::new(
+                        SPOTIFY_CLIENT_ID,
+                        &login_redirect_uri,
+                        OAUTH_SCOPES.to_vec(),
+                    )
+                    .open_in_browser();
+                    let oauth_client = client_builder.build()?;
+                    oauth_client
+                        .get_access_token()
+                        .map(|t| Credentials::with_access_token(t.access_token))
+                });
+                let creds = tokio::select! {
+                    result = &mut handle => {
+                        result.context("blocking task panicked")??
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
+                        handle.abort();
+                        return Err(anyhow::anyhow!("OAuth login timed out. Please try again."));
+                    }
+                };
                 Ok(creds)
             } else {
                 anyhow::bail!(msg);
