@@ -5167,6 +5167,7 @@ dependencies = [
  "fuzzy-matcher",
  "html-escape",
  "image",
+ "indexmap",
  "librespot-connect",
  "librespot-core",
  "librespot-metadata",

@@ -1356,11 +1356,11 @@ current_view: View::Library,
 
     /// Updates context_tracks and context_title from the current playback context.
     ///
-    /// Lock ordering: data lock MUST be acquired before player lock to avoid deadlocks.
-    /// This is consistent with other functions in this impl that acquire both locks.
+    /// Lock ordering: player lock MUST be acquired before data lock (F8 fix).
+    /// Following the documented hierarchy: ui → player → data → toast_queue.
     fn update_context_tracks(&mut self) {
-        let data = self.state.data.read();
         let player = self.state.player.read();
+        let data = self.state.data.read();
         if let Some(ref playback) = player.playback {
             if let Some(ref context) = playback.context {
                 let uri = context.uri.clone();

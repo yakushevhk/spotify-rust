@@ -1,6 +1,8 @@
 use std::io::{BufReader, BufWriter};
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
+use std::path::Path;
 
+use indexmap::IndexMap;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::LazyLock;
 
@@ -60,7 +62,7 @@ pub struct MemoryCaches {
 /// Spotify browse data
 pub struct BrowseData {
     pub categories: Vec<Category>,
-    pub category_playlists: HashMap<String, Vec<Playlist>>,
+    pub category_playlists: IndexMap<String, Vec<Playlist>>,
     pub categories_loading: bool,
 }
 
@@ -72,9 +74,7 @@ impl BrowseData {
     pub fn insert_category_playlists(&mut self, category_id: String, playlists: Vec<Playlist>) {
         self.category_playlists.insert(category_id, playlists);
         if self.category_playlists.len() > MAX_CATEGORY_PLAYLISTS {
-            if let Some(oldest_key) = self.category_playlists.keys().next().cloned() {
-                self.category_playlists.remove(&oldest_key);
-            }
+            self.category_playlists.shift_remove_index(0);
         }
     }
 }
