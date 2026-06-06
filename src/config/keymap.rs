@@ -77,12 +77,17 @@ impl KeymapConfig {
     /// replace the keybindings of that binding.
     pub fn apply_overrides(&self, defaults: &mut [CommandBinding]) {
         for km in &self.keymaps {
+            let mut matched = false;
             // K4: find all matching bindings, not just the first
             for binding in defaults.iter_mut().filter(|b| b.command.0 == km.command) {
                 let parsed = parse_key_sequence(&km.key_sequence);
                 if !parsed.is_empty() {
                     binding.keybindings = parsed;
                 }
+                matched = true;
+            }
+            if !matched {
+                tracing::warn!("unknown command in keymap: {}", km.command);
             }
         }
     }

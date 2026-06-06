@@ -532,11 +532,26 @@ impl AppClient {
                 if let Err(err) = user_client.auto_reauth().await {
                     tracing::warn!("Auto reauth failed: {err:#}, attempting manual refresh");
 
-                    if let Err(refresh_err) = user_client.refresh_token().await {
-                        tracing::error!("Token refresh failed: {refresh_err:#}");
-
+                    let mut refresh_err = None;
+                    for attempt in 0..2 {
+                        if let Err(e) = user_client.refresh_token().await {
+                            if attempt == 0 {
+                                tracing::warn!("Token refresh failed, retrying: {:#}", e);
+                                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                                refresh_err = Some(e);
+                                continue;
+                            }
+                            return Err(anyhow::anyhow!(
+                                "Failed to refresh user client token. Please re-authenticate: {:#}",
+                                e
+                            ));
+                        }
+                        refresh_err = None;
+                        break;
+                    }
+                    if let Some(e) = refresh_err {
                         return Err(anyhow::anyhow!(
-                            "Failed to refresh user client token. Please re-authenticate by running the GUI or clearing cache: {refresh_err:#}"
+                            "Failed to refresh user client token. Please re-authenticate by running the GUI or clearing cache: {e:#}"
                         ));
                     }
                 }
@@ -1071,10 +1086,7 @@ impl AppClient {
             } => {
                 let user_id = match state.data.read().user_data.user.as_ref() {
                     Some(u) => u.id.clone(),
-                    None => {
-                        tracing::warn!("User data not loaded yet, cannot create playlist");
-                        return Ok(());
-                    }
+                    None => anyhow::bail!("Cannot create playlist: user data not loaded"),
                 };
                 self.create_new_playlist(
                     state,
@@ -1345,10 +1357,9 @@ impl AppClient {
 
         // Prioritize the `default_device` specified in the application's configurations,
         // otherwise, use the first available device.
-        let id = devices
-            .iter()
-            .position(|d| d.0 == configs.app_config.default_device)
-            .unwrap_or_default();
+        let Some(id) = devices.iter().position(|d| d.0 == configs.app_config.default_device) else {
+            return Err(anyhow::anyhow!("Default device '{}' not found", configs.app_config.default_device));
+        };
 
         Ok(Some(devices.swap_remove(id).1))
     }
@@ -2574,7 +2585,7 @@ impl AppClient {
                         }
                         rspotify::model::PlayableItem::Unknown(_) => {}
                     },
-                    &_ => {}
+                    other => tracing::warn!("Unknown notification placeholder: {other}"),
                 }
             }
             if ptr < format_str.len() {

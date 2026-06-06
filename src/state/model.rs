@@ -489,8 +489,20 @@ impl Track {
     pub fn try_from_simplified_track(track: rspotify::model::SimplifiedTrack) -> Option<Self> {
         if track.is_playable.unwrap_or(true) {
             let id = match track.linked_from {
-                Some(d) => d.id?,
-                None => track.id?,
+                Some(d) => {
+                    let Some(id) = d.id else {
+                        tracing::debug!("Dropping track without ID: {}", track.name);
+                        return None;
+                    };
+                    id
+                }
+                None => {
+                    let Some(id) = track.id else {
+                        tracing::debug!("Dropping track without ID: {}", track.name);
+                        return None;
+                    };
+                    id
+                }
             };
             let artists = from_simplified_artists_to_artists(track.artists);
             let artists_display = Some(map_join(&artists, |a| &a.name, ", "));
@@ -519,8 +531,20 @@ impl Track {
     ) -> Option<Self> {
         if track.is_playable.unwrap_or(true) {
             let id = match track.linked_from {
-                Some(d) => d.id?,
-                None => track.id?,
+                Some(d) => {
+                    let Some(id) = d.id else {
+                        tracing::debug!("Dropping track without ID: {}", track.name);
+                        return None;
+                    };
+                    id
+                }
+                None => {
+                    let Some(id) = track.id else {
+                        tracing::debug!("Dropping track without ID: {}", track.name);
+                        return None;
+                    };
+                    id
+                }
             };
             let artists = from_simplified_artists_to_artists(track.artists);
             let artists_display = Some(map_join(&artists, |a| &a.name, ", "));

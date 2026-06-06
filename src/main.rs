@@ -447,10 +447,6 @@ async fn run_daemon() -> Result<()> {
 }
 
 fn run_gui() -> Result<()> {
-    if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
-        eprintln!("Warning: failed to install rustls default crypto provider: {e:?}");
-    }
-
     let config_folder = config::get_config_folder_path()?;
     if !config_folder.exists() {
         std::fs::create_dir_all(&config_folder)?;
