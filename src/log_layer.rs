@@ -60,6 +60,17 @@ struct MessageVisitor {
 }
 
 impl tracing::field::Visit for MessageVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_string();
+        } else {
+            if !self.message.is_empty() {
+                self.message.push(' ');
+            }
+            self.message.push_str(&format!("{}={}", field.name(), value));
+        }
+    }
+
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn core::fmt::Debug) {
         if field.name() == "message" {
             // M5: use Display formatting for strings to avoid escaped quotes

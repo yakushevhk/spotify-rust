@@ -13,9 +13,10 @@ pub struct ImageCache {
     textures: LruCache<String, egui::TextureHandle>,
     download_tx: Option<mpsc::Sender<(String, PathBuf)>>,
     download_thread: Option<std::thread::JoinHandle<()>>,
-    in_flight: HashSet<String>,
-    done_rx: mpsc::Receiver<String>,
+    in_flight: HashSet<PathBuf>,
+    done_rx: mpsc::Receiver<(PathBuf, bool)>,
     known_paths: HashSet<PathBuf>,
+    failed: HashSet<PathBuf>,
 }
 
 impl Drop for ImageCache {
@@ -32,7 +33,7 @@ impl ImageCache {
     /// Issue #10: Creates a new ImageCache with graceful handling of thread spawn failure
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(String, PathBuf)>();
-        let (done_tx, done_rx) = mpsc::channel::<String>();
+        let (done_tx, done_rx) = mpsc::channel::<(PathBuf, bool)>();
 
         // Issue #10: Handle thread spawn failure gracefully instead of panicking
         let handle_result = std::thread::Builder::new()
@@ -49,14 +50,14 @@ impl ImageCache {
                     .timeout(std::time::Duration::from_secs(15))
                     .build()
                     .unwrap_or_default();
-                while let Ok((url, path)) = rx.recv() {
+                while let Ok((_url, path)) = rx.recv() {
                     if path.exists() {
-                        let _ = done_tx.send(url);
+                        let _ = done_tx.send((path.clone(), true));
                         continue;
                     }
                     let result = rt.block_on(async {
                         let resp = http
-                            .get(&url)
+                            .get(&_url)
                             .send()
                             .await
                             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -74,10 +75,11 @@ impl ImageCache {
                         std::fs::rename(&tmp, &path)?;
                         Ok::<(), anyhow::Error>(())
                     });
+                    let success = result.is_ok();
                     if let Err(e) = &result {
-                        tracing::warn!("Image download failed for {url}: {e:#}");
+                        tracing::warn!("Image download failed for path {:?}: {e:#}", path);
                     }
-                    let _ = done_tx.send(url);
+                    let _ = done_tx.send((path, success));
                 }
             });
 
@@ -101,6 +103,7 @@ impl ImageCache {
             download_thread,
             in_flight: HashSet::new(),
             known_paths: HashSet::new(),
+            failed: HashSet::new(),
             done_rx,
         }
     }
@@ -114,27 +117,36 @@ impl ImageCache {
         }
 
         // Drain completion channel
-        while let Ok(done_url) = self.done_rx.try_recv() {
-            self.in_flight.remove(&done_url);
+        while let Ok((done_path, success)) = self.done_rx.try_recv() {
+            self.in_flight.remove(&done_path);
+            if !success {
+                self.failed.insert(done_path);
+            }
         }
         // Use cached path existence to avoid filesystem calls every frame
         let path_buf = path.to_path_buf();
         if self.known_paths.contains(&path_buf) {
-            self.in_flight.remove(url);
+            self.in_flight.remove(&path_buf);
             return;
         }
         if path.exists() {
-            self.known_paths.insert(path_buf);
-            self.in_flight.remove(url);
+            self.known_paths.insert(path_buf.clone());
+            self.in_flight.remove(&path_buf);
             return;
         }
-        if self.in_flight.contains(url) {
+        if self.in_flight.contains(&path_buf) {
             return;
         }
-        self.in_flight.insert(url.to_string());
+        self.failed.remove(&path_buf);
+        self.in_flight.insert(path_buf);
         if let Some(ref tx) = self.download_tx {
             let _ = tx.send((url.to_string(), path.to_path_buf()));
         }
+    }
+
+    /// Check if an image download has permanently failed
+    pub fn is_failed(&self, path: &Path) -> bool {
+        self.failed.contains(path)
     }
 
     pub fn get_texture(

@@ -137,7 +137,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // Single character key
-    if s.len() == 1 {
+    if s.chars().count() == 1 {
         let c = s.chars().next().unwrap();
         return vec![KeyBinding::Key(c)];
     }

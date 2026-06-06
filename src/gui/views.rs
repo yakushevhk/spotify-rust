@@ -874,6 +874,23 @@ fn skeleton_rect(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl Into<e
     theme::draw_shimmer_rect(ui.painter(), rect, corner_radius, time);
 }
 
+fn failed_image_icon(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl Into<egui::CornerRadius> + Copy) {
+    let r = corner_radius.into();
+    ui.painter().rect_filled(rect, r, theme::bg_active());
+    let icon_size = 24.0;
+    let icon_rect = egui::Rect::from_center_size(
+        rect.center(),
+        egui::vec2(icon_size, icon_size),
+    );
+    ui.painter().text(
+        icon_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "⚠",
+        egui::FontId::proportional(icon_size as f32),
+        theme::text_dim(),
+    );
+}
+
 fn truncate_text_binary(
     ui: &egui::Ui,
     text: &str,
@@ -961,6 +978,10 @@ fn grid_card(
                 egui::FontId::proportional(1.0),
                 egui::Color32::TRANSPARENT,
             );
+        } else if image_cache.is_failed(path) {
+            // Download permanently failed - show fallback icon
+            failed_image_icon(ui, art_rect, theme::ART_CORNER_RADIUS);
+            art_drawn = true;
         }
     }
 

@@ -233,6 +233,7 @@ impl AppClient {
 
     /// Initialize the application's playback upon creating a new session or during startup
     pub async fn initialize_playback(&self, state: &SharedState) {
+        state.push_toast("Connecting to Spotify...");
         let handle = tokio::task::spawn({
             let client = self.clone();
             let state = state.clone();
@@ -248,6 +249,7 @@ impl AppClient {
                     }
 
                     if state.player.read().playback.is_some() {
+                        state.push_toast("Connected");
                         break;
                     }
 
@@ -269,6 +271,7 @@ impl AppClient {
                                 } else {
                                     tracing::info!("Connection succeeded (device_id={id})!");
                                     state.player.write().buffered_playback = None;
+                                    state.push_toast("Connected");
                                     break;
                                 }
                             }
