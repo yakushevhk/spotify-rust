@@ -345,36 +345,53 @@ impl ContextMenu {
         items
     }
 
-    fn show_items(show: &Show) -> Vec<MenuItem> {
-        vec![
-            MenuItem {
-                icon: "\u{25B6}",
-                label: "Play",
-                destructive: false,
-                action: MenuAction::PlayContext(Playback::Context(
-                    state::ContextId::Show(show.id.clone()),
-                    None,
-                )),
-            },
-            MenuItem {
+    fn show_items(show: &Show, state: &SharedState) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+
+        items.push(MenuItem {
+            icon: "\u{25B6}",
+            label: "Play",
+            destructive: false,
+            action: MenuAction::PlayContext(Playback::Context(
+                state::ContextId::Show(show.id.clone()),
+                None,
+            )),
+        });
+
+        let is_saved = state.data.read().user_data.saved_shows.iter().any(|s| s.id == show.id);
+
+        if is_saved {
+            items.push(MenuItem {
+                icon: "\u{1F5D1}",
+                label: "Remove from Library",
+                destructive: true,
+                action: MenuAction::RemoveShowFromLibrary(show.id.clone()),
+            });
+        } else {
+            items.push(MenuItem {
                 icon: "\u{2795}",
                 label: "Add to Library",
                 destructive: false,
                 action: MenuAction::AddShowToLibrary(show.clone()),
-            },
-            MenuItem {
-                icon: "\u{1F50D}",
-                label: "Go to Show",
-                destructive: false,
-                action: MenuAction::GoToShow(show.clone()),
-            },
-            MenuItem {
-                icon: "\u{1F5D1}",
-                label: "Unfollow",
-                destructive: true,
-                action: MenuAction::RemoveShowFromLibrary(show.id.clone()),
-            },
-        ]
+            });
+        }
+
+        items.push(MenuItem {
+            icon: "\u{1F50D}",
+            label: "Go to Show",
+            destructive: false,
+            action: MenuAction::GoToShow(show.clone()),
+        });
+
+        let uri = format!("https://open.spotify.com/show/{}", show.id.id());
+        items.push(MenuItem {
+            icon: "\u{1F517}",
+            label: "Copy Link",
+            destructive: false,
+            action: MenuAction::CopyLink(uri),
+        });
+
+        items
     }
 
     fn episode_items(episode: &Episode, show: &Option<Show>) -> Vec<MenuItem> {
@@ -437,7 +454,7 @@ impl ContextMenu {
             ContextTarget::Album(album) => Self::album_items(album, state),
             ContextTarget::Artist(artist) => Self::artist_items(artist),
             ContextTarget::Playlist(playlist) => Self::playlist_items(playlist),
-            ContextTarget::Show(show) => Self::show_items(show),
+            ContextTarget::Show(show) => Self::show_items(show, state),
             ContextTarget::Episode { episode, show } => Self::episode_items(episode, show),
         };
 

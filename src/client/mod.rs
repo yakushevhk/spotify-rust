@@ -763,18 +763,30 @@ impl AppClient {
 
         match request {
             ClientRequest::GetBrowseCategories => {
-                let categories = self.browse_categories().await?;
-                let mut data = state.data.write();
-                data.browse.categories = categories;
-                data.browse.categories_loading = false;
+                let result = self.browse_categories().await;
+                {
+                    let mut data = state.data.write();
+                    data.browse.categories_loading = false;
+                    if let Ok(ref categories) = result {
+                        data.browse.categories = categories.clone();
+                    }
+                }
+                if let Err(e) = result {
+                    return Err(e.into());
+                }
             }
             ClientRequest::GetBrowseCategoryPlaylists(category) => {
-                let playlists = self.browse_category_playlists(&category.id).await?;
-                state
-                    .data
-                    .write()
-                    .browse
-                    .insert_category_playlists(category.id, playlists);
+                let result = self.browse_category_playlists(&category.id).await;
+                {
+                    let mut data = state.data.write();
+                    data.browse.category_playlists_loading = None;
+                    if let Ok(ref playlists) = result {
+                        data.browse.insert_category_playlists(category.id, playlists.clone());
+                    }
+                }
+                if let Err(e) = result {
+                    return Err(e.into());
+                }
             }
             ClientRequest::GetLyrics { track_id } => {
                 let uri = track_id.uri();
@@ -1357,8 +1369,13 @@ impl AppClient {
 
         // Prioritize the `default_device` specified in the application's configurations,
         // otherwise, use the first available device.
-        let Some(id) = devices.iter().position(|d| d.0 == configs.app_config.default_device) else {
-            return Err(anyhow::anyhow!("Default device '{}' not found", configs.app_config.default_device));
+        let id = devices.iter().position(|d| d.0 == configs.app_config.default_device)
+            .or_else(|| {
+                tracing::warn!("Default device '{}' not found, using first available device", configs.app_config.default_device);
+                devices.first().map(|_| 0)
+            });
+        let Some(id) = id else {
+            return Err(anyhow::anyhow!("No available devices found"));
         };
 
         Ok(Some(devices.swap_remove(id).1))

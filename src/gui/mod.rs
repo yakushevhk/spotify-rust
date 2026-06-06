@@ -531,6 +531,7 @@ current_view: View::Library,
                     self.view_history.push(self.current_view.clone());
                     self.forward_history.clear();
                 }
+                self.state.data.write().browse.category_playlists_loading = Some(id.clone());
                 self.send_request(ClientRequest::GetBrowseCategoryPlaylists(
                     state::Category {
                         id: id.clone(),

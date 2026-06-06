@@ -2380,9 +2380,10 @@ pub fn render_browse_category_playlists(
         .get(category_id)
         .cloned()
         .unwrap_or_default();
+    let is_loading = data.browse.category_playlists_loading.as_deref() == Some(category_id);
     drop(data);
 
-    if playlists.is_empty() {
+    if is_loading && playlists.is_empty() {
         ui.add_space(60.0);
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 30.0);

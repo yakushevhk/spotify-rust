@@ -64,6 +64,7 @@ pub struct BrowseData {
     pub categories: Vec<Category>,
     pub category_playlists: IndexMap<String, Vec<Playlist>>,
     pub categories_loading: bool,
+    pub category_playlists_loading: Option<String>,
 }
 
 /// Maximum number of category playlists to cache before evicting oldest entries.

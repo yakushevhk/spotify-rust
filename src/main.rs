@@ -68,9 +68,13 @@ fn rotate_backtrace_files(log_folder: &std::path::Path, log_prefix: &str) -> Res
     });
 
     // Remove oldest files if we exceed the limit
-    while backtrace_files.len() >= MAX_BACKTRACE_FILES {
+    let mut safety = MAX_BACKTRACE_FILES * 2;
+    while backtrace_files.len() >= MAX_BACKTRACE_FILES && safety > 0 {
+        safety -= 1;
         if let Some(oldest) = backtrace_files.first() {
-            let _ = std::fs::remove_file(oldest.path());
+            if std::fs::remove_file(oldest.path()).is_err() {
+                tracing::warn!("Failed to remove old backtrace file: {:?}", oldest.path());
+            }
             backtrace_files.remove(0);
         }
     }
