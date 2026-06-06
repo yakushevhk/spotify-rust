@@ -146,6 +146,47 @@ fn default_lyrics_played() -> String { "#555555".to_string() }
 fn default_lyrics_upcoming() -> String { "#cccccc".to_string() }
 fn default_lyrics_bg() -> String { "#000000".to_string() }
 
+impl Palette {
+    /// Validate all color fields and return a list of invalid field names.
+    /// Each color must match `^#[0-9a-fA-F]{6}$` or `^#[0-9a-fA-F]{8}$`.
+    pub fn validate(&self) -> Vec<&'static str> {
+        fn is_valid_color(s: &str) -> bool {
+            (s.len() == 7 || s.len() == 9)
+                && s.starts_with('#')
+                && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+        }
+
+        let mut invalid = Vec::new();
+        if !is_valid_color(&self.background) { invalid.push("background"); }
+        if !is_valid_color(&self.foreground) { invalid.push("foreground"); }
+        if !is_valid_color(&self.accent) { invalid.push("accent"); }
+        if !is_valid_color(&self.accent_hover) { invalid.push("accent_hover"); }
+        if !is_valid_color(&self.accent_dark) { invalid.push("accent_dark"); }
+        if !is_valid_color(&self.bg_dark) { invalid.push("bg_dark"); }
+        if !is_valid_color(&self.bg_card) { invalid.push("bg_card"); }
+        if !is_valid_color(&self.bg_hover) { invalid.push("bg_hover"); }
+        if !is_valid_color(&self.bg_active) { invalid.push("bg_active"); }
+        if !is_valid_color(&self.bg_elevated) { invalid.push("bg_elevated"); }
+        if !is_valid_color(&self.bg_input) { invalid.push("bg_input"); }
+        if !is_valid_color(&self.bg_selected) { invalid.push("bg_selected"); }
+        if !is_valid_color(&self.text_primary) { invalid.push("text_primary"); }
+        if !is_valid_color(&self.text_secondary) { invalid.push("text_secondary"); }
+        if !is_valid_color(&self.text_dim) { invalid.push("text_dim"); }
+        if !is_valid_color(&self.text_muted) { invalid.push("text_muted"); }
+        if !is_valid_color(&self.text_hint) { invalid.push("text_hint"); }
+        if !is_valid_color(&self.border) { invalid.push("border"); }
+        if !is_valid_color(&self.divider) { invalid.push("divider"); }
+        if !is_valid_color(&self.success) { invalid.push("success"); }
+        if !is_valid_color(&self.error) { invalid.push("error"); }
+        if !is_valid_color(&self.warning) { invalid.push("warning"); }
+        if !is_valid_color(&self.lyrics_current) { invalid.push("lyrics_current"); }
+        if !is_valid_color(&self.lyrics_played) { invalid.push("lyrics_played"); }
+        if !is_valid_color(&self.lyrics_upcoming) { invalid.push("lyrics_upcoming"); }
+        if !is_valid_color(&self.lyrics_bg) { invalid.push("lyrics_bg"); }
+        invalid
+    }
+}
+
 impl Default for Palette {
     fn default() -> Self {
         Self {
@@ -192,8 +233,53 @@ impl ThemeConfig {
     pub fn new(path: &std::path::Path) -> anyhow::Result<Self> {
         let file_path = path.join("theme.toml");
         match std::fs::read_to_string(file_path) {
-            Ok(content) => match toml::from_str(&content) {
-                Ok(config) => Ok(config),
+            Ok(content) => match toml::from_str::<ThemeConfig>(&content) {
+                Ok(mut config) => {
+                    for theme in &mut config.themes {
+                        let invalid = theme.palette.validate();
+                        if !invalid.is_empty() {
+                            tracing::warn!(
+                                "theme '{}' has invalid color values: {:?}, using defaults for those",
+                                theme.name,
+                                invalid
+                            );
+                            let defaults = Palette::default();
+                            let palette = &mut theme.palette;
+                            for field in &invalid {
+                                match *field {
+                                    "background" => palette.background = defaults.background.clone(),
+                                    "foreground" => palette.foreground = defaults.foreground.clone(),
+                                    "accent" => palette.accent = defaults.accent.clone(),
+                                    "accent_hover" => palette.accent_hover = defaults.accent_hover.clone(),
+                                    "accent_dark" => palette.accent_dark = defaults.accent_dark.clone(),
+                                    "bg_dark" => palette.bg_dark = defaults.bg_dark.clone(),
+                                    "bg_card" => palette.bg_card = defaults.bg_card.clone(),
+                                    "bg_hover" => palette.bg_hover = defaults.bg_hover.clone(),
+                                    "bg_active" => palette.bg_active = defaults.bg_active.clone(),
+                                    "bg_elevated" => palette.bg_elevated = defaults.bg_elevated.clone(),
+                                    "bg_input" => palette.bg_input = defaults.bg_input.clone(),
+                                    "bg_selected" => palette.bg_selected = defaults.bg_selected.clone(),
+                                    "text_primary" => palette.text_primary = defaults.text_primary.clone(),
+                                    "text_secondary" => palette.text_secondary = defaults.text_secondary.clone(),
+                                    "text_dim" => palette.text_dim = defaults.text_dim.clone(),
+                                    "text_muted" => palette.text_muted = defaults.text_muted.clone(),
+                                    "text_hint" => palette.text_hint = defaults.text_hint.clone(),
+                                    "border" => palette.border = defaults.border.clone(),
+                                    "divider" => palette.divider = defaults.divider.clone(),
+                                    "success" => palette.success = defaults.success.clone(),
+                                    "error" => palette.error = defaults.error.clone(),
+                                    "warning" => palette.warning = defaults.warning.clone(),
+                                    "lyrics_current" => palette.lyrics_current = defaults.lyrics_current.clone(),
+                                    "lyrics_played" => palette.lyrics_played = defaults.lyrics_played.clone(),
+                                    "lyrics_upcoming" => palette.lyrics_upcoming = defaults.lyrics_upcoming.clone(),
+                                    "lyrics_bg" => palette.lyrics_bg = defaults.lyrics_bg.clone(),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Ok(config)
+                }
                 Err(e) => {
                     tracing::warn!("failed to parse theme config: {:#}, using defaults", e);
                     Ok(Self::default())

@@ -90,8 +90,7 @@ pub fn render(
                         let artist_name = album.artists.first().map(|a| a.name.as_str()).unwrap_or("");
                         let id_str = album.id.as_ref().map(|id| id.id().to_string()).unwrap_or_default();
                         let id_prefix = &id_str[..id_str.len().min(6)];
-                        let filename = format!("{}-{}-cover-{}.jpg", album.name, artist_name, id_prefix)
-                            .replace('/', "");
+                        let filename = crate::gui::image_cache::sanitize_filename_for_cache(&format!("{}-{}-cover-{}.jpg", album.name, artist_name, id_prefix));
                         Some(crate::config::get_config().cache_folder.join("image").join(filename))
                     }
                     _ => None,

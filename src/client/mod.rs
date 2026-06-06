@@ -101,7 +101,7 @@ impl AppClient {
     /// Sanitize an image filename to prevent path traversal attacks
     fn sanitize_image_filename(name: &str) -> String {
         // Reject path traversal attempts
-        if name.contains("..") {
+        if name.contains("../") || name.contains("..\\") || name == ".." {
             return format!("invalid_traversal_{:x}", Self::hash_filename(name));
         }
 
@@ -280,6 +280,11 @@ impl AppClient {
                             }
                         }
                     }
+                }
+
+                // After the retry loop: check if connection succeeded, show failure toast if not
+                if state.player.read().playback.is_none() {
+                    state.push_toast("Failed to connect to Spotify after multiple attempts".to_string());
                 }
             }
         });
@@ -2712,8 +2717,14 @@ impl AppClient {
                 parent,
             )?;
             
-            // Write data to temp file
-            std::io::copy(&mut bytes.as_ref(), &mut temp_file.as_file())?;
+            // Write data to temp file using spawn_blocking to avoid blocking async runtime
+            let bytes_clone = bytes.clone();
+            let temp_path = temp_file.path().to_path_buf();
+            tokio::task::spawn_blocking(move || {
+                let mut file = std::fs::File::create(&temp_path)?;
+                std::io::copy(&mut bytes_clone.as_ref(), &mut file)?;
+                Ok::<_, std::io::Error>(())
+            }).await??;
             
             // Atomically persist the temp file to the final path
             // On failure, temp file is automatically deleted

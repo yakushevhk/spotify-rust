@@ -185,7 +185,7 @@ pub fn album_cover_path(album: &state::Album) -> Option<PathBuf> {
     let artist = album.artists.first()?;
     let id_str = album.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = sanitize_filename(&format!("{}-{}-cover-{}.jpg", album.name, artist.name, id_prefix));
+    let filename = sanitize_filename_for_cache(&format!("{}-{}-cover-{}.jpg", album.name, artist.name, id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -197,7 +197,7 @@ pub fn album_cover_path(album: &state::Album) -> Option<PathBuf> {
 pub fn playlist_cover_path(playlist: &state::Playlist) -> Option<PathBuf> {
     let id_str = playlist.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = sanitize_filename(&format!("playlist-{}-cover.jpg", id_prefix));
+    let filename = sanitize_filename_for_cache(&format!("playlist-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -209,7 +209,7 @@ pub fn playlist_cover_path(playlist: &state::Playlist) -> Option<PathBuf> {
 pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
     let id_str = artist.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = sanitize_filename(&format!("artist-{}-cover.jpg", id_prefix));
+    let filename = sanitize_filename_for_cache(&format!("artist-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -221,7 +221,7 @@ pub fn artist_cover_path(artist: &state::Artist) -> Option<PathBuf> {
 pub fn show_cover_path(show: &state::Show) -> Option<PathBuf> {
     let id_str = show.id.id();
     let id_prefix = &id_str[..id_str.len().min(6)];
-    let filename = sanitize_filename(&format!("show-{}-cover.jpg", id_prefix));
+    let filename = sanitize_filename_for_cache(&format!("show-{}-cover.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -233,7 +233,7 @@ pub fn show_cover_path(show: &state::Show) -> Option<PathBuf> {
 pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
     category.icon_url.as_ref()?;
     let id_prefix = &category.id[..category.id.len().min(6)];
-    let filename = sanitize_filename(&format!("category-{}-icon.jpg", id_prefix));
+    let filename = sanitize_filename_for_cache(&format!("category-{}-icon.jpg", id_prefix));
     Some(
         crate::config::get_config()
             .cache_folder
@@ -245,7 +245,7 @@ pub fn category_icon_path(category: &state::Category) -> Option<PathBuf> {
 /// Sanitize a filename by replacing characters that are unsafe on any platform
 /// (Windows: \ : * ? " < > |, plus NUL; Unix: /).
 /// Also rejects path traversal attempts (.., leading/trailing dots).
-fn sanitize_filename(name: &str) -> String {
+pub fn sanitize_filename_for_cache(name: &str) -> String {
     // Reject path traversal attempts
     if name.contains("..") {
         return format!("invalid_traversal_{}", hash_name(name));

@@ -567,6 +567,10 @@ impl LayoutConfig {
         if total > 99 {
             anyhow::bail!("Invalid library layout: summation of album_percent and playlist_percent cannot be greater than 99!");
         }
+        // M7: Ensure each panel gets a reasonable minimum share
+        if self.library.playlist_percent < 5 || self.library.album_percent < 5 {
+            anyhow::bail!("Invalid library layout: each panel must be at least 5%");
+        }
         Ok(())
     }
 }
@@ -576,6 +580,12 @@ impl AppConfig {
         let mut config = Self::default();
         if !config.parse_config_file(path)? {
             config.write_config_file(path)?;
+        }
+
+        // M6: seek_duration_secs of 0 makes seeking a no-op with no feedback
+        if config.seek_duration_secs == 0 {
+            tracing::warn!("seek_duration_secs was 0, setting to 1 (minimum)");
+            config.seek_duration_secs = 1;
         }
 
         config.layout.check_values()?;

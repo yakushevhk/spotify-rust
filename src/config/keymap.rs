@@ -137,16 +137,23 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // Multi-key sequence like "gg", "g t", "g space"
-    let parts: Vec<&str> = s.split_whitespace().collect();
+    let parts: Vec<&str> = sl.split_whitespace().collect();
     if parts.len() > 1 {
         return vec![KeyBinding::Sequence(
             parts.iter().map(|p| p.to_string()).collect(),
         )];
     }
 
+    // M8: Handle multi-character non-modifier strings as implicit sequences (e.g. "gg")
+    if sl.chars().count() > 1 && !sl.starts_with("c-") && !sl.starts_with("s-") {
+        return vec![KeyBinding::Sequence(
+            sl.chars().map(|c| c.to_string()).collect(),
+        )];
+    }
+
     // Single character key
-    if s.chars().count() == 1 {
-        let c = s.chars().next().unwrap();
+    if sl.chars().count() == 1 {
+        let c = sl.chars().next().unwrap();
         return vec![KeyBinding::Key(c)];
     }
 
