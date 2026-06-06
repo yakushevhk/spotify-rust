@@ -506,15 +506,11 @@ fn run_gui() -> Result<()> {
 
     let state = Arc::new(state::State::new(false, log_buffer));
 
-    // Use the current runtime if already in a tokio context, otherwise create a new one.
-    // This prevents nested runtime issues that can cause panics in the multi-threaded scheduler.
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.block_on(start_app(&state))
-    } else {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .context("failed to create tokio runtime")?;
-        rt.block_on(start_app(&state))
-    }
+    // Always create a new dedicated runtime for GUI to avoid conflicts.
+    // The try_current approach can cause panics when already on a runtime.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("failed to create tokio runtime")?;
+    rt.block_on(start_app(&state))
 }
