@@ -2467,7 +2467,7 @@ pub fn render_browse_category_playlists(
 pub fn render_queue(
     ui: &mut egui::Ui,
     state: &SharedState,
-    _client_pub: &flume::Sender<ClientRequest>,
+    client_pub: &flume::Sender<ClientRequest>,
     _image_cache: &mut ImageCache,
 ) {
     
@@ -2564,14 +2564,33 @@ pub fn render_queue(
         egui::ScrollArea::vertical()
             .id_salt("queue_scroll")
             .show(ui, |ui| {
+                let queue_ids: Vec<PlayableId<'static>> = queue.queue.iter()
+                    .filter_map(|item| match item {
+                        rspotify::model::PlayableItem::Track(t) => t.id.as_ref().map(|id| PlayableId::Track(id.clone().into_static())),
+                        rspotify::model::PlayableItem::Episode(e) => Some(PlayableId::Episode(e.id.clone().into_static())),
+                        _ => None,
+                    })
+                    .collect();
+
                 for (i, item) in queue.queue.iter().enumerate() {
                     let row_height = 48.0;
-                    let (row_rect, _response) = ui.allocate_exact_size(
+                    let (row_rect, response) = ui.allocate_exact_size(
                         egui::vec2(ui.available_width(), row_height),
                         egui::Sense::click(),
                     );
 
-                    let bg = if _response.hovered() {
+                    if response.clicked() {
+                        if let Some(id) = queue_ids.get(i) {
+                            let _ = client_pub.send(ClientRequest::Player(
+                                PlayerRequest::StartPlayback(
+                                    state::Playback::URIs(vec![id.clone()], None),
+                                    None,
+                                ),
+                            ));
+                        }
+                    }
+
+                    let bg = if response.hovered() {
                         theme::bg_card()
                     } else {
                         egui::Color32::TRANSPARENT

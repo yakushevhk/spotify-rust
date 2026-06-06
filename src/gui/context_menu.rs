@@ -866,6 +866,10 @@ impl ContextMenu {
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     close = true;
                 }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    execute = true;
+                    close = true;
+                }
             });
 
         if close {

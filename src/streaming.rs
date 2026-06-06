@@ -31,7 +31,10 @@ pub async fn new_connection(
 
     let connect_config = ConnectConfig {
         name: device.name.clone(),
-        device_type: device.device_type.parse::<DeviceType>().unwrap_or_default(),
+        device_type: device.device_type.parse::<DeviceType>().unwrap_or_else(|_| {
+            tracing::warn!("Failed to parse device type '{}', using default", device.device_type);
+            DeviceType::default()
+        }),
         initial_volume: volume,
         is_group: false,
         disable_volume: false,
@@ -57,7 +60,10 @@ pub async fn new_connection(
             .bitrate
             .to_string()
             .parse::<Bitrate>()
-            .unwrap_or_default(),
+            .unwrap_or_else(|_| {
+                tracing::warn!("Failed to parse bitrate '{}', using default", device.bitrate);
+                Bitrate::default()
+            }),
         normalisation: device.normalization,
         ..Default::default()
     };

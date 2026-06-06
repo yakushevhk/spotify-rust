@@ -4,7 +4,6 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::LazyLock;
 
 use super::model::{
     Album, Artist, Category, Context, Playlist, PlaylistFolderItem,
@@ -23,8 +22,7 @@ pub enum FileCacheKey {
 }
 
 /// default time-to-live cache duration
-pub static TTL_CACHE_DURATION: LazyLock<std::time::Duration> =
-    LazyLock::new(|| std::time::Duration::from_hours(1));
+pub const TTL_CACHE_DURATION: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// the application's data
 pub struct AppData {
@@ -203,27 +201,28 @@ where
     T: DeserializeOwned,
 {
     let path = cache_folder.join(format!("{key:?}_cache.json"));
-    if path.exists() {
-        tracing::info!("Loading {key:?} data from {}...", path.display());
-        let f = match std::fs::File::open(&path) {
-            Ok(f) => BufReader::new(f),
-            Err(err) => {
-                tracing::error!("Failed to open {key:?} cache file: {err:#}");
-                return None;
-            }
-        };
-        match serde_json::from_reader(f) {
-            Ok(data) => {
-                tracing::info!("Successfully loaded {key:?} data!");
-                Some(data)
-            }
-            Err(err) => {
-                tracing::error!("Failed to load {key:?} data: {err:#}");
-                None
+    match std::fs::File::open(&path) {
+        Ok(file) => {
+            tracing::info!("Loading {key:?} data from {}...", path.display());
+            let f = BufReader::new(file);
+            match serde_json::from_reader(f) {
+                Ok(data) => {
+                    tracing::info!("Successfully loaded {key:?} data!");
+                    Some(data)
+                }
+                Err(err) => {
+                    tracing::error!("Failed to load {key:?} data: {err:#}");
+                    None
+                }
             }
         }
-    } else {
-        None
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            None
+        }
+        Err(e) => {
+            tracing::warn!("Failed to open cache file {}: {e:#}", path.display());
+            None
+        }
     }
 }
 
@@ -271,7 +270,7 @@ mod tests {
     /// Test TTL_CACHE_DURATION value
     #[test]
     fn test_ttl_cache_duration() {
-        assert_eq!(*TTL_CACHE_DURATION, std::time::Duration::from_hours(1));
+        assert_eq!(TTL_CACHE_DURATION, std::time::Duration::from_secs(3600));
     }
 
     /// Test MemoryCaches initialization

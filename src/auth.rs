@@ -254,55 +254,6 @@ pub fn clear_expired_tokens(cache_folder: &Path) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn check_credentials_expired(cache_folder: &Path) -> bool {
-    let creds_file = cache_folder.join("credentials.json");
-    if !creds_file.exists() {
-        tracing::debug!("No credentials.json found");
-        return true;
-    }
-
-    match std::fs::read_to_string(&creds_file) {
-        Ok(content) => {
-            if let Ok(creds) = serde_json::from_str::<serde_json::Value>(&content) {
-                // Check if credentials have an expires_at or timestamp field
-                if let Some(expires_at) = creds.get("expires_at").and_then(|v| v.as_i64()) {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0);
-                    let expired = now >= expires_at - 60;
-                    tracing::debug!(
-                        "Credentials expire at {}, now: {}, expired: {}",
-                        expires_at, now, expired
-                    );
-                    return expired;
-                }
-                // Credentials file is valid JSON with data but no expiration field
-                // OAuth access tokens are long-lived and refreshed on use
-                return false;
-            }
-            tracing::debug!("Could not parse credentials file, treating as expired");
-            true
-        }
-        Err(e) => {
-            tracing::warn!("Failed to read credentials file: {:#}, treating as expired", e);
-            true
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn clear_credentials(cache_folder: &Path) -> Result<()> {
-    let creds_file = cache_folder.join("credentials.json");
-    if creds_file.exists() {
-        tracing::info!("Clearing credentials.json");
-        std::fs::remove_file(&creds_file)
-            .context("failed to delete credentials.json")?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

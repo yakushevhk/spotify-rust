@@ -67,6 +67,10 @@ const PLAYBACK_TYPES: [&rspotify::model::AdditionalType; 2] = [
     &rspotify::model::AdditionalType::Episode,
 ];
 
+// Rate-limiting state shared across all http_get calls (M4)
+static RATE_LIMIT_REMAINING: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(10);
+static RATE_LIMIT_RESET_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 #[cfg(feature = "notify")]
 static NOTIFY_TEMPLATE_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"\{.*?\}").unwrap());
@@ -682,6 +686,8 @@ impl AppClient {
                 if !playback.is_playing {
                     self.player_op_retry(|| uc.resume_playback(device_id, None)).await?;
                     playback.is_playing = true;
+                } else {
+                    tracing::debug!("Resume skipped — already playing according to buffered state");
                 }
             }
 
@@ -689,6 +695,8 @@ impl AppClient {
                 if playback.is_playing {
                     self.player_op_retry(|| uc.pause_playback(device_id)).await?;
                     playback.is_playing = false;
+                } else {
+                    tracing::debug!("Pause skipped — already paused according to buffered state");
                 }
             }
             PlayerRequest::ResumePause => {
@@ -795,7 +803,7 @@ impl AppClient {
                     let mut data = state.data.write();
                     // Re-check after acquiring write lock to avoid race condition (F7)
                     if !data.caches.lyrics.contains_key(&uri) {
-                        data.caches.lyrics.insert(uri, lyrics, *TTL_CACHE_DURATION);
+                        data.caches.lyrics.insert(uri, lyrics, TTL_CACHE_DURATION);
                     }
                 }
             }
@@ -990,7 +998,7 @@ impl AppClient {
                         .write()
                         .caches
                         .context
-                        .insert(uri, ctx, *TTL_CACHE_DURATION);
+                        .insert(uri, ctx, TTL_CACHE_DURATION);
                 }
             }
             ClientRequest::Search(query) => {
@@ -1007,7 +1015,7 @@ impl AppClient {
                         .write()
                         .caches
                         .search
-                        .insert(normalized_query, results, *TTL_CACHE_DURATION);
+                        .insert(normalized_query, results, TTL_CACHE_DURATION);
                 }
             }
 
@@ -1164,6 +1172,7 @@ impl AppClient {
 
         let client = self.clone();
         let state = state.clone();
+        // Note: JoinHandle is dropped intentionally — fire-and-forget refresh task
         tokio::task::spawn(async move {
             if let Err(err) = client.retrieve_current_playback(&state, false).await {
                 tracing::error!(
@@ -1299,7 +1308,13 @@ impl AppClient {
             .items
             .into_iter()
             .filter_map(|item| {
-                serde_json::from_value::<rspotify::model::SimplifiedPlaylist>(item).ok()
+                match serde_json::from_value::<rspotify::model::SimplifiedPlaylist>(item) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        tracing::warn!("Skipping unparseable playlist: {e:#}");
+                        None
+                    }
+                }
             })
             .map(Into::into)
             .collect())
@@ -2090,10 +2105,6 @@ impl AppClient {
 
         let mut access_token = self.token().await.context("get token")?;
         let mut last_err = None;
-        
-        // Token bucket for rate limiting (Issue #9)
-        static RATE_LIMIT_REMAINING: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(10);
-        static RATE_LIMIT_RESET_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
         for attempt in 0..4u32 {
             if attempt > 0 {
@@ -2426,7 +2437,7 @@ impl AppClient {
                 state.data.write().caches.genres.insert(
                     genre_key,
                     artist.genres,
-                    *TTL_CACHE_DURATION,
+                    TTL_CACHE_DURATION,
                 );
             }
         }
@@ -2487,7 +2498,7 @@ impl AppClient {
                     .write()
                     .caches
                     .images
-                    .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
+                    .insert(url.to_owned(), image, TTL_CACHE_DURATION);
             }
         } else {
             #[cfg(feature = "image")]
@@ -2511,7 +2522,7 @@ impl AppClient {
                     .write()
                     .caches
                     .images
-                    .insert(url.to_owned(), image, *TTL_CACHE_DURATION);
+                    .insert(url.to_owned(), image, TTL_CACHE_DURATION);
             }
         }
 

@@ -108,6 +108,7 @@ fn init_logging(
         .context("failed to create backtrace file")?;
     let backtrace_file = std::sync::Mutex::new(backtrace_file);
     static IN_PANIC_HOOK: AtomicBool = AtomicBool::new(false);
+    let old_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         if IN_PANIC_HOOK.swap(true, Ordering::Relaxed) {
             return;
@@ -116,7 +117,7 @@ fn init_logging(
             // Check file size before writing
             if let Ok(metadata) = file.metadata() {
                 if metadata.len() >= MAX_BACKTRACE_SIZE {
-                    // File is too large, skip writing
+                    old_hook(info);
                     return;
                 }
             }
@@ -124,6 +125,7 @@ fn init_logging(
             let _ = writeln!(&mut file, "Got a panic: {info:#?}\n");
             let _ = writeln!(&mut file, "Stack backtrace:\n{backtrace:?}");
         }
+        old_hook(info);
     }));
 
     // Always install the buffer layer so the in-app log viewer works

@@ -32,7 +32,6 @@ pub fn get_episode_show_image_url(episode: &rspotify::model::FullEpisode) -> Opt
     }
 }
 
-#[allow(dead_code)]
 pub fn parse_uri(uri: &str) -> Cow<'_, str> {
     let parts = uri.split(':').collect::<Vec<_>>();
     if parts.len() == 5 {

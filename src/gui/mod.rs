@@ -192,6 +192,7 @@ pub struct SpotifyApp {
     artist_id: Option<String>,
     show_device_popup: bool,
     devices_fetched: bool,
+    device_search: String,
     context_menu: context_menu::ContextMenu,
     sort_state: Option<SortState>,
     show_create_playlist_popup: bool,
@@ -200,6 +201,7 @@ pub struct SpotifyApp {
     create_playlist_public: bool,
     create_playlist_collab: bool,
     create_playlist_name_error: Option<String>,
+    create_playlist_last_validated_name: String,
     show_add_to_playlist_popup: bool,
     add_to_playlist_track: Option<state::PlayableId<'static>>,
     add_to_playlist_filter: String,
@@ -263,6 +265,9 @@ pub struct SpotifyApp {
     // Settings unsaved changes dialog
     show_settings_confirm_dialog: bool,
     pending_view_navigation: Option<View>,
+    
+    // Cached config values (M10)
+    cached_seek_duration_secs: u16,
 }
 
 impl SpotifyApp {
@@ -303,6 +308,7 @@ current_view: View::Library,
             artist_id: None,
             show_device_popup: false,
             devices_fetched: false,
+            device_search: String::new(),
             context_menu: context_menu::ContextMenu::new(),
             sort_state: None,
             show_create_playlist_popup: false,
@@ -311,6 +317,7 @@ current_view: View::Library,
             create_playlist_public: true,
             create_playlist_collab: false,
             create_playlist_name_error: None,
+            create_playlist_last_validated_name: String::new(),
             show_add_to_playlist_popup: false,
             add_to_playlist_track: None,
             add_to_playlist_filter: String::new(),
@@ -365,6 +372,7 @@ current_view: View::Library,
             last_search_results: None,
             show_settings_confirm_dialog: false,
             pending_view_navigation: None,
+            cached_seek_duration_secs: crate::config::get_config().app_config.seek_duration_secs,
         }
     }
 
@@ -821,7 +829,7 @@ current_view: View::Library,
                     )));
                 }
                 PlaybackCommand::SeekForward => {
-                    let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
+                    let seek_secs = self.cached_seek_duration_secs as i64;
                     let player = self.state.player.read();
                     let current_pos = player.playback_progress()
                         .unwrap_or(chrono::Duration::zero());
@@ -830,7 +838,7 @@ current_view: View::Library,
                     self.send_request(ClientRequest::Player(PlayerRequest::SeekTrack(new_pos)));
                 }
                 PlaybackCommand::SeekBackward => {
-                    let seek_secs = crate::config::get_config().app_config.seek_duration_secs as i64;
+                    let seek_secs = self.cached_seek_duration_secs as i64;
                     let player = self.state.player.read();
                     let current_pos = player.playback_progress()
                         .unwrap_or(chrono::Duration::zero());
@@ -1471,20 +1479,35 @@ impl eframe::App for SpotifyApp {
 
                         ui.add_space(8.0);
 
+                        // Search field
+                        let _search_response = ui.add(
+                            egui::TextEdit::singleline(&mut self.device_search)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Search devices...")
+                                .font(egui::FontId::proportional(12.0))
+                                .margin(egui::Margin::symmetric(8, 6)),
+                        );
+                        ui.add_space(4.0);
+
                         // M8: Clone devices and active_device_id before UI rendering to avoid holding lock
                         let (devices, active_device_id) = {
                             let player = self.state.player.read();
                             (player.devices.clone(), player.playback.as_ref().and_then(|p| p.device.id.clone()))
                         };
 
-                        if devices.is_empty() {
+                        let search_lower = self.device_search.to_lowercase();
+                        let filtered_devices: Vec<_> = devices.iter()
+                            .filter(|d| d.name.to_lowercase().contains(&search_lower) || d.id.to_lowercase().contains(&search_lower))
+                            .collect();
+
+                        if filtered_devices.is_empty() {
                             ui.label(
-                                egui::RichText::new("No devices available")
+                                egui::RichText::new(if self.device_search.is_empty() { "No devices available" } else { "No devices match search" })
                                     .size(12.0)
                                     .color(theme::text_dim()),
                             );
                         } else {
-                            for device in devices.iter() {
+                            for device in filtered_devices {
                                 let is_active = device.is_active
                                     || active_device_id
                                         .as_ref()
@@ -2354,16 +2377,19 @@ impl SpotifyApp {
                     );
                     ui.add_space(4.0);
                     
-                    // Real-time validation
-                    let name_trimmed = self.create_playlist_name.trim();
-                    if name_trimmed.is_empty() {
-                        self.create_playlist_name_error = Some("Playlist name is required".to_string());
-                    } else if name_trimmed.len() > 100 {
-                        self.create_playlist_name_error = Some("Name must be 100 characters or less".to_string());
-                    } else if name_trimmed.chars().any(|c| c.is_control()) {
-                        self.create_playlist_name_error = Some("Name contains invalid characters".to_string());
-                    } else {
-                        self.create_playlist_name_error = None;
+                    // Real-time validation — only when name changes (M9)
+                    if self.create_playlist_name != self.create_playlist_last_validated_name {
+                        self.create_playlist_last_validated_name = self.create_playlist_name.clone();
+                        let name_trimmed = self.create_playlist_name.trim();
+                        if name_trimmed.is_empty() {
+                            self.create_playlist_name_error = Some("Playlist name is required".to_string());
+                        } else if name_trimmed.len() > 100 {
+                            self.create_playlist_name_error = Some("Name must be 100 characters or less".to_string());
+                        } else if name_trimmed.chars().any(|c| c.is_control()) {
+                            self.create_playlist_name_error = Some("Name contains invalid characters".to_string());
+                        } else {
+                            self.create_playlist_name_error = None;
+                        }
                     }
                     
                     let name_input = egui::TextEdit::singleline(&mut self.create_playlist_name)

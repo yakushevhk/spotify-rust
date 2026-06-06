@@ -268,7 +268,7 @@ impl KeySequenceState {
                                 }
                             }
                             KeyBinding::Modified { key, ctrl, shift } => {
-                                let expected = format_modified_key(*key, *ctrl, *shift);
+                                let expected = format_modified_key_with_alt(*key, *ctrl, *shift, false, false);
                                 if self.pending_keys == expected {
                                     return KeySequenceResult::Complete(binding.command.clone());
                                 }
@@ -398,22 +398,6 @@ fn format_special_key(key: egui::Key, modifiers: egui::Modifiers) -> String {
             }
         }
     }
-}
-
-fn format_modified_key(key: char, ctrl: bool, shift: bool) -> String {
-    let mut s = String::new();
-    if ctrl {
-        s.push_str("C-");
-    }
-    if shift {
-        s.push_str("S-");
-    }
-    if key == ' ' {
-        s.push_str("Space");
-    } else {
-        s.push(key);
-    }
-    s
 }
 
 fn format_modified_key_with_alt(

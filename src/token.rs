@@ -24,6 +24,8 @@ pub async fn get_token_rspotify(session: &Session) -> Result<rspotify::Token> {
                 Ok(Ok(token)) => break 'retry token,
                 Ok(Err(err)) => {
                     last_err = Some(format!("{err:#}"));
+                    // Known limitation: retry detection uses string matching on error Debug output.
+                    // A proper fix would require restructuring error types to expose retryable status.
                     let err_str = format!("{:?}", err);
                     let is_retryable = err_str.contains("timeout")
                         || err_str.contains("connection")
