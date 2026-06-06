@@ -192,7 +192,13 @@ impl ThemeConfig {
     pub fn new(path: &std::path::Path) -> anyhow::Result<Self> {
         let file_path = path.join("theme.toml");
         match std::fs::read_to_string(file_path) {
-            Ok(content) => Ok(toml::from_str(&content).unwrap_or_default()),
+            Ok(content) => match toml::from_str(&content) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    tracing::warn!("failed to parse theme config: {:#}, using defaults", e);
+                    Ok(Self::default())
+                }
+            },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(error.into()),
         }

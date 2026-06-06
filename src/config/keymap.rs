@@ -97,18 +97,21 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     // K7: normalize to lowercase for case-insensitive matching
     let sl = s.to_ascii_lowercase();
 
-    // Check for modifier format: "C-x", "C-S-x", etc.
+    // Check for modifier format: "C-x", "S-C-x", "C-S-x", etc.
     if sl.starts_with("c-") || sl.starts_with("s-") {
         let mut ctrl = false;
         let mut shift = false;
         let mut rest = sl.as_str();
-        if rest.starts_with("c-") {
-            ctrl = true;
-            rest = &rest[2..];
-        }
-        if rest.starts_with("s-") {
-            shift = true;
-            rest = &rest[2..];
+        loop {
+            if rest.starts_with("c-") {
+                ctrl = true;
+                rest = &rest[2..];
+            } else if rest.starts_with("s-") {
+                shift = true;
+                rest = &rest[2..];
+            } else {
+                break;
+            }
         }
         if let Some(ch) = rest.chars().next() {
             return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
@@ -858,11 +861,10 @@ command = "next_track"
     /// Test parse_key_sequence with Shift+Ctrl (different order)
     #[test]
     fn test_parse_key_sequence_shift_ctrl() {
-        // Note: The parser expects C- first, then S-
-        // So "S-C-x" would not be parsed as expected
-        let result = parse_key_sequence("C-S-x");
+        // Both orders should work: "S-C-x" and "C-S-x"
+        let result = parse_key_sequence("S-C-x");
         assert_eq!(result.len(), 1);
-        
+
         if let KeyBinding::Modified { key, ctrl, shift } = &result[0] {
             assert_eq!(*key, 'x');
             assert!(ctrl);

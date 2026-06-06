@@ -331,17 +331,17 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
     }
     
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_exclusive(
-        &std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .context("failed to open lock file")?,
-    )
-    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
-    
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .context("failed to open lock file")?;
+    fs2::FileExt::try_lock_exclusive(&lock_file)
+        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    let _lock_file = lock_file;
+
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
     if !cache_audio_folder.exists() {
@@ -353,7 +353,7 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
         std::fs::create_dir_all(&cache_image_folder)
             .with_context(|| format!("failed to create {}", cache_image_folder.display()))?;
     }
-    
+
     {
         let mut configs = config::Configs::new(&config_folder, &cache_folder)?;
         if configs.app_config.log_folder.is_none() {
@@ -361,20 +361,20 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
         }
         config::set_config(configs);
     }
-    
+
     let configs = config::get_config();
     let log_folder = configs
         .app_config
         .log_folder
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("log_folder is not set in config"))?;
-    
+
     let log_buffer: Arc<Mutex<VecDeque<String>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
-    
+
     init_logging(log_folder, log_buffer.clone())
         .context("failed to initialize application's logging")?;
-    
+
     tracing::info!("Starting Spotify Player CLI");
     
     let state = Arc::new(state::State::new(true, log_buffer));
@@ -392,17 +392,17 @@ async fn run_daemon() -> Result<()> {
     }
     
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_exclusive(
-        &std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .context("failed to open lock file")?,
-    )
-    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
-    
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .context("failed to open lock file")?;
+    fs2::FileExt::try_lock_exclusive(&lock_file)
+        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    let _lock_file = lock_file;
+
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
     if !cache_audio_folder.exists() {
@@ -414,7 +414,7 @@ async fn run_daemon() -> Result<()> {
         std::fs::create_dir_all(&cache_image_folder)
             .with_context(|| format!("failed to create {}", cache_image_folder.display()))?;
     }
-    
+
     {
         let mut configs = config::Configs::new(&config_folder, &cache_folder)?;
         if configs.app_config.log_folder.is_none() {
@@ -422,20 +422,20 @@ async fn run_daemon() -> Result<()> {
         }
         config::set_config(configs);
     }
-    
+
     let configs = config::get_config();
     let log_folder = configs
         .app_config
         .log_folder
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("log_folder is not set in config"))?;
-    
+
     let log_buffer: Arc<Mutex<VecDeque<String>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
-    
+
     init_logging(log_folder, log_buffer.clone())
         .context("failed to initialize application's logging")?;
-    
+
     tracing::info!("Starting Spotify Player Daemon");
     
     let state = Arc::new(state::State::new(true, log_buffer));
@@ -458,16 +458,16 @@ fn run_gui() -> Result<()> {
 
     // Multi-instance guard (C3)
     let lock_path = config_folder.join(".lock");
-    fs2::FileExt::try_lock_exclusive(
-        &std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .context("failed to open lock file")?,
-    )
-    .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .context("failed to open lock file")?;
+    fs2::FileExt::try_lock_exclusive(&lock_file)
+        .map_err(|_| anyhow::anyhow!("Another instance is already running."))?;
+    let _lock_file = lock_file;
     
     let cache_folder = config::get_cache_folder_path()?;
     let cache_audio_folder = cache_folder.join("audio");
