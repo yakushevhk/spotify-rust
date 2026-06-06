@@ -85,51 +85,32 @@ pub fn start_event_watcher(
         tracing::info!("Media control event: {e:?}");
         match e {
             MediaControlEvent::Play => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Resume)) {
-                    tracing::warn!("Failed to send media control Play request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::Resume)).ok();
             }
             MediaControlEvent::Pause => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Pause)) {
-                    tracing::warn!("Failed to send media control Pause request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)).ok();
             }
             MediaControlEvent::Toggle => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::ResumePause)) {
-                    tracing::warn!("Failed to send media control Toggle request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::ResumePause)).ok();
             }
             MediaControlEvent::SetPosition(MediaPosition(dur)) => {
                 if let Ok(dur) = chrono::Duration::from_std(dur) {
-                    if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))) {
-                        tracing::warn!("Failed to send media control SetPosition request: {e:#}");
-                    }
+                    client_pub.try_send(ClientRequest::Player(PlayerRequest::SeekTrack(dur))).ok();
                 }
             }
             MediaControlEvent::Next => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::NextTrack)) {
-                    tracing::warn!("Failed to send media control Next request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::NextTrack)).ok();
             }
             MediaControlEvent::Previous => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::PreviousTrack)) {
-                    tracing::warn!("Failed to send media control Previous request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::PreviousTrack)).ok();
             }
             MediaControlEvent::SetVolume(volume) => {
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::Volume(
                     (volume * 100.0) as u8,
-                ))) {
-                    tracing::warn!("Failed to send media control SetVolume request: {e:#}");
-                }
+                ))).ok();
             }
             MediaControlEvent::Stop => {
-                // Map Stop to Pause — most media controllers send Stop when
-                // the user presses the stop button, but our player model only
-                // has Play/Pause.  Treating Stop as Pause is the safe default.
-                if let Err(e) = client_pub.send(ClientRequest::Player(PlayerRequest::Pause)) {
-                    tracing::warn!("Failed to send media control Stop->Pause request: {e:#}");
-                }
+                client_pub.try_send(ClientRequest::Player(PlayerRequest::Pause)).ok();
             }
             _ => {}
         }

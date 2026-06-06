@@ -2504,12 +2504,16 @@ impl AppClient {
         if configs.app_config.enable_notify
             && (!configs.app_config.notify_streaming_only || self.stream_conn.lock().is_some())
         {
-            Self::notify_new_playback(&curr_item, &path)?;
+            if let Err(e) = Self::notify_new_playback(&curr_item, &path) {
+                tracing::warn!("Notification failed: {e:#}");
+            }
         }
 
         #[cfg(all(feature = "notify", not(feature = "streaming")))]
         if configs.app_config.enable_notify {
-            Self::notify_new_playback(&curr_item, &path)?;
+            if let Err(e) = Self::notify_new_playback(&curr_item, &path) {
+                tracing::warn!("Notification failed: {e:#}");
+            }
         }
 
         Ok(())

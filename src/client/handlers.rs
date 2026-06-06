@@ -220,7 +220,7 @@ pub fn start_player_event_watcher(state: &SharedState, client_pub: &flume::Sende
         if configs.app_config.playback_refresh_duration_in_ms > 0
             && handler_state.last_playback_refresh_timer.elapsed() >= playback_refresh_duration
         {
-            if let Err(e) = client_pub.send(ClientRequest::GetCurrentPlayback) {
+            if let Err(e) = client_pub.try_send(ClientRequest::GetCurrentPlayback) {
                 tracing::warn!("Failed to send GetCurrentPlayback request: {e:#}");
             }
             handler_state.last_playback_refresh_timer = Instant::now();

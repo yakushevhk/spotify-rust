@@ -323,8 +323,12 @@ pub async fn start_daemon(
             let state = state.clone();
             let client_pub = client_pub.clone();
             move || {
-                while player_watcher_running_clone.load(Ordering::Acquire) {
+                loop {
+                    if !player_watcher_running_clone.load(Ordering::Acquire) {
+                        break;
+                    }
                     crate::client::start_player_event_watcher(&state, &client_pub);
+                    std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             }
         })?;
@@ -342,11 +346,15 @@ pub async fn start_daemon(
                     .spawn({
                         let state = state.clone();
                         move || {
-                            while media_control_running_clone.load(Ordering::Acquire) {
-                                if let Err(err) = crate::media_control::start_event_watcher(&state, media_client_pub.clone()) {
-                                    tracing::error!("Media control event watcher failed: {err:#}");
-                                }
+                        loop {
+                            if !media_control_running_clone.load(Ordering::Acquire) {
+                                break;
                             }
+                            if let Err(err) = crate::media_control::start_event_watcher(&state, media_client_pub.clone()) {
+                                tracing::error!("Media control event watcher failed: {err:#}");
+                                std::thread::sleep(std::time::Duration::from_secs(5));
+                            }
+                        }
                         }
                     })?,
             );
