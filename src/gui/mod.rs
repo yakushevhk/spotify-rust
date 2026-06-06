@@ -241,7 +241,9 @@ pub struct SpotifyApp {
     show_browse_playlists_popup: bool,
     show_browse_artists_popup: bool,
     show_browse_albums_popup: bool,
-    browse_popup_filter: String,
+    browse_playlists_filter: String,
+    browse_artists_filter: String,
+    browse_albums_filter: String,
     show_in_page_search: bool,
     in_page_search_query: String,
     waveform_cache: Option<(String, usize, Vec<f32>)>,
@@ -350,7 +352,9 @@ current_view: View::Library,
             show_browse_playlists_popup: false,
             show_browse_artists_popup: false,
             show_browse_albums_popup: false,
-            browse_popup_filter: String::new(),
+            browse_playlists_filter: String::new(),
+            browse_artists_filter: String::new(),
+            browse_albums_filter: String::new(),
             show_in_page_search: false,
             in_page_search_query: String::new(),
             waveform_cache: None,
@@ -1099,15 +1103,15 @@ current_view: View::Library,
             Command::Popup(popup) => match popup {
                 crate::command::PopupCommand::Playlists => {
                     self.show_browse_playlists_popup = true;
-                    self.browse_popup_filter.clear();
+                    self.browse_playlists_filter.clear();
                 }
                 crate::command::PopupCommand::FollowedArtists => {
                     self.show_browse_artists_popup = true;
-                    self.browse_popup_filter.clear();
+                    self.browse_artists_filter.clear();
                 }
                 crate::command::PopupCommand::SavedAlbums => {
                     self.show_browse_albums_popup = true;
-                    self.browse_popup_filter.clear();
+                    self.browse_albums_filter.clear();
                 }
             },
             Command::Theme(theme_cmd) => match theme_cmd {
@@ -3125,7 +3129,7 @@ impl SpotifyApp {
                         });
                     });
                     ui.add_space(10.0);
-                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_playlists_filter)
                         .desired_width(f32::INFINITY)
                         .hint_text("Filter playlists...")
                         .font(egui::FontId::proportional(13.0))
@@ -3134,7 +3138,7 @@ impl SpotifyApp {
                     ui.add(filter_input);
                     ui.add_space(8.0);
 
-                    let filter = self.browse_popup_filter.to_lowercase();
+                    let filter = self.browse_playlists_filter.to_lowercase();
                     let data = self.state.data.read();
                     let playlists: Vec<_> = data.user_data.playlists.iter()
                         .filter_map(|item| match item {
@@ -3185,7 +3189,7 @@ impl SpotifyApp {
 
         if close {
             self.show_browse_playlists_popup = false;
-            self.browse_popup_filter.clear();
+            self.browse_playlists_filter.clear();
         }
     }
 
@@ -3220,13 +3224,13 @@ impl SpotifyApp {
                         });
                     });
                     ui.add_space(10.0);
-                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_artists_filter)
                         .desired_width(f32::INFINITY).hint_text("Filter artists...").font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8)).background_color(theme::bg_input());
                     ui.add(filter_input);
                     ui.add_space(8.0);
 
-                    let filter = self.browse_popup_filter.to_lowercase();
+                    let filter = self.browse_artists_filter.to_lowercase();
                     let data = self.state.data.read();
                     let artists: Vec<_> = data.user_data.followed_artists.iter()
                         .filter(|a| filter.is_empty() || a.name.to_lowercase().contains(&filter))
@@ -3268,7 +3272,7 @@ impl SpotifyApp {
 
         if close {
             self.show_browse_artists_popup = false;
-            self.browse_popup_filter.clear();
+            self.browse_artists_filter.clear();
         }
     }
 
@@ -3303,13 +3307,13 @@ impl SpotifyApp {
                         });
                     });
                     ui.add_space(10.0);
-                    let filter_input = egui::TextEdit::singleline(&mut self.browse_popup_filter)
+                    let filter_input = egui::TextEdit::singleline(&mut self.browse_albums_filter)
                         .desired_width(f32::INFINITY).hint_text("Filter albums...").font(egui::FontId::proportional(13.0))
                         .margin(egui::Margin::symmetric(10, 8)).background_color(theme::bg_input());
                     ui.add(filter_input);
                     ui.add_space(8.0);
 
-                    let filter = self.browse_popup_filter.to_lowercase();
+                    let filter = self.browse_albums_filter.to_lowercase();
                     let data = self.state.data.read();
                     let albums: Vec<_> = data.user_data.saved_albums.iter()
                         .filter(|a| filter.is_empty() || a.name.to_lowercase().contains(&filter))
@@ -3353,7 +3357,7 @@ impl SpotifyApp {
 
         if close {
             self.show_browse_albums_popup = false;
-            self.browse_popup_filter.clear();
+            self.browse_albums_filter.clear();
         }
     }
 
@@ -3484,7 +3488,8 @@ impl SpotifyApp {
             }
 
             let mut dismissed = false;
-            egui::Area::new(egui::Id::new(format!("toast_{}", i)))
+            let toast_id = &toast.message[..32.min(toast.message.len())];
+            egui::Area::new(egui::Id::new(format!("toast_{toast_id}")))
                 .order(egui::Order::Foreground)
                 .fixed_pos(toast_pos)
                 .interactable(true)

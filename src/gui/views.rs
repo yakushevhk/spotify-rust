@@ -25,6 +25,47 @@ impl Default for SearchDebounceState {
     }
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ColumnLayout {
+    pub num_col_width: f32,
+    pub thumb_col_width: f32,
+    pub time_col_width: f32,
+    pub title_col_width: f32,
+    pub artist_col_width: f32,
+    pub album_col_width: f32,
+    pub title_x: f32,
+    pub artist_x: f32,
+    pub album_x: f32,
+    pub time_x: f32,
+}
+
+fn compute_column_layout(available_width: f32) -> ColumnLayout {
+    let row_avail_width = available_width - 48.0;
+    let num_col_width = 48.0;
+    let thumb_col_width = 48.0;
+    let time_col_width = (row_avail_width * 0.15).clamp(80.0, 120.0);
+    let title_col_width = (row_avail_width * 0.35).max(150.0);
+    let artist_col_width = (row_avail_width * 0.25).max(100.0);
+    let album_col_width = (row_avail_width * 0.25).max(100.0);
+    let title_x = num_col_width + thumb_col_width;
+    let artist_x = title_x + title_col_width;
+    let album_x = artist_x + artist_col_width;
+    let time_x = row_avail_width - time_col_width + 48.0;
+    ColumnLayout {
+        num_col_width,
+        thumb_col_width,
+        time_col_width,
+        title_col_width,
+        artist_col_width,
+        album_col_width,
+        title_x,
+        artist_x,
+        album_x,
+        time_x,
+    }
+}
+
 pub fn render_library(
     ui: &mut egui::Ui,
     state: &SharedState,
@@ -1095,20 +1136,7 @@ pub fn render_tracks(
     let header_color_hover = theme::text_secondary();
     let header_color_active = theme::green();
     
-    // Calculate column positions based on percentages
-    let avail_width = ui.available_width() - 48.0; // Account for padding
-    let num_col_width = 48.0; // Fixed width for # column
-    let thumb_col_width = 48.0; // Fixed width for thumbnail
-    let time_col_width = (avail_width * 0.15).clamp(80.0, 120.0); // 15% for time
-    let title_col_width = (avail_width * 0.35).max(150.0); // 35% for title
-    let artist_col_width = (avail_width * 0.25).max(100.0); // 25% for artist
-    let album_col_width = (avail_width * 0.25).max(100.0); // 25% for album
-    
-    // Calculate actual positions
-    let title_x = num_col_width + thumb_col_width;
-    let artist_x = title_x + title_col_width;
-    let album_x = artist_x + artist_col_width;
-    let time_x = avail_width - time_col_width + 48.0;
+    let col = compute_column_layout(ui.available_width());
 
     ui.horizontal(|ui| {
         ui.add_space(24.0);
@@ -1129,8 +1157,8 @@ pub fn render_tracks(
         let title_active = title_arrow.is_some();
         let title_color = if title_active { header_color_active } else { header_color_default };
         let title_rect = egui::Rect::from_min_size(
-            header_rect.left_top() + egui::vec2(title_x, 0.0),
-            egui::vec2(title_col_width, header_rect.height()),
+            header_rect.left_top() + egui::vec2(col.title_x, 0.0),
+            egui::vec2(col.title_col_width, header_rect.height()),
         );
         let title_resp = ui.allocate_rect(title_rect, egui::Sense::click());
         let title_color = if title_resp.hovered() && !title_active {
@@ -1159,8 +1187,8 @@ pub fn render_tracks(
         let artist_active = artist_arrow.is_some();
         let artist_color = if artist_active { header_color_active } else { header_color_default };
         let artist_rect = egui::Rect::from_min_size(
-            header_rect.left_top() + egui::vec2(artist_x, 0.0),
-            egui::vec2(artist_col_width, header_rect.height()),
+            header_rect.left_top() + egui::vec2(col.artist_x, 0.0),
+            egui::vec2(col.artist_col_width, header_rect.height()),
         );
         let artist_resp = ui.allocate_rect(artist_rect, egui::Sense::click());
         let artist_color = if artist_resp.hovered() && !artist_active {
@@ -1189,8 +1217,8 @@ pub fn render_tracks(
         let album_active = album_arrow.is_some();
         let album_color = if album_active { header_color_active } else { header_color_default };
         let album_rect = egui::Rect::from_min_size(
-            header_rect.left_top() + egui::vec2(album_x, 0.0),
-            egui::vec2(album_col_width, header_rect.height()),
+            header_rect.left_top() + egui::vec2(col.album_x, 0.0),
+            egui::vec2(col.album_col_width, header_rect.height()),
         );
         let album_resp = ui.allocate_rect(album_rect, egui::Sense::click());
         let album_color = if album_resp.hovered() && !album_active {
@@ -1219,8 +1247,8 @@ pub fn render_tracks(
         let time_active = time_arrow.is_some();
         let time_color = if time_active { header_color_active } else { header_color_default };
         let time_rect = egui::Rect::from_min_size(
-            header_rect.left_top() + egui::vec2(time_x, 0.0),
-            egui::vec2(time_col_width, header_rect.height()),
+            header_rect.left_top() + egui::vec2(col.time_x, 0.0),
+            egui::vec2(col.time_col_width, header_rect.height()),
         );
         let time_resp = ui.allocate_rect(time_rect, egui::Sense::click());
         let time_color = if time_resp.hovered() && !time_active {
@@ -1257,20 +1285,6 @@ pub fn render_tracks(
             0.0,
             theme::divider(),
         );
-
-        // Calculate column positions based on percentages (same as header)
-        let row_avail_width = ui.available_width() - 48.0;
-        let num_col_width = 48.0;
-        let thumb_col_width = 48.0;
-        let time_col_width = (row_avail_width * 0.15).clamp(80.0, 120.0);
-        let title_col_width = (row_avail_width * 0.35).max(150.0);
-        let artist_col_width = (row_avail_width * 0.25).max(100.0);
-        let album_col_width = (row_avail_width * 0.25).max(100.0);
-
-        let title_x = num_col_width + thumb_col_width;
-        let artist_x = title_x + title_col_width;
-        let album_x = artist_x + artist_col_width;
-        let time_x = row_avail_width - time_col_width + 48.0;
 
         let track_name_font = egui::FontId::proportional(14.0);
         let artist_font = egui::FontId::proportional(12.0);
@@ -1391,10 +1405,10 @@ pub fn render_tracks(
                 } else {
                     theme::text_primary()
                 };
-                let max_track_width = title_col_width - 8.0;
+                let max_track_width = col.title_col_width - 8.0;
                 let truncated_name = truncate_text_binary(ui, &track.name, &track_name_font, title_color, max_track_width);
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(title_x, -7.0),
+                    row_rect.left_center() + egui::vec2(col.title_x, -7.0),
                     egui::Align2::LEFT_CENTER,
                     &truncated_name,
                     track_name_font.clone(),
@@ -1403,10 +1417,10 @@ pub fn render_tracks(
 
                 // Artist (25%)
                 let artist_text = track.artists_display_ref();
-                let max_artist_width = artist_col_width - 8.0;
+                let max_artist_width = col.artist_col_width - 8.0;
                 let truncated_artist = truncate_text_binary(ui, artist_text, &artist_font, theme::text_dim(), max_artist_width);
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(artist_x, 10.0),
+                    row_rect.left_center() + egui::vec2(col.artist_x, 10.0),
                     egui::Align2::LEFT_CENTER,
                     truncated_artist,
                     artist_font.clone(),
@@ -1416,10 +1430,10 @@ pub fn render_tracks(
                 let album_name = track.album_name_ref();
                 if !album_name.is_empty() {
                     let album_color = theme::text_dim();
-                    let max_album_width = album_col_width - 8.0;
+                    let max_album_width = col.album_col_width - 8.0;
                     let truncated_album = truncate_text_binary(ui, album_name, &album_font, album_color, max_album_width);
                     ui.painter().text(
-                        row_rect.left_center() + egui::vec2(album_x, 0.0),
+                        row_rect.left_center() + egui::vec2(col.album_x, 0.0),
                         egui::Align2::LEFT_CENTER,
                         &truncated_album,
                         album_font.clone(),
@@ -1431,7 +1445,7 @@ pub fn render_tracks(
                 let duration = track.duration;
                 let dur_str = theme::format_duration_secs(duration.as_secs());
                 ui.painter().text(
-                    row_rect.left_center() + egui::vec2(time_x + time_col_width - 8.0, 0.0),
+                    row_rect.left_center() + egui::vec2(col.time_x + col.time_col_width - 8.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
                     duration_font.clone(),
@@ -1916,6 +1930,7 @@ pub fn render_search(
                             }
 
                             if response.clicked() {
+                                *selected_track = None;
                                 action = Action::OpenArtist(artist.clone());
                             }
 
@@ -1958,6 +1973,7 @@ pub fn render_search(
                             }
                             let response = search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
                             if response.clicked() {
+                                *selected_track = None;
                                 action = Action::OpenSearchResultAlbum(album.clone());
                             }
                             if response.secondary_clicked() {
@@ -2000,6 +2016,7 @@ pub fn render_search(
                             }
                             let response = search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
                             if response.clicked() {
+                                *selected_track = None;
                                 action = Action::OpenSearchResultPlaylist(playlist.clone());
                             }
                             if response.secondary_clicked() {
@@ -2051,6 +2068,7 @@ pub fn render_search(
                                 }
                             }
                             if response.clicked() {
+                                *selected_track = None;
                                 action = Action::OpenShowFromSearch(show.clone());
                             }
                             ui.add_space(12.0);

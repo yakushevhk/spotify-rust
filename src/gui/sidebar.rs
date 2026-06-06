@@ -262,23 +262,13 @@ pub fn render(
     }
     ui.add_space(4.0);
 
-    // Read all needed data once to avoid multiple lock acquisitions per frame (L121-196)
-    let (playlists_snapshot, albums_snapshot, shows_snapshot, artists_snapshot) = {
-        let data = state.data.read();
-        (
-            data.user_data.playlists.clone(),
-            data.user_data.saved_albums.clone(),
-            data.user_data.saved_shows.clone(),
-            data.user_data.followed_artists.clone(),
-        )
-    };
-
+    // Playlists section — read under lock, iterate by reference (no full Vec clone)
     {
-        for item in playlists_snapshot.iter() {
+        let data = state.data.read();
+        for item in data.user_data.playlists.iter() {
             match item {
                 state::PlaylistFolderItem::Playlist(playlist) => {
                     if collapsed {
-                        // Just show first letter or icon when collapsed
                         let (rect, resp) = ui
                             .allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click());
                         let bg = if resp.hovered() { theme::bg_card() } else { egui::Color32::TRANSPARENT };
@@ -324,15 +314,11 @@ pub fn render(
         theme::section_header(ui, "ALBUMS");
 
         {
-            for album in albums_snapshot.iter() {
+            let data = state.data.read();
+            for album in data.user_data.saved_albums.iter() {
                 let sub = format!(
                     "{} · {}",
-                    album
-                        .artists
-                        .iter()
-                        .map(|a| a.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
+                    album.artists_display_ref(),
                     album.year()
                 );
                 if theme::list_item(ui, &album.name, &sub, false).clicked() {
@@ -348,7 +334,8 @@ pub fn render(
         theme::section_header(ui, "SHOWS");
 
         {
-            for show in shows_snapshot.iter() {
+            let data = state.data.read();
+            for show in data.user_data.saved_shows.iter() {
                 if theme::list_item(ui, &show.name, &show.publisher, false).clicked() {
                     action = Action::OpenShowDetail(show.clone());
                 }
@@ -362,7 +349,8 @@ pub fn render(
         theme::section_header(ui, "ARTISTS");
 
         {
-            for artist in artists_snapshot.iter() {
+            let data = state.data.read();
+            for artist in data.user_data.followed_artists.iter() {
                 if theme::list_item(ui, &artist.name, "", false).clicked() {
                     action = Action::OpenArtist(artist.clone());
                 }

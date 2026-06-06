@@ -135,7 +135,8 @@ impl State {
 
     /// Reset user data to avoid stale data from a previous account/session.
     pub fn reset_user_data(&self) {
-        self.data.write().user_data = UserData {
+        let mut data = self.data.write();
+        data.user_data = UserData {
             user: None,
             playlists: Vec::new(),
             playlist_folder_node: None,
@@ -144,5 +145,7 @@ impl State {
             saved_albums: Vec::new(),
             saved_tracks: std::collections::HashMap::new(),
         };
+        data.caches = data::MemoryCaches::new();
+        data.browse = data::BrowseData::default();
     }
 }

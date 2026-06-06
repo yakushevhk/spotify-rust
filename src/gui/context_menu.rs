@@ -5,6 +5,17 @@ use crate::client::{ClientRequest, PlayerRequest};
 use crate::gui::theme;
 use crate::state::{self, Album, Artist, Episode, Item, ItemId, PlayableId, Playback, Playlist, SharedState, Show, Track};
 
+fn extract_item_name(target: &ContextTarget) -> Option<String> {
+    match target {
+        ContextTarget::Track { track, .. } => Some(track.name.clone()),
+        ContextTarget::Album(album) => Some(album.name.clone()),
+        ContextTarget::Artist(artist) => Some(artist.name.clone()),
+        ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
+        ContextTarget::Show(show) => Some(show.name.clone()),
+        ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Navigation {
     GoToArtist(Artist),
@@ -592,14 +603,7 @@ impl ContextMenu {
                             if item.destructive && !self.should_skip_confirmation(&item.action) {
                                 self.confirm_action = Some(item.action.clone());
                                 // Get item name for confirmation message
-                                self.confirm_item_name = match &target {
-                                    ContextTarget::Track { track, .. } => Some(track.name.clone()),
-                                    ContextTarget::Album(album) => Some(album.name.clone()),
-                                    ContextTarget::Artist(artist) => Some(artist.name.clone()),
-                                    ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
-                                    ContextTarget::Show(show) => Some(show.name.clone()),
-                                    ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
-                                };
+                                self.confirm_item_name = extract_item_name(&target);
                                 self.show_dont_ask_again = false;
                             } else {
                                 self.set_action_loading(&item.action, true);
@@ -621,14 +625,7 @@ impl ContextMenu {
             if !self.is_action_loading(&action) {
                 if action.is_destructive() && !self.should_skip_confirmation(&action) {
                     self.confirm_action = Some(action);
-                    self.confirm_item_name = match &target {
-                        ContextTarget::Track { track, .. } => Some(track.name.clone()),
-                        ContextTarget::Album(album) => Some(album.name.clone()),
-                        ContextTarget::Artist(artist) => Some(artist.name.clone()),
-                        ContextTarget::Playlist(playlist) => Some(playlist.name.clone()),
-                        ContextTarget::Show(show) => Some(show.name.clone()),
-                        ContextTarget::Episode { episode, .. } => Some(episode.name.clone()),
-                    };
+                    self.confirm_item_name = extract_item_name(&target);
                     self.show_dont_ask_again = false;
                 } else {
                     self.set_action_loading(&action, true);
@@ -842,13 +839,20 @@ impl ContextMenu {
                             egui::CornerRadius::same(theme::RADIUS_SMALL),
                             confirm_bg,
                         );
+                         let confirm_label = match &action {
+                            MenuAction::UnfollowArtist(_) => "Unfollow",
+                            MenuAction::RemoveShowFromLibrary(_) => "Remove from Library",
+                            MenuAction::RemoveAlbumFromLibrary(_) => "Remove from Library",
+                            MenuAction::DeleteFromPlaylist(_, _) => "Delete",
+                            _ => "Remove",
+                        };
                          ui.painter().text(
                             confirm_rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            "Remove",
+                            confirm_label,
                             egui::FontId::proportional(13.0),
                             theme::text_primary(),
-                        );
+                         );
                         if confirm_resp.clicked() {
                             execute = true;
                             close = true;
