@@ -657,7 +657,7 @@ pub fn get_cache_folder_path() -> Result<PathBuf> {
 pub fn get_config() -> Configs {
     CONFIGS
         .get()
-        .expect("config not initialized: set_config must be called before get_config")
+        .unwrap_or_else(|| panic!("FATAL: config not initialized - call set_config() before get_config()"))
         .lock()
         .clone()
 }

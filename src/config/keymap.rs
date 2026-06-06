@@ -138,7 +138,8 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
 
     // Single character key
     if s.len() == 1 {
-        return vec![KeyBinding::Key(s.chars().next().expect("s.len() == 1 guarantees at least one char"))];
+        let c = s.chars().next().unwrap();
+        return vec![KeyBinding::Key(c)];
     }
 
     vec![]
