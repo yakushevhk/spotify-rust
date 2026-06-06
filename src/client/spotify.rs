@@ -126,6 +126,18 @@ impl BaseClient for Spotify {
                 if msg.contains("timeout") {
                     tracing::warn!("Token refresh timed out, keeping existing token");
                     Ok(old_token)
+                } else if msg.contains("400") || msg.contains("Bad Request") {
+                    let error_msg = "HTTP 400 Bad Request during token refresh. Delete ~/.cache/spotify-player/user_client_token.json and retry.".to_string();
+                    tracing::error!("{}", error_msg);
+                    Err(ClientError::Cli(error_msg))
+                } else if msg.contains("401") || msg.contains("Unauthorized") {
+                    let error_msg = "HTTP 401 Unauthorized. Delete ~/.cache/spotify-player/credentials.json and user_client_token.json, then re-authenticate.".to_string();
+                    tracing::error!("{}", error_msg);
+                    Err(ClientError::Cli(error_msg))
+                } else if msg.contains("500") || msg.contains("Internal Server Error") {
+                    let error_msg = "HTTP 500 Internal Server Error. Spotify servers may be experiencing issues. Please retry in a few seconds.".to_string();
+                    tracing::warn!("{}", error_msg);
+                    Err(ClientError::Cli(error_msg))
                 } else {
                     tracing::error!("Token refresh failed: {err:#}");
                     Err(ClientError::Cli(msg))

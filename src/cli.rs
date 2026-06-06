@@ -245,10 +245,25 @@ pub async fn start_cli_headless(
     eprintln!("Opening browser for Spotify login...");
     let client = AppClient::new().await.context("construct app client")?;
     eprintln!("Authenticating with Spotify...");
-    client
-        .new_session(Some(&state), true)
-        .await
-        .context("initialize new Spotify session")?;
+    
+    let auth_result = client.new_session(Some(&state), true).await;
+    
+    if let Err(ref e) = auth_result {
+        let err_msg = format!("{:#}", e);
+        if err_msg.contains("400") || err_msg.contains("Bad Request") {
+            eprintln!("\nERROR: Authentication failed with HTTP 400 Bad Request");
+            eprintln!("This usually means the cached token is invalid or expired.");
+            eprintln!("Try running: rm ~/.cache/spotify-player/user_client_token.json");
+            eprintln!("Then run your command again to re-authenticate.\n");
+        } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
+            eprintln!("\nERROR: Authentication failed with HTTP 401 Unauthorized");
+            eprintln!("The credentials are no longer valid.");
+            eprintln!("Try running: rm ~/.cache/spotify-player/credentials.json ~/.cache/spotify-player/user_client_token.json");
+            eprintln!("Then run your command again to re-authenticate.\n");
+        }
+    }
+    
+    auth_result.context("initialize new Spotify session")?;
     
     client_pub.send(ClientRequest::GetCurrentUser)?;
     client_pub.send(ClientRequest::GetCurrentPlayback)?;

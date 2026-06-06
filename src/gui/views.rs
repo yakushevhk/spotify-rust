@@ -877,7 +877,7 @@ fn skeleton_rect(ui: &mut egui::Ui, rect: egui::Rect, corner_radius: impl Into<e
 fn truncate_text_binary(
     ui: &egui::Ui,
     text: &str,
-    font: egui::FontId,
+    font: &egui::FontId,
     color: egui::Color32,
     max_width: f32,
 ) -> String {
@@ -994,7 +994,7 @@ fn grid_card(
     // Title
     let title_font = egui::FontId::proportional(13.0);
     let max_text_width = (width - 24.0).max(20.0);
-    let truncated_title = truncate_text_binary(ui, title, title_font.clone(), theme::text_primary(), max_text_width);
+    let truncated_title = truncate_text_binary(ui, title, &title_font, theme::text_primary(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
@@ -1005,7 +1005,7 @@ fn grid_card(
 
     // Subtitle
     let subtitle_font = egui::FontId::proportional(11.0);
-    let truncated_subtitle = truncate_text_binary(ui, subtitle, subtitle_font.clone(), theme::text_dim(), max_text_width);
+    let truncated_subtitle = truncate_text_binary(ui, subtitle, &subtitle_font, theme::text_dim(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,
@@ -1259,11 +1259,17 @@ pub fn render_tracks(
         let title_col_width = (row_avail_width * 0.35).max(150.0);
         let artist_col_width = (row_avail_width * 0.25).max(100.0);
         let album_col_width = (row_avail_width * 0.25).max(100.0);
-        
+
         let title_x = num_col_width + thumb_col_width;
         let artist_x = title_x + title_col_width;
         let album_x = artist_x + artist_col_width;
         let time_x = row_avail_width - time_col_width + 48.0;
+
+        let track_name_font = egui::FontId::proportional(14.0);
+        let artist_font = egui::FontId::proportional(12.0);
+        let album_font = egui::FontId::proportional(12.0);
+        let duration_font = egui::FontId::monospace(12.0);
+        let number_font = egui::FontId::monospace(12.0);
 
         egui::ScrollArea::vertical()
         .id_salt("tracks_scroll")
@@ -1315,7 +1321,7 @@ pub fn render_tracks(
                     row_rect.left_center() + egui::vec2(28.0, 0.0),
                     egui::Align2::CENTER_CENTER,
                     &num_str,
-                    egui::FontId::monospace(12.0),
+                    number_font.clone(),
                     num_color,
                 );
 
@@ -1378,40 +1384,38 @@ pub fn render_tracks(
                 } else {
                     theme::text_primary()
                 };
-                let track_name_font = egui::FontId::proportional(14.0);
                 let max_track_width = title_col_width - 8.0;
-                let truncated_name = truncate_text_binary(ui, &track.name, track_name_font.clone(), title_color, max_track_width);
+                let truncated_name = truncate_text_binary(ui, &track.name, &track_name_font, title_color, max_track_width);
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(title_x, -7.0),
                     egui::Align2::LEFT_CENTER,
                     &truncated_name,
-                    track_name_font,
+                    track_name_font.clone(),
                     title_color,
                 );
-                
+
                 // Artist (25%)
                 let artist_text = track.artists_display_ref();
                 let max_artist_width = artist_col_width - 8.0;
-                let truncated_artist = truncate_text_binary(ui, artist_text, egui::FontId::proportional(12.0), theme::text_dim(), max_artist_width);
+                let truncated_artist = truncate_text_binary(ui, artist_text, &artist_font, theme::text_dim(), max_artist_width);
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(artist_x, 10.0),
                     egui::Align2::LEFT_CENTER,
                     truncated_artist,
-                    egui::FontId::proportional(12.0),
+                    artist_font.clone(),
                     theme::text_dim(),
                 );
 
                 let album_name = track.album_name_ref();
                 if !album_name.is_empty() {
-                    let album_font = egui::FontId::proportional(12.0);
                     let album_color = theme::text_dim();
                     let max_album_width = album_col_width - 8.0;
-                    let truncated_album = truncate_text_binary(ui, album_name, album_font.clone(), album_color, max_album_width);
+                    let truncated_album = truncate_text_binary(ui, album_name, &album_font, album_color, max_album_width);
                     ui.painter().text(
                         row_rect.left_center() + egui::vec2(album_x, 0.0),
                         egui::Align2::LEFT_CENTER,
                         &truncated_album,
-                        album_font,
+                        album_font.clone(),
                         album_color,
                     );
                 }
@@ -1423,7 +1427,7 @@ pub fn render_tracks(
                     row_rect.left_center() + egui::vec2(time_x + time_col_width - 8.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     &dur_str,
-                    egui::FontId::monospace(12.0),
+                    duration_font.clone(),
                     theme::text_dim(),
                 );
 
@@ -2133,7 +2137,7 @@ fn search_grid_card(
     let max_text_width = (width - 24.0).max(20.0);
 
     let title_font = egui::FontId::proportional(13.0);
-    let truncated_title = truncate_text_binary(ui, title, title_font.clone(), theme::text_primary(), max_text_width);
+    let truncated_title = truncate_text_binary(ui, title, &title_font, theme::text_primary(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 26.0),
         egui::Align2::LEFT_TOP,
@@ -2143,7 +2147,7 @@ fn search_grid_card(
     );
 
     let subtitle_font = egui::FontId::proportional(11.0);
-    let truncated_subtitle = truncate_text_binary(ui, subtitle, subtitle_font.clone(), theme::text_dim(), max_text_width);
+    let truncated_subtitle = truncate_text_binary(ui, subtitle, &subtitle_font, theme::text_dim(), max_text_width);
     ui.painter().text(
         rect.left_top() + egui::vec2(12.0, art_size + 46.0),
         egui::Align2::LEFT_TOP,

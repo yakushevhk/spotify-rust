@@ -366,7 +366,80 @@ impl AppClient {
 
         tracing::info!("Used a new session for Spotify client.");
 
-        self.user_client()?.refresh_token().await.context("refresh auth token")?;
+        let configs = config::get_config();
+        
+        if auth::check_user_token_expired(&configs.cache_folder) {
+            tracing::info!("User client token expired or missing, clearing and re-authenticating...");
+            if let Err(e) = auth::clear_expired_tokens(&configs.cache_folder) {
+                tracing::warn!("Failed to clear expired token: {:#}", e);
+            }
+        }
+
+        let max_token_retries = 3;
+        let mut last_token_err = None;
+        
+        let user_client = match self.user_client() {
+            Ok(uc) => uc,
+            Err(e) => {
+                return Err(anyhow::anyhow!("User client not available: {:#}", e));
+            }
+        };
+        
+        for attempt in 0..max_token_retries {
+            match user_client.refresh_token().await {
+                Ok(()) => {
+                    tracing::info!("Token refreshed successfully");
+                    break;
+                }
+                Err(e) => {
+                    let err_msg = format!("{:#}", e);
+                    tracing::warn!("Token refresh attempt {}/{} failed: {}", attempt + 1, max_token_retries, err_msg);
+                    
+                    if err_msg.contains("400") || err_msg.contains("Bad Request") {
+                        if attempt < max_token_retries - 1 {
+                            tracing::warn!("HTTP 400 Bad Request during token refresh. Clearing token cache and retrying...");
+                            let _ = auth::clear_expired_tokens(&configs.cache_folder);
+                            tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
+                            last_token_err = Some("HTTP 400 Bad Request: Delete ~/.cache/spotify-player/user_client_token.json and retry".to_string());
+                            continue;
+                        } else {
+                            return Err(anyhow::anyhow!(
+                                "Token refresh failed after {} attempts with HTTP 400. Delete ~/.cache/spotify-player/user_client_token.json and re-authenticate: {}",
+                                max_token_retries, err_msg
+                            ));
+                        }
+                    } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
+                        return Err(anyhow::anyhow!(
+                            "Token refresh failed with HTTP 401 Unauthorized. Delete ~/.cache/spotify-player/credentials.json and ~/.cache/spotify-player/user_client_token.json, then re-authenticate: {}",
+                            err_msg
+                        ));
+                    } else if err_msg.contains("500") || err_msg.contains("Internal Server Error") {
+                        if attempt < max_token_retries - 1 {
+                            let delay = std::time::Duration::from_secs(1 << attempt);
+                            tracing::warn!("Spotify server error, retrying in {}s...", delay.as_secs());
+                            tokio::time::sleep(delay).await;
+                            last_token_err = Some("Spotify server error (500)".to_string());
+                            continue;
+                        }
+                        return Err(anyhow::anyhow!(
+                            "Token refresh failed after {} attempts with HTTP 500. Spotify servers may be experiencing issues. Please retry in a few seconds: {}",
+                            max_token_retries, err_msg
+                        ));
+                    } else {
+                        last_token_err = Some(err_msg);
+                        if attempt < max_token_retries - 1 {
+                            tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let Some(err) = last_token_err {
+            tracing::error!("Token refresh failed after {} attempts: {}", max_token_retries, err);
+            return Err(anyhow::anyhow!("Token refresh failed: {}", err));
+        }
 
         if let Some(state) = state {
             // reset the application's caches
@@ -2555,7 +2628,8 @@ impl AppClient {
     ) -> Result<()> {
         let mut n = notify_rust::Notification::new();
 
-        let re = regex::Regex::new(r"\{.*?\}").unwrap();
+        let re = regex::Regex::new(r"\{.*?\}")
+            .map_err(|e| anyhow::anyhow!("failed to compile regex for notification: {}", e))?;
         // Generate a text described a track from a format string.
         // For example, a format string "{track} - {artists}" will generate
         // a text consisting of the track's name followed by a dash then artists' names.

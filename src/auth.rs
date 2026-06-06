@@ -41,6 +41,7 @@
 //! ```
 
 use crate::config;
+use std::path::Path;
 use anyhow::{Context, Result};
 use librespot_core::{authentication::Credentials, cache::Cache, config::SessionConfig, Session};
 use librespot_oauth::OAuthClientBuilder;
@@ -91,7 +92,10 @@ impl Default for AuthConfig {
         AuthConfig::try_default().unwrap_or_else(|e| {
             tracing::warn!("failed to create default AuthConfig, using fallback: {:#}", e);
             AuthConfig {
-                cache: Cache::new(None::<String>, None, None, None).expect("failed to create cache"),
+                cache: Cache::new(None::<String>, None, None, None)
+                    .unwrap_or_else(|e| {
+                        panic!("failed to create cache in fallback - this should not happen: {:#}", e)
+                    }),
                 session_config: SessionConfig::default(),
                 login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
             }
@@ -193,6 +197,70 @@ pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool)
             Ok(creds)
         }
     }
+}
+
+pub fn check_user_token_expired(cache_folder: &Path) -> bool {
+    let token_file = cache_folder.join("user_client_token.json");
+    if !token_file.exists() {
+        tracing::debug!("No user_client_token.json found");
+        return true;
+    }
+
+    match std::fs::read_to_string(&token_file) {
+        Ok(content) => {
+            if let Ok(token) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(expires_at) = token.get("expires_at").and_then(|v| v.as_str()) {
+                    if let Ok(expires_at) = chrono::DateTime::parse_from_rfc3339(expires_at) {
+                        let now = chrono::Utc::now();
+                        let expires_at_utc = expires_at.with_timezone(&chrono::Utc);
+                        let is_expired = now >= expires_at_utc - chrono::Duration::seconds(60);
+                        tracing::debug!(
+                            "Token expires at {}, now: {}, expired: {}",
+                            expires_at_utc, now, is_expired
+                        );
+                        return is_expired;
+                    }
+                }
+            }
+            tracing::debug!("Could not parse token expiration, treating as expired");
+            true
+        }
+        Err(e) => {
+            tracing::warn!("Failed to read token file: {:#}, treating as expired", e);
+            true
+        }
+    }
+}
+
+pub fn clear_expired_tokens(cache_folder: &Path) -> Result<()> {
+    let token_file = cache_folder.join("user_client_token.json");
+    if token_file.exists() {
+        tracing::info!("Clearing expired user_client_token.json");
+        std::fs::remove_file(&token_file)
+            .context("failed to delete expired user_client_token.json")?;
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn check_credentials_expired(cache_folder: &Path) -> bool {
+    let creds_file = cache_folder.join("credentials.json");
+    if !creds_file.exists() {
+        tracing::debug!("No credentials.json found");
+        return true;
+    }
+    false
+}
+
+#[allow(dead_code)]
+pub fn clear_credentials(cache_folder: &Path) -> Result<()> {
+    let creds_file = cache_folder.join("credentials.json");
+    if creds_file.exists() {
+        tracing::info!("Clearing credentials.json");
+        std::fs::remove_file(&creds_file)
+            .context("failed to delete credentials.json")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

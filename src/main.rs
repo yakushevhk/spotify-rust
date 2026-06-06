@@ -367,7 +367,7 @@ async fn run_cli(command: cli::CliCommand) -> Result<()> {
         .app_config
         .log_folder
         .as_deref()
-        .expect("log_folder is set");
+        .ok_or_else(|| anyhow::anyhow!("log_folder is not set in config"))?;
     
     let log_buffer: Arc<Mutex<VecDeque<String>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
@@ -428,7 +428,7 @@ async fn run_daemon() -> Result<()> {
         .app_config
         .log_folder
         .as_deref()
-        .expect("log_folder is set");
+        .ok_or_else(|| anyhow::anyhow!("log_folder is not set in config"))?;
     
     let log_buffer: Arc<Mutex<VecDeque<String>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
@@ -494,7 +494,7 @@ fn run_gui() -> Result<()> {
         .app_config
         .log_folder
         .as_deref()
-        .expect("log_folder is set");
+        .ok_or_else(|| anyhow::anyhow!("log_folder is not set in config"))?;
 
     let log_buffer: Arc<Mutex<VecDeque<String>>> =
         Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
