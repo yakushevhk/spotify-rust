@@ -151,9 +151,9 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         )];
     }
 
-    // Single character key
-    if sl.chars().count() == 1 {
-        let c = sl.chars().next().unwrap();
+    // Single character key (preserve case — only lowercase for modifier/special matching)
+    if s.chars().count() == 1 {
+        let c = s.chars().next().unwrap();
         return vec![KeyBinding::Key(c)];
     }
 

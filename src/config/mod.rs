@@ -332,7 +332,7 @@ impl Command {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            anyhow::bail!(stderr);
+            anyhow::bail!("{}", stderr);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

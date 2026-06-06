@@ -386,7 +386,7 @@ impl CustomQueue {
                     let mut radio_iter = radio_tracks.iter();
                     for (i, track) in order.into_iter().enumerate() {
                         interleaved.push(track);
-                        if i > 0 && i % 4 == 0 {
+                        if i > 0 && (i + 1) % 4 == 0 {
                             if let Some(rt) = radio_iter.next() {
                                 interleaved.push(rt.clone());
                             }

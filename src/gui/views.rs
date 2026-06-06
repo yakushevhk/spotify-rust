@@ -905,10 +905,7 @@ fn truncate_text_binary(
     let chars: Vec<char> = text.chars().collect();
     let mut lo = 0usize;
     let mut hi = chars.len();
-    let mut iterations = 0;
-    const MAX_TRUNCATE_ITERATIONS: usize = 3;
-    while lo < hi && iterations < MAX_TRUNCATE_ITERATIONS {
-        iterations += 1;
+    while lo + 1 < hi {
         let mid = (lo + hi).div_ceil(2);
         let candidate: String = chars[..mid].iter().collect();
         let test = format!("{}\u{2026}", candidate);
@@ -3636,6 +3633,7 @@ fn render_settings_keybindings(
                         if edit_idx < keybindings.len() {
                             keybindings[edit_idx].keybindings = vec![kb];
                         }
+                        ui.ctx().input_mut(|i| i.events.clear());
                         *editing_keybinding = None;
                     }
                 }

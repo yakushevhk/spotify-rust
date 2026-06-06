@@ -273,7 +273,7 @@ impl AppClient {
 
                 // After the retry loop: check if connection succeeded, show failure toast if not
                 if state.player.read().playback.is_none() {
-                    state.push_toast("Failed to connect to Spotify after multiple attempts".to_string());
+                    state.push_toast("Failed to connect to Spotify after multiple attempts");
                 }
             }
         });
@@ -818,6 +818,8 @@ impl AppClient {
                             existing.shuffle_state = updated.shuffle_state;
                             existing.volume = updated.volume;
                             existing.mute_state = updated.mute_state;
+                            existing.device_id = updated.device_id.clone();
+                            existing.device_name = updated.device_name.clone();
                         } else {
                             player.buffered_playback = Some(updated);
                         }

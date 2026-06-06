@@ -55,13 +55,14 @@ impl PlayerState {
     pub fn current_playback(&self) -> Option<rspotify::model::CurrentPlaybackContext> {
         let mut playback = self.playback.clone()?;
 
+        let now = std::time::Instant::now();
         let seeking = self
             .seek_deadline
-            .is_some_and(|d| d > std::time::Instant::now());
+            .is_some_and(|d| d > now);
 
         playback.progress = match (playback.progress, self.playback_last_updated_time) {
             (Some(d), Some(last_time)) if playback.is_playing && !seeking => {
-                chrono::Duration::from_std(last_time.elapsed())
+                chrono::Duration::from_std(now - last_time)
                     .ok()
                     .map(|elapsed| d + elapsed)
             }
@@ -113,13 +114,14 @@ impl PlayerState {
                 if !playback.is_playing {
                     return Some(base);
                 }
+                let now = std::time::Instant::now();
                 let seeking = self
                     .seek_deadline
-                    .is_some_and(|d| d > std::time::Instant::now());
+                    .is_some_and(|d| d > now);
                 if seeking {
                     return Some(base);
                 }
-                let elapsed = self.playback_last_updated_time.map(|t| t.elapsed())?;
+                let elapsed = self.playback_last_updated_time.map(|t| now - t)?;
                 let delta = chrono::Duration::from_std(elapsed).ok()?;
                 Some(base + delta)
             }
