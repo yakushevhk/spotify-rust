@@ -1336,7 +1336,7 @@ pub fn render_tracks(
                 let mut thumb_drawn = false;
                 // Generate alt text for screen readers
                 let thumb_alt_text = if let Some(ref album) = track.album {
-                    let artists = track.artists_info();
+                    let artists = track.artists_display_ref();
                     format!("Album cover: {} by {}", album.name, artists)
                 } else {
                     format!("Track: {}", track.name)
@@ -1399,24 +1399,23 @@ pub fn render_tracks(
                 );
                 
                 // Artist (25%)
-                let artist_text = track.artists_info();
+                let artist_text = track.artists_display_ref();
                 let max_artist_width = artist_col_width - 8.0;
-                let truncated_artist = truncate_text_binary(ui, &artist_text, egui::FontId::proportional(12.0), theme::text_dim(), max_artist_width);
+                let truncated_artist = truncate_text_binary(ui, artist_text, egui::FontId::proportional(12.0), theme::text_dim(), max_artist_width);
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(artist_x, 10.0),
                     egui::Align2::LEFT_CENTER,
-                    &truncated_artist,
+                    truncated_artist,
                     egui::FontId::proportional(12.0),
                     theme::text_dim(),
                 );
 
-                // Album name (25%)
-                let album_name = track.album_info();
+                let album_name = track.album_name_ref();
                 if !album_name.is_empty() {
                     let album_font = egui::FontId::proportional(12.0);
                     let album_color = theme::text_dim();
                     let max_album_width = album_col_width - 8.0;
-                    let truncated_album = truncate_text_binary(ui, &album_name, album_font.clone(), album_color, max_album_width);
+                    let truncated_album = truncate_text_binary(ui, album_name, album_font.clone(), album_color, max_album_width);
                     ui.painter().text(
                         row_rect.left_center() + egui::vec2(album_x, 0.0),
                         egui::Align2::LEFT_CENTER,

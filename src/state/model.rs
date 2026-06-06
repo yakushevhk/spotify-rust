@@ -190,6 +190,9 @@ pub struct Track {
     #[allow(dead_code)]
     pub name_lower: Option<String>,
     #[serde(skip)]
+    /// Cached artists display string (pre-computed for hot paths)
+    pub artists_display: Option<String>,
+    #[serde(skip)]
     /// Cached lowercase artist info for sorting
     #[allow(dead_code)]
     pub artists_info_lower: Option<String>,
@@ -408,12 +411,22 @@ impl Track {
         map_join(&self.artists, |a| &a.name, ", ")
     }
 
+    /// gets cached artists display string (pre-computed for hot paths)
+    pub fn artists_display_ref(&self) -> &str {
+        self.artists_display.as_deref().unwrap_or("")
+    }
+
     /// gets the track's album information
     pub fn album_info(&self) -> String {
         self.album
             .as_ref()
             .map(|a| a.name.clone())
             .unwrap_or_default()
+    }
+
+    /// gets the track's album name reference (zero-allocation)
+    pub fn album_name_ref(&self) -> &str {
+        self.album.as_ref().map(|a| a.name.as_str()).unwrap_or("")
     }
 
     /// gets cached lowercase name for sorting (computes if not cached)
@@ -479,15 +492,18 @@ impl Track {
                 Some(d) => d.id?,
                 None => track.id?,
             };
+            let artists = from_simplified_artists_to_artists(track.artists);
+            let artists_display = Some(map_join(&artists, |a| &a.name, ", "));
             Some(Self {
                 id,
                 name: track.name,
-                artists: from_simplified_artists_to_artists(track.artists),
+                artists,
                 album: None,
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: 0,
                 name_lower: None,
+                artists_display,
                 artists_info_lower: None,
                 album_info_lower: None,
             })
@@ -506,15 +522,18 @@ impl Track {
                 Some(d) => d.id?,
                 None => track.id?,
             };
+            let artists = from_simplified_artists_to_artists(track.artists);
+            let artists_display = Some(map_join(&artists, |a| &a.name, ", "));
             Some(Self {
                 id,
                 name: track.name,
-                artists: from_simplified_artists_to_artists(track.artists),
+                artists,
                 album: Album::try_from_simplified_album(track.album),
                 duration: track.duration.to_std().ok()?,
                 explicit: track.explicit,
                 added_at: added_at.map(|t| t.timestamp() as u64).unwrap_or_default(),
                 name_lower: None,
+                artists_display,
                 artists_info_lower: None,
                 album_info_lower: None,
             })
@@ -542,10 +561,10 @@ impl std::fmt::Display for Track {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} • {} ▎ {}",
+            "{} ▎ {} ▎ {}",
             self.display_name(),
-            self.artists_info(),
-            self.album_info(),
+            self.artists_display.as_deref().unwrap_or(""),
+            self.album_name_ref(),
         )
     }
 }
@@ -1086,6 +1105,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1104,6 +1124,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1133,6 +1154,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1151,6 +1173,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1176,6 +1199,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: Some("cached".to_string()),
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1195,6 +1219,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1214,6 +1239,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
@@ -1685,6 +1711,7 @@ mod tests {
             explicit: false,
             added_at: 0,
             name_lower: None,
+            artists_display: None,
             artists_info_lower: None,
             album_info_lower: None,
         };
