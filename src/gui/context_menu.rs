@@ -890,11 +890,12 @@ impl ContextMenu {
     }
 
     fn execute_action(
-        &self,
+        &mut self,
         action: MenuAction,
         state: &SharedState,
         client_pub: &flume::Sender<ClientRequest>,
     ) -> Option<Navigation> {
+        self.set_action_loading(&action, false);
         match action {
             MenuAction::AddToQueue(playable_id) => {
                 let _ = client_pub.send(ClientRequest::AddPlayableToQueue(playable_id));

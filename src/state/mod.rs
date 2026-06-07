@@ -148,5 +148,14 @@ impl State {
         data.caches = data::MemoryCaches::new();
         data.browse = data::BrowseData::default();
         data.shows_loading = false;
+        drop(data);
+
+        // Delete stale file caches from previous account
+        let configs = crate::config::get_config();
+        let cache_folder = &configs.cache_folder;
+        for ext in &["playlists_cache.json", "saved_shows_cache.json", "followed_artists_cache.json",
+                      "saved_albums_cache.json", "saved_tracks_cache.json", "playlist_folders_cache.json"] {
+            let _ = std::fs::remove_file(cache_folder.join(ext));
+        }
     }
 }

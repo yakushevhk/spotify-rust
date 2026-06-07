@@ -30,7 +30,7 @@ pub fn render(
     state: &SharedState,
     client_pub: &flume::Sender<ClientRequest>,
     image_cache: &mut ImageCache,
-    waveform_cache: &mut Option<(String, usize, Vec<f32>)>,
+    waveform_cache: &mut Option<(String, usize, u64, Vec<f32>)>,
 ) -> PlaybackBarResponse {
     let mut result = PlaybackBarResponse {
         navigate: None,
@@ -343,14 +343,14 @@ pub fn render(
                     // Generate waveform bars (cached by track URI only - regenerate only when track changes)
                     let num_bars = ((bar_width / 3.0).max(1.0)) as usize;
                     let cache_key_uri = track_uri.clone();
-                    if waveform_cache.as_ref().is_none_or(|(uri, bars, _)| *uri != cache_key_uri || *bars != num_bars) {
+                    if waveform_cache.as_ref().is_none_or(|(uri, bars, secs, _)| *uri != cache_key_uri || *bars != num_bars || *secs != d_secs) {
                         let bars = generate_waveform_bars(num_bars, d_secs);
-                        *waveform_cache = Some((cache_key_uri, num_bars, bars));
+                        *waveform_cache = Some((cache_key_uri, num_bars, d_secs, bars));
                     }
 
                     let hover_pos = bar_response.hover_pos();
                     
-                    if let Some((_, cached_num_bars, waveform)) = waveform_cache.as_ref() {
+                    if let Some((_, cached_num_bars, _, waveform)) = waveform_cache.as_ref() {
                         let num_bars = *cached_num_bars;
                         let bar_gap = 1.0;
                         let bar_w = (bar_width / num_bars as f32) - bar_gap;

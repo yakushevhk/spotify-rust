@@ -1421,7 +1421,7 @@ pub fn render_tracks(
                 // Artist (25%)
                 let artist_text = track.artists_display_ref();
                 let max_artist_width = col.artist_col_width - 8.0;
-                let truncated_artist = truncate_text_binary(ui, artist_text, &artist_font, theme::text_dim(), max_artist_width);
+                let truncated_artist = truncate_text_binary(ui, &artist_text, &artist_font, theme::text_dim(), max_artist_width);
                 ui.painter().text(
                     row_rect.left_center() + egui::vec2(col.artist_x, 10.0),
                     egui::Align2::LEFT_CENTER,
@@ -2593,10 +2593,11 @@ pub fn render_queue(
                     );
 
                     if response.clicked() {
-                        if let Some(id) = queue_ids.get(i) {
+                        let remaining: Vec<_> = queue_ids.iter().skip(i).cloned().collect();
+                        if !remaining.is_empty() {
                             let _ = client_pub.send(ClientRequest::Player(
                                 PlayerRequest::StartPlayback(
-                                    state::Playback::URIs(vec![id.clone()], None),
+                                    state::Playback::URIs(remaining, None),
                                     None,
                                 ),
                             ));

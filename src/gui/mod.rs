@@ -248,7 +248,7 @@ pub struct SpotifyApp {
     browse_albums_filter: String,
     show_in_page_search: bool,
     in_page_search_query: String,
-    waveform_cache: Option<(String, usize, Vec<f32>)>,
+    waveform_cache: Option<(String, usize, u64, Vec<f32>)>,
     selected_artist_track: Option<usize>,
     search_debounce_state: crate::gui::views::SearchDebounceState,
     
@@ -421,9 +421,7 @@ current_view: View::Library,
                     self.context_tracks.clear();
                     self.sort_state = None;
                     self.current_context_id = Some(state::ContextId::Album(id.clone()));
-                    if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(id))).is_err() {
-                        tracing::warn!("Failed to send GetContext request for album");
-                    }
+                    self.send_request(ClientRequest::GetContext(state::ContextId::Album(id)));
                     self.navigate_to_view(View::Tracks);
                 }
             }
@@ -483,9 +481,7 @@ current_view: View::Library,
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Album(album.id.clone()));
-                if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
-                    tracing::warn!("Failed to send GetContext request for album from search");
-                }
+                self.send_request(ClientRequest::GetContext(state::ContextId::Album(album.id)));
                 self.navigate_to_view(View::Tracks);
             }
             Action::OpenArtist(artist) => {
@@ -535,9 +531,7 @@ current_view: View::Library,
                 self.sort_state = None;
                 self.selected_track = None;
                 self.current_context_id = Some(state::ContextId::Album(album.id.clone()));
-                if self.client_pub.send(ClientRequest::GetContext(state::ContextId::Album(album.id))).is_err() {
-                    tracing::warn!("Failed to send GetContext request for album from context menu");
-                }
+                self.send_request(ClientRequest::GetContext(state::ContextId::Album(album.id)));
                 self.navigate_to_view(View::Tracks);
             }
             Action::ContextMenuNavigateShow(show) => {
@@ -1110,14 +1104,20 @@ current_view: View::Library,
             },
             Command::Popup(popup) => match popup {
                 crate::command::PopupCommand::Playlists => {
+                    self.show_browse_artists_popup = false;
+                    self.show_browse_albums_popup = false;
                     self.show_browse_playlists_popup = true;
                     self.browse_playlists_filter.clear();
                 }
                 crate::command::PopupCommand::FollowedArtists => {
+                    self.show_browse_playlists_popup = false;
+                    self.show_browse_albums_popup = false;
                     self.show_browse_artists_popup = true;
                     self.browse_artists_filter.clear();
                 }
                 crate::command::PopupCommand::SavedAlbums => {
+                    self.show_browse_playlists_popup = false;
+                    self.show_browse_artists_popup = false;
                     self.show_browse_albums_popup = true;
                     self.browse_albums_filter.clear();
                 }
@@ -1190,11 +1190,14 @@ current_view: View::Library,
         // Parse: https://open.spotify.com/{type}/{id}  or  spotify:{type}:{id}
         let (link_type, id_str) = if text.contains("open.spotify.com") {
             // URL format: https://open.spotify.com/track/abc123?si=...
+            // Also handles: https://open.spotify.com/intl-en/track/abc123
             let after_domain = text.split("open.spotify.com/").nth(1).unwrap_or("");
             let parts: Vec<&str> = after_domain.split('/').collect();
-            if parts.len() >= 2 {
-                let id = parts[1].split('?').next().unwrap_or("");
-                (parts[0], id.to_string())
+            let known_types = ["track", "album", "artist", "playlist", "show", "episode"];
+            let type_idx = parts.iter().position(|p| known_types.contains(p));
+            if let Some(idx) = type_idx {
+                let id = parts.get(idx + 1).and_then(|p| p.split('?').next()).unwrap_or("");
+                (parts[idx], id.to_string())
             } else {
                 self.toast("Invalid Spotify link format".to_string());
                 return;
@@ -1621,7 +1624,7 @@ impl eframe::App for SpotifyApp {
         let mut action = Action::None;
         let is_authenticated = {
             let data = self.state.data.read();
-            !data.user_data.playlists.is_empty() || !data.user_data.saved_albums.is_empty()
+            data.user_data.user.is_some()
         };
         let window_width = ctx.screen_rect().width();
         let (sidebar_width, _) = theme::responsive_sidebar_width(window_width);
@@ -3700,6 +3703,7 @@ impl SpotifyApp {
                                         let mut bindings = default_keybindings();
                                         crate::config::get_config().keymap_config.apply_overrides(&mut bindings);
                                         self.keybindings = bindings;
+                                        self.cached_seek_duration_secs = crate::config::get_config().app_config.seek_duration_secs;
                                         self.settings_dirty = false;
                                         self.settings_original = self.settings_editing.clone();
                                         if needs_restart {

@@ -102,6 +102,7 @@ impl CustomQueue {
         source_context: Option<ContextId>,
         autoplay: bool,
     ) -> Self {
+        assert!(max_batch_size > 0, "max_batch_size must be > 0, got {max_batch_size}");
         if tracks.is_empty() {
             return Self {
                 original_tracks: tracks,

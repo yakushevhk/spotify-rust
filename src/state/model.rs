@@ -392,8 +392,11 @@ impl Track {
     }
 
     /// gets cached artists display string (pre-computed for hot paths)
-    pub fn artists_display_ref(&self) -> &str {
-        self.artists_display.as_deref().unwrap_or("")
+    /// Falls back to computing from artists if cache was not serialized
+    pub fn artists_display_ref(&self) -> std::borrow::Cow<'_, str> {
+        self.artists_display.as_deref()
+            .map(std::borrow::Cow::Borrowed)
+            .unwrap_or_else(|| std::borrow::Cow::Owned(self.artists_info()))
     }
 
     /// gets the track's album information
@@ -529,13 +532,24 @@ impl Track {
 
 impl std::fmt::Display for Track {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} ▎ {} ▎ {}",
-            self.display_name(),
-            self.artists_display.as_deref().unwrap_or(""),
-            self.album_name_ref(),
-        )
+        let artists_display_str = self.artists_display.as_deref();
+        if let Some(artists) = artists_display_str {
+            write!(
+                f,
+                "{} ▎ {} ▎ {}",
+                self.display_name(),
+                artists,
+                self.album_name_ref(),
+            )
+        } else {
+            write!(
+                f,
+                "{} ▎ {} ▎ {}",
+                self.display_name(),
+                self.artists_info(),
+                self.album_name_ref(),
+            )
+        }
     }
 }
 

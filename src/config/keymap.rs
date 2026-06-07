@@ -154,7 +154,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // Multi-key sequence like "gg", "g t", "g space"
-    let parts: Vec<&str> = s.split_whitespace().collect();
+    let parts: Vec<&str> = sl.split_whitespace().collect();
     if parts.len() > 1 {
         return vec![KeyBinding::Sequence(
             parts.iter().map(|p| p.to_string()).collect(),
@@ -162,9 +162,9 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // M8: Handle multi-character non-modifier strings as implicit sequences (e.g. "gg")
-    if s.chars().count() > 1 {
+    if sl.chars().count() > 1 {
         return vec![KeyBinding::Sequence(
-            s.chars().map(|c| c.to_string()).collect(),
+            sl.chars().map(|c| c.to_string()).collect(),
         )];
     }
 
@@ -625,7 +625,7 @@ pub fn default_keybindings() -> Vec<CommandBinding> {
             command: CommandId("page_currently_playing"),
             keybindings: vec![KeyBinding::Sequence(vec![
                 "g".to_string(),
-                "Space".to_string(),
+                "space".to_string(),
             ])],
             description: "Go to currently playing context page",
             category: CommandCategory::Pages,

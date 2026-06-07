@@ -151,7 +151,7 @@ impl KeySequenceState {
 
         // Handle count prefix: digits 1-9 (vim-style, 0 is a motion, not a count)
         if let Some(c) = ch {
-            if c.is_ascii_digit() && c != '0' && self.pending_keys.is_empty() {
+            if c.is_ascii_digit() && self.pending_keys.is_empty() && (self.count_prefix.is_some() || c != '0') {
                 let digit = c.to_digit(10).unwrap() as usize;
                 let current = self.count_prefix.unwrap_or(0);
                 self.count_prefix = Some(current * 10 + digit);

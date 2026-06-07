@@ -39,7 +39,7 @@ pub fn get_episode_show_image_url(episode: &rspotify::model::FullEpisode) -> Opt
 pub fn parse_uri(uri: &str) -> Cow<'_, str> {
     let parts = uri.split(':').collect::<Vec<_>>();
     if parts.len() == 5 {
-        Cow::Owned([parts[0], parts[3], parts[4]].join(":"))
+        Cow::Owned([parts[0], parts[1], parts[3], parts[4]].join(":"))
     } else {
         Cow::Borrowed(uri)
     }

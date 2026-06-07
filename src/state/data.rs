@@ -150,7 +150,7 @@ pub fn store_data_into_file_cache<T: Serialize>(
 ) -> std::io::Result<()> {
     let path = cache_folder.join(format!("{key:?}_cache.json"));
     let result = (|| -> std::io::Result<()> {
-        let temp_path = path.with_extension("tmp");
+        let temp_path = path.with_extension(format!("tmp.{}", std::process::id()));
         let mut f = BufWriter::new(std::fs::File::create(&temp_path)?);
         serde_json::to_writer(&mut f, data)?;
         f.flush()?;
@@ -173,7 +173,7 @@ pub fn store_data_into_file_cache<T: Serialize>(
     
     // Clean up orphaned .tmp files on error
     if result.is_err() {
-        let _ = std::fs::remove_file(path.with_extension("tmp"));
+        let _ = std::fs::remove_file(path.with_extension(format!("tmp.{}", std::process::id())));
     }
     
     // Issue #2: Handle write failures generically with user-friendly message
