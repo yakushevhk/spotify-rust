@@ -1714,18 +1714,19 @@ impl AppClient {
         playlist_id: PlaylistId<'_>,
         playable_id: PlayableId<'_>,
     ) -> Result<()> {
-        // Add the item FIRST — if this succeeds and remove fails later,
-        // we'll have a duplicate (minor) rather than losing the track (major)
-        self.user_client()?.playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
+        // Remove all existing occurrences of the item first
+        self.user_client()?
+            .playlist_remove_all_occurrences_of_items(
+                playlist_id.as_ref(),
+                [playable_id.as_ref()],
+                None,
+            )
             .await?;
 
-        // Then remove all old occurrences (except the newly added one)
-        self.user_client()?.playlist_remove_all_occurrences_of_items(
-            playlist_id.as_ref(),
-            [playable_id.as_ref()],
-            None,
-        )
-        .await?;
+        // Then add the item as a single instance
+        self.user_client()?
+            .playlist_add_items(playlist_id.as_ref(), [playable_id.as_ref()], None)
+            .await?;
 
         // After adding a new track to a playlist, remove the cache of that playlist to force refetching new data
         state.data.write().caches.context.remove(&playlist_id.uri());

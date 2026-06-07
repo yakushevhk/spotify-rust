@@ -348,11 +348,12 @@ impl CustomQueue {
                 // Restore original order.
                 self.play_order = self.original_tracks.clone();
                 // Find where the current track sits in the original order.
+                // If current track is a radio track not in original_tracks, fall back to position 0.
                 self.position = self
                     .play_order
                     .iter()
                     .position(|t| *t == current_track)
-                    .expect("current track must exist in play_order");
+                    .unwrap_or(0);
                 self.batch_start = 0;
             }
             ShuffleMode::Shuffle => {
