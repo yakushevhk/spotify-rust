@@ -36,7 +36,7 @@ use crate::{
     auth::AuthConfig,
     state::{
         store_data_into_file_cache, Album, AlbumId, Artist, ArtistId, Category, Context, ContextId,
-        Device, FileCacheKey, Item, ItemId, MemoryCaches, Playback, PlaybackMetadata, Playlist,
+        Device, FileCacheKey, Item, ItemId, Playback, PlaybackMetadata, Playlist,
         PlaylistFolderItem, PlaylistId, SavedShow, SearchResults, SharedState, Show, ShowId, Track, TrackId,
         UserId, TTL_CACHE_DURATION, USER_LIKED_TRACKS_URI, USER_RECENTLY_PLAYED_TRACKS_URI,
         USER_TOP_TRACKS_URI,
@@ -115,7 +115,8 @@ impl AppClient {
         // Limit filename length
         if sanitized.len() > 200 {
             let hash = Self::hash_filename(&sanitized);
-            format!("{}_{:x}", &sanitized[..150], hash)
+            let truncated: String = sanitized.chars().take(150).collect();
+            format!("{}_{:x}", truncated, hash)
         } else {
             sanitized
         }
@@ -455,8 +456,7 @@ impl AppClient {
         }
 
         if let Some(state) = state {
-            // reset the application's caches
-            state.data.write().caches = MemoryCaches::new();
+            // Per documented lock hierarchy: player before data
             // reset player state (playback, devices, queue, custom_queue)
             // to avoid stale data from a previous account/session
             // Preserve streaming_generation so player_event_task is not killed
@@ -468,7 +468,7 @@ impl AppClient {
                 player.streaming_generation = generation;
                 player.custom_queue = queue;
             }
-            // reset user data to avoid stale data from a previous account
+            // reset user data and caches to avoid stale data from a previous account
             state.reset_user_data();
             self.initialize_playback(state).await;
             // Clear transient UI state that should not survive account switches
@@ -869,17 +869,21 @@ impl AppClient {
                     {
                         use crate::state::DeviceType;
                         let configs = config::get_config();
-                        let session = self.spotify.session().await?;
-                        let local_device = Device {
-                            id: session.device_id().to_string(),
-                            name: configs.app_config.device.name.clone(),
-                            is_active: self.stream_conn.lock().is_some(),
-                            device_type: DeviceType::Computer,
-                        };
+                        match self.spotify.session().await {
+                            Ok(session) => {
+                                let local_device = Device {
+                                    id: session.device_id().to_string(),
+                                    name: configs.app_config.device.name.clone(),
+                                    is_active: self.stream_conn.lock().is_some(),
+                                    device_type: DeviceType::Computer,
+                                };
 
-                        // Only add if not already in the list (avoid duplicates)
-                        if !devices.iter().any(|d| d.id == local_device.id) {
-                            devices.push(local_device);
+                                // Only add if not already in the list (avoid duplicates)
+                                if !devices.iter().any(|d| d.id == local_device.id) {
+                                    devices.push(local_device);
+                                }
+                            }
+                            Err(e) => tracing::warn!("Streaming session unavailable for GetDevices: {e:#}"),
                         }
                     }
 
