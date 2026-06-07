@@ -2182,6 +2182,7 @@ impl AppClient {
                 match self.token().await {
                     Ok(new_token) => {
                         access_token = new_token;
+                        last_err = Some(anyhow::anyhow!("retried after re-auth but still failing for {url}"));
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         continue;
                     }
@@ -2745,6 +2746,10 @@ impl AppClient {
             // Issue #5: Use tempfile with automatic cleanup to prevent temp file leakage
             let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
             let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            
+            if let Some(d) = path.parent() {
+                tokio::fs::create_dir_all(d).await?;
+            }
             
             let temp_file = tempfile::NamedTempFile::with_prefix_in(
                 format!("{}.", file_stem),

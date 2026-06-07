@@ -335,10 +335,12 @@ pub async fn start_cli_headless(
     
     if let Err(err) = run_cli_command(command, &client, &client_pub, &state).await {
         eprintln!("Command failed: {err:#}");
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         client_handler.abort();
         return Err(err);
     }
     
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     client_handler.abort();
     
     Ok(())
@@ -478,6 +480,7 @@ pub async fn start_daemon(
         mc_running.store(false, Ordering::Release);
     }
 
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     client_handler.abort();
     if let Err(_panic) = player_watcher.join() {
         tracing::error!("Player event watcher thread panicked");
