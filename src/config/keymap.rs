@@ -109,13 +109,16 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         let mut ctrl = false;
         let mut shift = false;
         let mut rest = sl.as_str();
+        let mut stripped_count = 0;
         loop {
             if rest.starts_with("c-") {
                 ctrl = true;
                 rest = &rest[2..];
+                stripped_count += 2;
             } else if rest.starts_with("s-") {
                 shift = true;
                 rest = &rest[2..];
+                stripped_count += 2;
             } else {
                 break;
             }
@@ -138,8 +141,9 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
                 return vec![KeyBinding::Special(parts.join("-"))];
             }
         }
-        if rest.chars().count() == 1 {
-            if let Some(ch) = rest.chars().next() {
+        let orig_rest = &s[stripped_count..];
+        if orig_rest.chars().count() == 1 {
+            if let Some(ch) = orig_rest.chars().next() {
                 return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
             }
         }
@@ -159,7 +163,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // Multi-key sequence like "gg", "g t", "g space"
-    let parts: Vec<&str> = s.split_whitespace().collect();
+    let parts: Vec<&str> = sl.split_whitespace().collect();
     if parts.len() > 1 {
         return vec![KeyBinding::Sequence(
             parts.iter().map(|p| p.to_string()).collect(),
