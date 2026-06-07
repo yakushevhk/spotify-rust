@@ -505,7 +505,7 @@ pub fn render_show_detail(
             theme::text_primary(),
         );
         if back_rect.1.clicked() {
-            action = Action::Navigate(View::Shows);
+            action = Action::NavigateBack;
         }
     });
 

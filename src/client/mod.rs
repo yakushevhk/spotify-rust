@@ -282,10 +282,7 @@ impl AppClient {
                     }
                 }
 
-                // After the retry loop: check if connection succeeded, show failure toast if not
-                if state.player.read().playback.is_none() {
-                    state.push_toast("Failed to connect to Spotify after multiple attempts");
-                }
+
             }
         });
         let mut guard = self.playback_init_handle.lock().await;

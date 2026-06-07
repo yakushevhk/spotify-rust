@@ -516,10 +516,21 @@ pub fn render(
                     egui::RichText::new(vol_icon).size(14.0).color(theme::text_dim()),
                 );
 
-                let mut vol = volume;
-                let vol_slider = egui::Slider::new(&mut vol, 0.0..=100.0)
-                    .show_value(false);
+                let was_dragging = ui
+                    .memory(|m| m.data.get_temp::<bool>(egui::Id::new("vol_dragging")))
+                    .unwrap_or(false);
+                let mut vol = if was_dragging {
+                    ui.memory(|m| m.data.get_temp::<f32>(egui::Id::new("vol_value")))
+                        .unwrap_or(volume)
+                } else {
+                    volume
+                };
+                let vol_slider = egui::Slider::new(&mut vol, 0.0..=100.0).show_value(false);
                 let vol_resp = ui.add(vol_slider);
+                ui.memory_mut(|m| {
+                    m.data.insert_temp(egui::Id::new("vol_dragging"), vol_resp.dragged());
+                    m.data.insert_temp(egui::Id::new("vol_value"), vol);
+                });
                 if vol_resp.drag_stopped() {
                     let _ = client_pub.send(ClientRequest::Player(PlayerRequest::Volume(vol as u8)));
                 }

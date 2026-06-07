@@ -31,7 +31,8 @@ fn update_control_metadata(
                 rspotify::model::PlayableItem::Unknown(_) => {}
                 rspotify::model::PlayableItem::Track(track) => {
                     // MC8: use track.id for dedup instead of name
-                    let track_id = track.id.as_ref().map(|id| id.uri()).unwrap_or_default();
+                    let track_id = track.id.as_ref().map(|id| id.uri())
+                        .unwrap_or_else(|| format!("local:{}", track.name));
                     if Some(&track_id) != prev_info.as_ref() {
                         controls.set_metadata(MediaMetadata {
                             title: Some(&track.name),

@@ -118,8 +118,11 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
                 break;
             }
         }
+        if rest == "space" {
+            return vec![KeyBinding::Modified { key: ' ', ctrl, shift }];
+        }
         let special_keys = [
-            ("space", "Space"), ("enter", "Enter"), ("escape", "Escape"), ("tab", "Tab"), ("backtab", "BackTab"), ("backspace", "Backspace"),
+            ("enter", "Enter"), ("escape", "Escape"), ("tab", "Tab"), ("backtab", "BackTab"), ("backspace", "Backspace"),
             ("home", "Home"), ("end", "End"), ("pageup", "PageUp"), ("pagedown", "PageDown"),
             ("arrowup", "ArrowUp"), ("arrowdown", "ArrowDown"), ("arrowleft", "ArrowLeft"), ("arrowright", "ArrowRight"),
             ("f1", "F1"), ("f2", "F2"), ("f3", "F3"), ("f4", "F4"), ("f5", "F5"), ("f6", "F6"), ("f7", "F7"), ("f8", "F8"), ("f9", "F9"), ("f10", "F10"), ("f11", "F11"), ("f12", "F12"),

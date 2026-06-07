@@ -176,6 +176,7 @@ enum Action {
     OpenShowDetail(state::Show),
     OpenShowFromSearch(state::Show),
     NavigateToCurrentTrack,
+    NavigateBack,
     None,
 }
 
@@ -614,6 +615,9 @@ current_view: View::Library,
                 if let Some(view) = target_view {
                     self.navigate_to_view(view);
                 }
+            }
+            Action::NavigateBack => {
+                self.go_back();
             }
             Action::None => {}
         }

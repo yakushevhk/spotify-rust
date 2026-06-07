@@ -284,7 +284,9 @@ impl ThemeConfig {
                     if any_invalid {
                         let theme_path = path.join("theme.toml");
                         if let Ok(toml_str) = toml::to_string_pretty(&config) {
-                            let _ = std::fs::write(&theme_path, toml_str);
+                            if let Err(e) = std::fs::write(&theme_path, toml_str) {
+                                tracing::error!("Failed to write corrected theme config: {e}");
+                            }
                         }
                     }
                     Ok(config)

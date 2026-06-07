@@ -498,23 +498,6 @@ impl ContextMenu {
         let mut action_to_execute: Option<MenuAction> = None;
         let mut should_close = false;
 
-        // Overlay background — interactable to block clicks through
-        egui::Area::new(egui::Id::new("context_menu_overlay"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(screen.min)
-            .interactable(true)
-            .show(ctx, |ui| {
-                let (overlay_rect, overlay_resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
-                ui.painter().rect_filled(
-                    overlay_rect,
-                    0,
-                    theme::with_alpha(theme::bg_black(), 120),
-                );
-                if overlay_resp.clicked() {
-                    should_close = true;
-                }
-            });
-
         // Handle keyboard navigation
         let mut keyboard_action: Option<MenuAction> = None;
         if self.keyboard_nav_enabled {
