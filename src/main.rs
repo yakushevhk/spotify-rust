@@ -218,8 +218,14 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
                     }));
                     if let Err(panic_info) = result {
                         tracing::error!("Player event watcher panicked: {:?}", panic_info);
+                        tracing::warn!("Player event watcher crashed, restarting...");
+                    } else {
+                        // Normal exit — likely shutdown, don't restart
+                        break;
                     }
-                    tracing::warn!("Player event watcher exited, restarting...");
+                    if !player_watcher_running_clone.load(Ordering::Acquire) {
+                        break;
+                    }
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             }

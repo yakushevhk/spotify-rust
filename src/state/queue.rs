@@ -103,21 +103,7 @@ impl CustomQueue {
         autoplay: bool,
     ) -> Self {
         assert!(max_batch_size > 0, "max_batch_size must be > 0, got {max_batch_size}");
-        if tracks.is_empty() {
-            return Self {
-                original_tracks: tracks,
-                play_order: vec![],
-                position: 0,
-                batch_start: 0,
-                batch_end: 0,
-                max_batch_size,
-                source_context,
-                repeat: rspotify::model::RepeatState::Off,
-                shuffle_mode: ShuffleMode::Off,
-                autoplay,
-                last_batch_transition: None,
-            };
-        }
+        assert!(!tracks.is_empty(), "Queue cannot be created with empty track list");
 
         let start_position = start_position.min(tracks.len().saturating_sub(1));
         let play_order = tracks.clone();

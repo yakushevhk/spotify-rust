@@ -1156,7 +1156,7 @@ pub fn render_tracks(
 
     ui.horizontal(|ui| {
         ui.add_space(24.0);
-        let header_rect = ui.allocate_space(egui::vec2(ui.available_width() - 24.0, 32.0)).1;
+        let header_rect = ui.allocate_space(egui::vec2(ui.available_width(), 32.0)).1;
 
         // "#" column (non-sortable)
         ui.painter().text(

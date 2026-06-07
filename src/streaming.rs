@@ -143,10 +143,12 @@ pub async fn new_connection(
                     _ => {}
                 }
             }
-            tracing::error!(
-                "player_event_task: event channel closed unexpectedly – the Spirc/player \
-                 task may have died (possible audio device failure)"
-            );
+            if state.running.load(std::sync::atomic::Ordering::Acquire) {
+                tracing::error!(
+                    "player_event_task: event channel closed unexpectedly – the Spirc/player \
+                     task may have died (possible audio device failure)"
+                );
+            }
         }
     });
 

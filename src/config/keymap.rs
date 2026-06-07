@@ -81,7 +81,9 @@ impl KeymapConfig {
             // K4: find all matching bindings, not just the first
             for binding in defaults.iter_mut().filter(|b| b.command.0 == km.command) {
                 let parsed = parse_key_sequence(&km.key_sequence);
-                if !parsed.is_empty() {
+                if parsed.is_empty() {
+                    tracing::warn!("Invalid key sequence '{}' for command '{}'", km.key_sequence, km.command);
+                } else {
                     binding.keybindings = parsed;
                 }
                 matched = true;

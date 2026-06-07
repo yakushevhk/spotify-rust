@@ -395,44 +395,50 @@ impl AppClient {
             }
         };
         
-        for attempt in 0..max_token_retries {
-            match user_client.refresh_token().await {
-                Ok(()) => {
-                    tracing::info!("Token refreshed successfully");
-                    last_token_err = None;
-                    break;
-                }
-                Err(e) => {
-                    let err_msg = format!("{:#}", e);
-                    tracing::warn!("Token refresh attempt {}/{} failed: {}", attempt + 1, max_token_retries, err_msg);
-                    
-                    if err_msg.contains("400") || err_msg.contains("Bad Request") {
-                        tracing::warn!("HTTP 400 Bad Request during token refresh. Clearing token cache...");
-                        let _ = auth::clear_expired_tokens(&configs.cache_folder);
-                        last_token_err = Some("HTTP 400 Bad Request: Delete ~/.cache/spotify-player/user_client_token.json and re-authenticate".to_string());
+        // Try auto_reauth first before falling back to refresh_token
+        if let Ok(()) = user_client.auto_reauth().await {
+            tracing::info!("Auto re-auth succeeded for user client token");
+        } else {
+            tracing::info!("Auto re-auth unavailable, attempting token refresh");
+            for attempt in 0..max_token_retries {
+                match user_client.refresh_token().await {
+                    Ok(()) => {
+                        tracing::info!("Token refreshed successfully");
+                        last_token_err = None;
                         break;
-                    } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
-                        return Err(anyhow::anyhow!(
-                            "Token refresh failed with HTTP 401 Unauthorized. Delete ~/.cache/spotify-player/credentials.json and ~/.cache/spotify-player/user_client_token.json, then re-authenticate: {}",
-                            err_msg
-                        ));
-                    } else if err_msg.contains("500") || err_msg.contains("Internal Server Error") {
-                        if attempt < max_token_retries - 1 {
-                            let delay = std::time::Duration::from_secs(1 << attempt);
-                            tracing::warn!("Spotify server error, retrying in {}s...", delay.as_secs());
-                            tokio::time::sleep(delay).await;
-                            last_token_err = Some("Spotify server error (500)".to_string());
-                            continue;
-                        }
-                        return Err(anyhow::anyhow!(
-                            "Token refresh failed after {} attempts with HTTP 500. Spotify servers may be experiencing issues. Please retry in a few seconds: {}",
-                            max_token_retries, err_msg
-                        ));
-                    } else {
-                        last_token_err = Some(err_msg);
-                        if attempt < max_token_retries - 1 {
-                            tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
-                            continue;
+                    }
+                    Err(e) => {
+                        let err_msg = format!("{:#}", e);
+                        tracing::warn!("Token refresh attempt {}/{} failed: {}", attempt + 1, max_token_retries, err_msg);
+                        
+                        if err_msg.contains("400") || err_msg.contains("Bad Request") {
+                            tracing::warn!("HTTP 400 Bad Request during token refresh. Clearing token cache...");
+                            let _ = auth::clear_expired_tokens(&configs.cache_folder);
+                            last_token_err = Some("HTTP 400 Bad Request: Delete ~/.cache/spotify-player/user_client_token.json and re-authenticate".to_string());
+                            break;
+                        } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
+                            return Err(anyhow::anyhow!(
+                                "Token refresh failed with HTTP 401 Unauthorized. Delete ~/.cache/spotify-player/credentials.json and ~/.cache/spotify-player/user_client_token.json, then re-authenticate: {}",
+                                err_msg
+                            ));
+                        } else if err_msg.contains("500") || err_msg.contains("Internal Server Error") {
+                            if attempt < max_token_retries - 1 {
+                                let delay = std::time::Duration::from_secs(1 << attempt);
+                                tracing::warn!("Spotify server error, retrying in {}s...", delay.as_secs());
+                                tokio::time::sleep(delay).await;
+                                last_token_err = Some("Spotify server error (500)".to_string());
+                                continue;
+                            }
+                            return Err(anyhow::anyhow!(
+                                "Token refresh failed after {} attempts with HTTP 500. Spotify servers may be experiencing issues. Please retry in a few seconds: {}",
+                                max_token_retries, err_msg
+                            ));
+                        } else {
+                            last_token_err = Some(err_msg);
+                            if attempt < max_token_retries - 1 {
+                                tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
+                                continue;
+                            }
                         }
                     }
                 }
