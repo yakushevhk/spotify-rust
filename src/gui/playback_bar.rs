@@ -96,6 +96,15 @@ pub fn render(
                     _ => None,
                 };
 
+                // Request download if cover not cached
+                if let (Some(ref path), rspotify::model::PlayableItem::Track(ref track)) = (&cover_path, item) {
+                    if let Some(img) = track.album.images.first() {
+                        if !path.exists() {
+                            image_cache.request_download(&img.url, path);
+                        }
+                    }
+                }
+
                 // Get track info first for alt text
                 let (name, artists_str, alt_text) = match item {
                     rspotify::model::PlayableItem::Track(track) => {

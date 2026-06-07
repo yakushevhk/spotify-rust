@@ -284,8 +284,11 @@ impl ThemeConfig {
                     if any_invalid {
                         let theme_path = path.join("theme.toml");
                         if let Ok(toml_str) = toml::to_string_pretty(&config) {
-                            if let Err(e) = std::fs::write(&theme_path, toml_str) {
+                            let temp_path = theme_path.with_extension(format!("toml.tmp.{}", std::process::id()));
+                            if let Err(e) = std::fs::write(&temp_path, toml_str) {
                                 tracing::error!("Failed to write corrected theme config: {e}");
+                            } else if let Err(e) = std::fs::rename(&temp_path, &theme_path) {
+                                tracing::error!("Failed to rename corrected theme config: {e}");
                             }
                         }
                     }

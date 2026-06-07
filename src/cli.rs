@@ -161,7 +161,6 @@ pub async fn run_cli_command(
         }
         
         CliCommand::Status => {
-            state.player.write().playback = None;
             client_pub.send(ClientRequest::GetCurrentPlayback)?;
             
             poll_until(

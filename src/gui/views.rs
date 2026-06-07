@@ -1753,6 +1753,11 @@ pub fn render_search(
                         let mut thumb_drawn = false;
                         if let Some(ref album) = track.album {
                             if let Some(path) = image_cache::album_cover_path(album) {
+                                if let Some(ref url) = album.cover_url {
+                                    if !path.exists() {
+                                        image_cache.request_download(url, &path);
+                                    }
+                                }
                                 if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                                     ui.painter().rect_filled(
                                         thumb_rect,

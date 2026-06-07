@@ -409,8 +409,14 @@ impl CustomQueue {
 
     /// Append radio recommendation tracks for autoplay continuation.
     pub fn append_radio_tracks(&mut self, tracks: Vec<PlayableId<'static>>) {
+        let was_empty = self.play_order.is_empty();
         self.play_order.extend(tracks.iter().cloned());
         self.original_tracks.extend(tracks);
+        if was_empty {
+            self.position = 0;
+            self.batch_start = 0;
+            self.batch_end = self.max_batch_size.min(self.play_order.len());
+        }
     }
 
     /// Compute and load the next batch. Returns the batch URIs to send to
