@@ -359,12 +359,10 @@ impl CustomQueue {
             ShuffleMode::Shuffle => {
                 // Build a shuffled order with current track at front.
                 let mut rng = rand::rng();
-                let mut order: Vec<PlayableId<'static>> = self
-                    .original_tracks
-                    .iter()
-                    .filter(|t| **t != current_track)
-                    .cloned()
-                    .collect();
+                let mut order = self.original_tracks.clone();
+                if let Some(pos) = order.iter().position(|t| *t == current_track) {
+                    order.remove(pos);
+                }
                 order.shuffle(&mut rng);
                 order.insert(0, current_track);
                 self.play_order = order;
@@ -374,12 +372,10 @@ impl CustomQueue {
             ShuffleMode::SmartShuffle(radio_tracks) => {
                 // Shuffle first, then interleave radio tracks.
                 let mut rng = rand::rng();
-                let mut order: Vec<PlayableId<'static>> = self
-                    .original_tracks
-                    .iter()
-                    .filter(|t| **t != current_track)
-                    .cloned()
-                    .collect();
+                let mut order = self.original_tracks.clone();
+                if let Some(pos) = order.iter().position(|t| *t == current_track) {
+                    order.remove(pos);
+                }
                 order.shuffle(&mut rng);
                 order.insert(0, current_track);
 

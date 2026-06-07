@@ -407,18 +407,10 @@ impl AppClient {
                     tracing::warn!("Token refresh attempt {}/{} failed: {}", attempt + 1, max_token_retries, err_msg);
                     
                     if err_msg.contains("400") || err_msg.contains("Bad Request") {
-                        if attempt < max_token_retries - 1 {
-                            tracing::warn!("HTTP 400 Bad Request during token refresh. Clearing token cache and retrying...");
-                            let _ = auth::clear_expired_tokens(&configs.cache_folder);
-                            tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
-                            last_token_err = Some("HTTP 400 Bad Request: Delete ~/.cache/spotify-player/user_client_token.json and retry".to_string());
-                            continue;
-                        } else {
-                            return Err(anyhow::anyhow!(
-                                "Token refresh failed after {} attempts with HTTP 400. Delete ~/.cache/spotify-player/user_client_token.json and re-authenticate: {}",
-                                max_token_retries, err_msg
-                            ));
-                        }
+                        tracing::warn!("HTTP 400 Bad Request during token refresh. Clearing token cache...");
+                        let _ = auth::clear_expired_tokens(&configs.cache_folder);
+                        last_token_err = Some("HTTP 400 Bad Request: Delete ~/.cache/spotify-player/user_client_token.json and re-authenticate".to_string());
+                        break;
                     } else if err_msg.contains("401") || err_msg.contains("Unauthorized") {
                         return Err(anyhow::anyhow!(
                             "Token refresh failed with HTTP 401 Unauthorized. Delete ~/.cache/spotify-player/credentials.json and ~/.cache/spotify-player/user_client_token.json, then re-authenticate: {}",
@@ -2288,16 +2280,9 @@ impl AppClient {
                 tracing::warn!(
                     "{failed_count} of {n_jobs} page requests failed — returning {successful_items} partial items",
                 );
-                // Don't discard successfully fetched data; return partial results
-                // so the user gets something rather than nothing
-            }
-            if !any_ok {
+                // Return partial data, don't discard
+            } else if !any_ok {
                 return Err(anyhow::anyhow!("all page requests failed"));
-            }
-            if failed_count > 0 {
-                return Err(anyhow::anyhow!(
-                    "{failed_count} of {n_jobs} page requests failed — data may be incomplete"
-                ));
             }
 
             if found_empty {
