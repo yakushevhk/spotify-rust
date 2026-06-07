@@ -356,7 +356,7 @@ async fn main() -> Result<()> {
     } else if cli_args.daemon {
         run_daemon().await?;
     } else {
-        run_gui()?;
+        run_gui().await?;
     }
     
     Ok(())
@@ -488,7 +488,7 @@ async fn run_daemon() -> Result<()> {
     Ok(())
 }
 
-fn run_gui() -> Result<()> {
+async fn run_gui() -> Result<()> {
     let config_folder = config::get_config_folder_path()?;
     if !config_folder.exists() {
         std::fs::create_dir_all(&config_folder)?;
@@ -546,11 +546,5 @@ fn run_gui() -> Result<()> {
 
     let state = Arc::new(state::State::new(false, log_buffer));
 
-    // Always create a new dedicated runtime for GUI to avoid conflicts.
-    // The try_current approach can cause panics when already on a runtime.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("failed to create tokio runtime")?;
-    rt.block_on(start_app(&state))
+    start_app(&state).await
 }
