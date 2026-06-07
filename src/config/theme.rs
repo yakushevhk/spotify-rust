@@ -299,7 +299,15 @@ impl ThemeConfig {
                     Ok(Self::default())
                 }
             },
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let default = Self {
+                    themes: vec![Theme::default()],
+                };
+                if let Ok(toml_str) = toml::to_string_pretty(&default) {
+                    let _ = std::fs::write(&file_path, toml_str);
+                }
+                Ok(default)
+            }
             Err(error) => Err(error.into()),
         }
     }

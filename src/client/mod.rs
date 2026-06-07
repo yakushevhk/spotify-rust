@@ -282,6 +282,10 @@ impl AppClient {
                     }
                 }
 
+                if state.player.read().playback.is_none() {
+                    state.push_toast("Failed to connect to Spotify after retries".to_string());
+                }
+
 
             }
         });
@@ -1016,7 +1020,7 @@ impl AppClient {
                 let normalized_query = query.trim().to_lowercase();
                 let already_cached = state.data.read().caches.search.contains_key(&normalized_query);
                 if !already_cached {
-                    let results = self.search(&query).await?;
+                    let results = self.search(&normalized_query).await?;
 
                     state
                         .data
@@ -2201,7 +2205,9 @@ impl AppClient {
                     .unwrap_or(1);
                 let sleep_duration = std::time::Duration::from_secs(retry_after.min(60));
                 tracing::warn!("Got 429 for {url}, retrying after {sleep_duration:?}");
-                last_err = Some(anyhow::anyhow!("rate limited (429), waited {sleep_duration:?}"));
+                if last_err.is_none() {
+                    last_err = Some(anyhow::anyhow!("rate limited (429), waited {sleep_duration:?}"));
+                }
                 tokio::time::sleep(sleep_duration).await;
                 continue;
             }

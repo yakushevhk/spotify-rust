@@ -237,10 +237,14 @@ pub async fn run_cli_command(
         }
         
         CliCommand::Shuffle => {
+            let old_shuffle = state.player.read().buffered_playback.as_ref().map(|b| b.shuffle_state);
             client_pub.send(ClientRequest::Player(PlayerRequest::Shuffle))?;
             
             poll_until(
-                || async { state.player.read().buffered_playback.is_some() },
+                || async {
+                    state.player.read().buffered_playback.as_ref()
+                        .map(|b| b.shuffle_state) != old_shuffle
+                },
                 5, 200, "Shuffle timed out after 5 seconds",
             ).await;
             
@@ -253,10 +257,14 @@ pub async fn run_cli_command(
         }
         
         CliCommand::Repeat => {
+            let old_repeat = state.player.read().buffered_playback.as_ref().map(|b| b.repeat_state.clone());
             client_pub.send(ClientRequest::Player(PlayerRequest::Repeat))?;
             
             poll_until(
-                || async { state.player.read().buffered_playback.is_some() },
+                || async {
+                    state.player.read().buffered_playback.as_ref()
+                        .map(|b| b.repeat_state.clone()) != old_repeat
+                },
                 5, 200, "Repeat timed out after 5 seconds",
             ).await;
             

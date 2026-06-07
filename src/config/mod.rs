@@ -278,9 +278,27 @@ impl Command {
             args.extend(extra);
         }
 
-        let output = std::process::Command::new(&self.executable)
+        let mut child = std::process::Command::new(&self.executable)
             .args(&args)
-            .output()?;
+            .spawn()?;
+
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(30);
+
+        loop {
+            match child.try_wait()? {
+                Some(_) => break,
+                None => {
+                    if start.elapsed() > timeout {
+                        child.kill()?;
+                        anyhow::bail!("client_id_command timed out after 30s");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+
+        let output = child.wait_with_output()?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -630,6 +648,7 @@ impl AppConfig {
             });
         let client_id = self
             .get_user_client_id()?
+            .filter(|s| !s.is_empty())
             .as_deref()
             .unwrap_or(NCSPOT_CLIENT_ID)
             .to_string();
