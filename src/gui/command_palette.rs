@@ -185,14 +185,10 @@ impl CommandPalette {
                         .show(ui, |ui| {
                             for (i, entry) in filtered.iter().enumerate() {
                                 let is_selected = i == self.selected;
-                                let item_rect = ui
-                                    .allocate_exact_size(
-                                        egui::vec2(ui.available_width() - 8.0, item_height),
-                                        egui::Sense::click(),
-                                    )
-                                    .0;
-                                let item_resp =
-                                    ui.allocate_rect(item_rect, egui::Sense::click());
+                                let (item_rect, item_resp) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width() - 8.0, item_height),
+                                    egui::Sense::click(),
+                                );
 
                                 // Background
                                 let bg = if is_selected {

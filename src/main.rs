@@ -214,7 +214,12 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
                     if !player_watcher_running_clone.load(Ordering::Acquire) {
                         break;
                     }
-                    client::start_player_event_watcher(&state, &client_pub);
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        client::start_player_event_watcher(&state, &client_pub);
+                    }));
+                    if let Err(panic_info) = result {
+                        tracing::error!("Player event watcher panicked: {:?}", panic_info);
+                    }
                     tracing::warn!("Player event watcher exited, restarting...");
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }

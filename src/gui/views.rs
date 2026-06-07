@@ -78,18 +78,19 @@ pub fn render_library(
     theme::page_title(ui, "Your Library");
 
     // Batch: read all needed data in one lock acquisition
-    let (library_empty, playlists, saved_albums) = {
+    let (library_empty, library_loaded, playlists, saved_albums) = {
         let data = state.data.read();
         let library_empty = data.user_data.playlists.is_empty() && data.user_data.saved_albums.is_empty();
+        let library_loaded = data.library_loaded;
         let playlists: Vec<_> = data.user_data.playlists.iter().filter_map(|item| match item {
             state::PlaylistFolderItem::Playlist(p) => Some(p.clone()),
             _ => None,
         }).collect();
         let saved_albums: Vec<_> = data.user_data.saved_albums.iter().cloned().collect();
-        (library_empty, playlists, saved_albums)
+        (library_empty, library_loaded, playlists, saved_albums)
     };
 
-    if library_empty {
+    if library_empty && !library_loaded {
         ui.add_space(60.0);
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 2.0 - 30.0);
@@ -100,6 +101,19 @@ pub fn render_library(
             ui.add_space(ui.available_width() / 2.0 - 80.0);
             ui.label(
                 egui::RichText::new("Loading library...")
+                    .size(16.0)
+                    .color(theme::text_dim()),
+            );
+        });
+        return action;
+    }
+
+    if library_empty && library_loaded {
+        ui.add_space(60.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 100.0);
+            ui.label(
+                egui::RichText::new("Your library is empty")
                     .size(16.0)
                     .color(theme::text_dim()),
             );
@@ -4284,8 +4298,8 @@ pub fn render_artist(
                 let album_name = track.album_info();
                 if !album_name.is_empty() {
                     ui.painter().text(
-                        row_rect.center(),
-                        egui::Align2::CENTER_CENTER,
+                        row_rect.right_center() + egui::vec2(-80.0, 0.0),
+                        egui::Align2::RIGHT_CENTER,
                         &album_name,
                         egui::FontId::proportional(12.0),
                         theme::text_dim(),

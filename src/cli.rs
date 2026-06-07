@@ -131,9 +131,10 @@ pub async fn run_cli_command(
         
         CliCommand::Search { query } => {
             println!("Searching for: {}", query);
+            let q = query.clone();
+            state.data.write().caches.search.remove(&q);
             client_pub.send(ClientRequest::Search(query.clone()))?;
             
-            let q = query.clone();
             poll_until(
                 || async { state.data.read().caches.search.contains_key(&q) },
                 5, 200, "Search timed out after 5 seconds",
@@ -160,6 +161,7 @@ pub async fn run_cli_command(
         }
         
         CliCommand::Status => {
+            state.player.write().playback = None;
             client_pub.send(ClientRequest::GetCurrentPlayback)?;
             
             poll_until(
@@ -371,7 +373,12 @@ pub async fn start_daemon(
                     if !player_watcher_running_clone.load(Ordering::Acquire) {
                         break;
                     }
-                    crate::client::start_player_event_watcher(&state, &client_pub);
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::client::start_player_event_watcher(&state, &client_pub);
+                    }));
+                    if let Err(panic_info) = result {
+                        tracing::error!("Player event watcher panicked: {:?}", panic_info);
+                    }
                     tracing::warn!("Player event watcher exited, restarting...");
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }

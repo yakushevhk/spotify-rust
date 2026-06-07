@@ -662,8 +662,11 @@ impl AppClient {
                 }
                 let device_id_ref = device_id.as_deref();
                 self.start_playback(p, device_id_ref).await?;
-                if let Some(ref playback) = playback {
-                    self.user_client()?.shuffle(playback.shuffle_state, device_id_ref).await?;
+                if let Some(requested_shuffle) = shuffle {
+                    self.user_client()?.shuffle(requested_shuffle, device_id_ref).await?;
+                    if let Some(ref mut pb) = playback {
+                        pb.shuffle_state = requested_shuffle;
+                    }
                 }
                 return Ok(playback);
             }
@@ -906,7 +909,11 @@ impl AppClient {
                     &playlists,
                 )
                 .context("store user's playlists into the cache folder")?;
-                state.data.write().user_data.playlists = playlists;
+                {
+                    let mut data = state.data.write();
+                    data.user_data.playlists = playlists;
+                    data.library_loaded = true;
+                }
             }
             ClientRequest::GetUserFollowedArtists => {
                 let artists = self.current_user_followed_artists().await?;

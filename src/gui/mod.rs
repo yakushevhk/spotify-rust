@@ -1431,7 +1431,6 @@ impl eframe::App for SpotifyApp {
                     } else {
                         self.show_device_popup = true;
                         self.popup_just_opened_at = Some(std::time::Instant::now());
-                        self.devices_fetched = false;
                     }
                 }
             });

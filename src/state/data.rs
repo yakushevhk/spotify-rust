@@ -30,6 +30,7 @@ pub struct AppData {
     pub caches: MemoryCaches,
     pub browse: BrowseData,
     pub shows_loading: bool,
+    pub library_loaded: bool,
 }
 
 #[derive(Debug)]
@@ -96,6 +97,7 @@ impl AppData {
             caches: MemoryCaches::new(),
             browse: BrowseData::default(),
             shows_loading: false,
+            library_loaded: false,
         }
     }
 }
