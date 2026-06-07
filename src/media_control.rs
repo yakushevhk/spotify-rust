@@ -101,6 +101,8 @@ pub fn start_event_watcher(
             MediaControlEvent::SetPosition(MediaPosition(dur)) => {
                 if let Ok(dur) = chrono::Duration::from_std(dur) {
                     send_with_timeout(ClientRequest::Player(PlayerRequest::SeekTrack(dur)));
+                } else {
+                    tracing::warn!("Media control SetPosition: invalid duration, skip seek");
                 }
             }
             MediaControlEvent::Next => {
@@ -111,7 +113,7 @@ pub fn start_event_watcher(
             }
             MediaControlEvent::SetVolume(volume) => {
                 send_with_timeout(ClientRequest::Player(PlayerRequest::Volume(
-                    (volume * 100.0) as u8,
+                    (volume * 100.0).clamp(0.0, 100.0) as u8,
                 )));
             }
             MediaControlEvent::Stop => {

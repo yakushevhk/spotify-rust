@@ -21,7 +21,10 @@ pub struct CommandId(pub &'static str);
 pub enum KeyBinding {
     /// Single key like "j", "k", "r"
     Key(char),
-    /// Key with modifiers like "C-f", "C-b"
+    /// Key with modifiers like "C-f", "C-b".
+    /// NOTE: Only ctrl and shift modifiers are supported. Alt and Cmd (macOS)
+    /// modifiers are not serializable in config files and are currently only
+    /// used internally for runtime key event formatting.
     Modified { key: char, ctrl: bool, shift: bool },
     /// Special key like "Space", "Enter", "Escape", "Home", "End", etc.
     Special(String),

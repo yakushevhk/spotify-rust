@@ -372,6 +372,7 @@ pub async fn start_daemon(
                         break;
                     }
                     crate::client::start_player_event_watcher(&state, &client_pub);
+                    tracing::warn!("Player event watcher exited, restarting...");
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             }

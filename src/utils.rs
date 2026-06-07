@@ -32,6 +32,10 @@ pub fn get_episode_show_image_url(episode: &rspotify::model::FullEpisode) -> Opt
     }
 }
 
+/// Parses a Spotify URI of the form "spotify:<type>:<scope>:<id>:<extra>"
+/// and returns a shortened form "spotify:<type>:<id>:<extra>".
+/// NOTE: On malformed input not matching 5 colon-separated parts, the original
+/// URI is returned unchanged (not garbage — this is intentional for backward compat).
 pub fn parse_uri(uri: &str) -> Cow<'_, str> {
     let parts = uri.split(':').collect::<Vec<_>>();
     if parts.len() == 5 {

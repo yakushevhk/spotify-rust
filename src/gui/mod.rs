@@ -2165,7 +2165,7 @@ impl SpotifyApp {
         egui::Area::new(egui::Id::new("settings_confirm_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(true)
+            .interactable(false)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
                 ui.painter().rect_filled(

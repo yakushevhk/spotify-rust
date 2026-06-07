@@ -101,9 +101,6 @@ impl BaseClient for Spotify {
         }
 
         let session = self.session.lock().await.clone();
-        let _old_token = self.token.lock().await
-            .map_err(|e| ClientError::Cli(format!("Token mutex poisoned: {:?}", e)))?
-            .clone();
 
         let Some(session) = session else {
             tracing::error!("No session available for token refresh");

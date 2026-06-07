@@ -119,22 +119,24 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
             }
         }
         let special_keys = [
-            "space", "enter", "escape", "tab", "backtab", "backspace",
-            "home", "end", "pageup", "pagedown",
-            "arrowup", "arrowdown", "arrowleft", "arrowright",
-            "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+            ("space", "Space"), ("enter", "Enter"), ("escape", "Escape"), ("tab", "Tab"), ("backtab", "BackTab"), ("backspace", "Backspace"),
+            ("home", "Home"), ("end", "End"), ("pageup", "PageUp"), ("pagedown", "PageDown"),
+            ("arrowup", "ArrowUp"), ("arrowdown", "ArrowDown"), ("arrowleft", "ArrowLeft"), ("arrowright", "ArrowRight"),
+            ("f1", "F1"), ("f2", "F2"), ("f3", "F3"), ("f4", "F4"), ("f5", "F5"), ("f6", "F6"), ("f7", "F7"), ("f8", "F8"), ("f9", "F9"), ("f10", "F10"), ("f11", "F11"), ("f12", "F12"),
         ];
-        for sk in &special_keys {
-            if rest == *sk {
+        for (sk_lower, sk_title) in &special_keys {
+            if rest == *sk_lower {
                 let mut parts = Vec::new();
                 if ctrl { parts.push("C"); }
                 if shift { parts.push("S"); }
-                parts.push(sk);
+                parts.push(*sk_title);
                 return vec![KeyBinding::Special(parts.join("-"))];
             }
         }
-        if let Some(ch) = rest.chars().next() {
-            return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
+        if rest.chars().count() == 1 {
+            if let Some(ch) = rest.chars().next() {
+                return vec![KeyBinding::Modified { key: ch, ctrl, shift }];
+            }
         }
     }
 
@@ -146,7 +148,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
     ];
     for sk in &special_keys {
-        if sl.eq_ignore_ascii_case(&sk.to_ascii_lowercase()) {
+        if sl == sk.to_ascii_lowercase() {
             return vec![KeyBinding::Special(sk.to_string())];
         }
     }

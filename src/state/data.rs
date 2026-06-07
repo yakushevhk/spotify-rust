@@ -158,10 +158,11 @@ pub fn store_data_into_file_cache<T: Serialize>(
             #[cfg(unix)]
             let is_cross_device = e.raw_os_error() == Some(18); // EXDEV
             #[cfg(not(unix))]
-            let is_cross_device = false;
+            let is_cross_device = e.raw_os_error() == Some(17) // ERROR_NOT_SAME_DEVICE
+                || e.raw_os_error() == Some(18); // EXDEV equivalent
             if is_cross_device {
                 std::fs::copy(&temp_path, &path)?;
-                std::fs::remove_file(&temp_path)?;
+                let _ = std::fs::remove_file(&temp_path);
             } else {
                 let _ = std::fs::remove_file(&temp_path);
                 return Err(e);

@@ -271,6 +271,9 @@ impl CustomQueue {
 
     /// Retreat to the previous track. Returns what action the caller should take.
     pub fn retreat(&mut self) -> RetreatResult {
+        if self.repeat == rspotify::model::RepeatState::Track {
+            return RetreatResult::SameBatch;
+        }
         if self.play_order.is_empty() {
             return RetreatResult::BeginningOfQueue;
         }
