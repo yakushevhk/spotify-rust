@@ -26,8 +26,8 @@ impl<S: Subscriber> Layer<S> for BufferLayer {
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        // M6: skip events above the configured level to avoid buffer flood
-        if *event.metadata().level() > self.max_level {
+        // M6: skip events below the configured level to avoid buffer flood
+        if *event.metadata().level() < self.max_level {
             return;
         }
 

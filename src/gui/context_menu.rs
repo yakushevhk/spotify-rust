@@ -671,7 +671,9 @@ impl ContextMenu {
         }
 
         if let Some(confirm) = self.confirm_action.clone() {
-            self.render_confirm_dialog(ctx, confirm, state, client_pub);
+            if let Some(nav) = self.render_confirm_dialog(ctx, confirm, state, client_pub) {
+                return Some(nav);
+            }
         }
 
         None
@@ -683,7 +685,7 @@ impl ContextMenu {
         action: MenuAction,
         state: &SharedState,
         client_pub: &flume::Sender<ClientRequest>,
-    ) {
+    ) -> Option<Navigation> {
         let item_name = self.confirm_item_name.as_deref().unwrap_or("this item");
         let (title, detail) = match &action {
             MenuAction::RemoveAlbumFromLibrary(_) => (
@@ -880,8 +882,11 @@ impl ContextMenu {
         }
 
         if execute {
-            self.execute_action(action, state, client_pub);
+            if let Some(nav) = self.execute_action(action, state, client_pub) {
+                return Some(nav);
+            }
         }
+        None
     }
 
     fn execute_action(

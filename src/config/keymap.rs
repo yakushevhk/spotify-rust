@@ -152,7 +152,7 @@ fn parse_key_sequence(s: &str) -> Vec<KeyBinding> {
     }
 
     // Multi-key sequence like "gg", "g t", "g space"
-    let parts: Vec<&str> = sl.split_whitespace().collect();
+    let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() > 1 {
         return vec![KeyBinding::Sequence(
             parts.iter().map(|p| p.to_string()).collect(),

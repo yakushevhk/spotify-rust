@@ -1304,10 +1304,16 @@ impl AppClient {
 
         let mut all_playlists = Vec::new();
         let mut url = format!("{SPOTIFY_API_ENDPOINT}/browse/categories/{category_id}/playlists?limit=50");
-        while !url.is_empty() {
+        const MAX_PAGES: usize = 100;
+        let mut page_count = 0;
+        while !url.is_empty() && page_count < MAX_PAGES {
+            page_count += 1;
             let resp: BrowseCategoryPlaylistsResponse = self.http_get(&url, &Query::new()).await?;
             all_playlists.extend(resp.playlists.items);
             url = resp.playlists.next.unwrap_or_default();
+        }
+        if page_count >= MAX_PAGES {
+            tracing::warn!("browse_category_playlists hit max pages limit ({MAX_PAGES})");
         }
         Ok(all_playlists.into_iter().filter_map(|item| {
             match serde_json::from_value::<rspotify::model::SimplifiedPlaylist>(item) {

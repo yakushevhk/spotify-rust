@@ -591,7 +591,7 @@ impl AppConfig {
             })
     }
 
-    pub fn session_config(&self) -> SessionConfig {
+    pub fn session_config(&self) -> Result<SessionConfig> {
         let proxy = self
             .proxy
             .as_ref()
@@ -603,17 +603,17 @@ impl AppConfig {
                 Ok(url) => Some(url),
             });
         let client_id = self
-            .client_id
+            .get_user_client_id()?
             .as_deref()
             .unwrap_or(NCSPOT_CLIENT_ID)
             .to_string();
-        SessionConfig {
+        Ok(SessionConfig {
             proxy,
             ap_port: self.ap_port,
             client_id,
             autoplay: Some(self.device.autoplay),
             ..Default::default()
-        }
+        })
     }
 
     /// Returns stdout of `client_id_command` if set, otherwise it returns the the value of `client_id`
@@ -822,7 +822,7 @@ mod tests {
     #[test]
     fn test_app_config_session_config() {
         let config = AppConfig::default();
-        let session_config = config.session_config();
+        let session_config = config.session_config().unwrap();
 
         assert_eq!(session_config.client_id, NCSPOT_CLIENT_ID);
         assert!(session_config.proxy.is_none());
@@ -837,7 +837,7 @@ mod tests {
             ..Default::default()
         };
         
-        let session_config = config.session_config();
+        let session_config = config.session_config().unwrap();
         assert!(session_config.proxy.is_some());
     }
 
