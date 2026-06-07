@@ -951,6 +951,8 @@ impl AppClient {
                     Err(e) => {
                         tracing::error!("Failed to fetch saved shows: {e:#}");
                         state.push_toast(format!("Failed to load saved shows: {e}"));
+                        state.data.write().shows_loading = false;
+                        return Err(anyhow::anyhow!("Failed to fetch saved shows: {e:#}"));
                     }
                 }
                 state.data.write().shows_loading = false;

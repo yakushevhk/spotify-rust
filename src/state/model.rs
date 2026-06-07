@@ -1617,7 +1617,7 @@ mod tests {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Lyrics {
     /// Timestamped lines
     pub lines: Vec<(chrono::Duration, String)>,

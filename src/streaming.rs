@@ -128,9 +128,15 @@ pub async fn new_connection(
                         match advanced {
                             Some(result) => {
                                 client.handle_custom_queue_advance(&state, result).await;
+                                if state.player.read().streaming_generation != my_generation {
+                                    return;
+                                }
                             }
                             None => {
                                 client.update_playback(&state).await;
+                                if state.player.read().streaming_generation != my_generation {
+                                    return;
+                                }
                             }
                         }
                     }
