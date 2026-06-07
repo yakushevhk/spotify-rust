@@ -393,7 +393,11 @@ pub fn render_shows(
             });
         }
     } else {
-        let data = state.data.read();
+        // Clone shows data to avoid holding read lock during UI rendering
+        let shows: Vec<_> = {
+            let data = state.data.read();
+            data.user_data.saved_shows.iter().cloned().collect()
+        };
         egui::ScrollArea::vertical()
             .id_salt("shows_scroll")
             .show(ui, |ui| {
@@ -409,7 +413,7 @@ pub fn render_shows(
                     .num_columns(num_cols)
                     .spacing([16.0, 16.0])
                     .show(ui, |ui| {
-                        for (_i, show) in data.user_data.saved_shows.iter().enumerate() {
+                        for (_i, show) in shows.iter().enumerate() {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::show_cover_path(show);
@@ -1675,6 +1679,10 @@ pub fn render_search(
     let data = state.data.read();
     let normalized_query = search_query.trim().to_lowercase();
     if let Some(results) = data.caches.search.get(&normalized_query) {
+        // Reset searching indicator when cache has results matching the sent query
+        if debounce_state.last_sent_query.as_ref() == Some(&normalized_query) {
+            debounce_state.is_searching = false;
+        }
         if !results.tracks.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);

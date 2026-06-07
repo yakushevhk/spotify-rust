@@ -135,6 +135,12 @@ impl State {
 
     /// Reset user data to avoid stale data from a previous account/session.
     pub fn reset_user_data(&self) {
+        // Reset player state first (per lock hierarchy: player before data)
+        {
+            let mut player = self.player.write();
+            *player = PlayerState::default();
+        }
+
         let mut data = self.data.write();
         data.user_data = UserData {
             user: None,
@@ -153,8 +159,8 @@ impl State {
         // Delete stale file caches from previous account
         let configs = crate::config::get_config();
         let cache_folder = &configs.cache_folder;
-        for ext in &["playlists_cache.json", "saved_shows_cache.json", "followed_artists_cache.json",
-                      "saved_albums_cache.json", "saved_tracks_cache.json", "playlist_folders_cache.json"] {
+        for ext in &["Playlists_cache.json", "SavedShows_cache.json", "FollowedArtists_cache.json",
+                      "SavedAlbums_cache.json", "SavedTracks_cache.json", "PlaylistFolders_cache.json"] {
             let _ = std::fs::remove_file(cache_folder.join(ext));
         }
     }

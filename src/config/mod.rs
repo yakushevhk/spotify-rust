@@ -541,6 +541,27 @@ impl AppConfig {
             modified = true;
         }
 
+        // C6: app_refresh_duration_in_ms=0 causes CPU busy loop
+        if config.app_refresh_duration_in_ms == 0 {
+            tracing::warn!("app_refresh_duration_in_ms was 0, setting to 32 (default)");
+            config.app_refresh_duration_in_ms = 32;
+            modified = true;
+        }
+
+        // C7: playback_refresh_duration_in_ms=0 causes API spam
+        if config.playback_refresh_duration_in_ms == 0 {
+            tracing::warn!("playback_refresh_duration_in_ms was 0, setting to 5000 (default)");
+            config.playback_refresh_duration_in_ms = 5000;
+            modified = true;
+        }
+
+        // H3: page_size_in_rows=0 causes div-by-zero risk
+        if config.page_size_in_rows == 0 {
+            tracing::warn!("page_size_in_rows was 0, setting to 20 (default)");
+            config.page_size_in_rows = 20;
+            modified = true;
+        }
+
         if config.device.volume > 100 {
             tracing::warn!("device.volume {} clamped to 100", config.device.volume);
             config.device.volume = 100;

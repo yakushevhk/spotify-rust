@@ -2288,6 +2288,11 @@ impl AppClient {
             if !any_ok {
                 return Err(anyhow::anyhow!("all page requests failed"));
             }
+            if failed_count > 0 {
+                return Err(anyhow::anyhow!(
+                    "{failed_count} of {n_jobs} page requests failed — data may be incomplete"
+                ));
+            }
 
             if found_empty {
                 break;
@@ -2366,7 +2371,12 @@ impl AppClient {
             let new_playback = prev_uri != curr_uri && curr_uri.is_some();
             // check if we need to update the buffered playback
             let needs_update = match (&player.buffered_playback, &player.playback) {
-                (Some(bp), Some(p)) => bp.device_id != p.device.id || new_playback,
+                (Some(bp), Some(p)) => bp.device_id != p.device.id
+                    || new_playback
+                    || bp.is_playing != p.is_playing
+                    || bp.shuffle_state != p.shuffle_state
+                    || bp.repeat_state != p.repeat_state
+                    || bp.volume != p.device.volume_percent.map(|v| v as u32),
                 (None, None) => false,
                 _ => true,
             };

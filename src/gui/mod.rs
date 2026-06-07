@@ -268,6 +268,9 @@ pub struct SpotifyApp {
     
     // Cached config values (M10)
     cached_seek_duration_secs: u16,
+
+    // H2: Prevent popups from closing immediately due to same-frame click
+    popup_just_opened_at: Option<std::time::Instant>,
 }
 
 impl SpotifyApp {
@@ -373,6 +376,7 @@ current_view: View::Library,
             show_settings_confirm_dialog: false,
             pending_view_navigation: None,
             cached_seek_duration_secs: crate::config::get_config().app_config.seek_duration_secs,
+            popup_just_opened_at: None,
         }
     }
 
@@ -545,6 +549,7 @@ current_view: View::Library,
             }
             Action::OpenCreatePlaylist => {
                 self.show_create_playlist_popup = true;
+                self.popup_just_opened_at = Some(std::time::Instant::now());
                 self.create_playlist_name.clear();
                 self.create_playlist_desc.clear();
                 self.create_playlist_public = true;
@@ -552,6 +557,7 @@ current_view: View::Library,
             }
             Action::OpenAuthModal => {
                 self.show_auth_modal = true;
+                self.popup_just_opened_at = Some(std::time::Instant::now());
                 self.auth_step = AuthStep::Idle;
             }
             Action::OpenShows => {
@@ -1098,6 +1104,7 @@ current_view: View::Library,
                         self.show_device_popup = false;
                     } else {
                         self.show_device_popup = true;
+                        self.popup_just_opened_at = Some(std::time::Instant::now());
                         self.devices_fetched = false;
                     }
                 }
@@ -1107,24 +1114,30 @@ current_view: View::Library,
                     self.show_browse_artists_popup = false;
                     self.show_browse_albums_popup = false;
                     self.show_browse_playlists_popup = true;
+                    self.popup_just_opened_at = Some(std::time::Instant::now());
                     self.browse_playlists_filter.clear();
                 }
                 crate::command::PopupCommand::FollowedArtists => {
                     self.show_browse_playlists_popup = false;
                     self.show_browse_albums_popup = false;
                     self.show_browse_artists_popup = true;
+                    self.popup_just_opened_at = Some(std::time::Instant::now());
                     self.browse_artists_filter.clear();
                 }
                 crate::command::PopupCommand::SavedAlbums => {
                     self.show_browse_playlists_popup = false;
                     self.show_browse_artists_popup = false;
                     self.show_browse_albums_popup = true;
+                    self.popup_just_opened_at = Some(std::time::Instant::now());
                     self.browse_albums_filter.clear();
                 }
             },
             Command::Theme(theme_cmd) => match theme_cmd {
                 ThemeCommand::SwitchTheme => {
                     self.show_theme_switcher = !self.show_theme_switcher;
+                    if self.show_theme_switcher {
+                        self.popup_just_opened_at = Some(std::time::Instant::now());
+                    }
                     self.theme_search.clear();
                 }
             },
@@ -1417,6 +1430,7 @@ impl eframe::App for SpotifyApp {
                         self.show_device_popup = false;
                     } else {
                         self.show_device_popup = true;
+                        self.popup_just_opened_at = Some(std::time::Instant::now());
                         self.devices_fetched = false;
                     }
                 }
@@ -1601,6 +1615,9 @@ impl eframe::App for SpotifyApp {
             // Close popup if clicking outside the popup area
             if close_popup {
                 self.show_device_popup = false;
+            } else if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                // Skip first 50ms to prevent same-frame click from closing
+                self.popup_just_opened_at = None;
             } else {
                 let click_outside = ctx.input(|i| {
                     i.pointer.any_pressed()
@@ -2083,6 +2100,7 @@ impl eframe::App for SpotifyApp {
         if cmd_palette_triggered {
             self.show_command_palette = !self.show_command_palette;
             if self.show_command_palette {
+                self.popup_just_opened_at = Some(std::time::Instant::now());
                 self.command_palette.open();
             }
         }
@@ -2101,6 +2119,7 @@ impl eframe::App for SpotifyApp {
             });
             if colon_triggered {
                 self.show_command_palette = true;
+                self.popup_just_opened_at = Some(std::time::Instant::now());
                 self.command_palette.open();
             }
         }
@@ -2577,20 +2596,24 @@ impl SpotifyApp {
 
         // Handle click outside to close
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed()
-                    && i.pointer
-                        .latest_pos()
-                        .map(|pos| {
-                            pos.x < popup_pos.x
-                                || pos.x > popup_pos.x + popup_width
-                                || pos.y < popup_pos.y
-                                || pos.y > popup_pos.y + popup_height
-                        })
-                        .unwrap_or(false)
-            });
-            if click_outside {
-                close = true;
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer
+                            .latest_pos()
+                            .map(|pos| {
+                                pos.x < popup_pos.x
+                                    || pos.x > popup_pos.x + popup_width
+                                    || pos.y < popup_pos.y
+                                    || pos.y > popup_pos.y + popup_height
+                            })
+                            .unwrap_or(false)
+                });
+                if click_outside {
+                    close = true;
+                }
             }
         }
 
@@ -2774,20 +2797,24 @@ impl SpotifyApp {
 
         // Handle click outside
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed()
-                    && i.pointer
-                        .latest_pos()
-                        .map(|pos| {
-                            pos.x < popup_pos.x
-                                || pos.x > popup_pos.x + popup_width
-                                || pos.y < popup_pos.y
-                                || pos.y > popup_pos.y + popup_height
-                        })
-                        .unwrap_or(false)
-            });
-            if click_outside {
-                close = true;
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer
+                            .latest_pos()
+                            .map(|pos| {
+                                pos.x < popup_pos.x
+                                    || pos.x > popup_pos.x + popup_width
+                                    || pos.y < popup_pos.y
+                                    || pos.y > popup_pos.y + popup_height
+                            })
+                            .unwrap_or(false)
+                });
+                if click_outside {
+                    close = true;
+                }
             }
         }
 
@@ -3083,20 +3110,24 @@ impl SpotifyApp {
 
         // Handle click outside
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed()
-                    && i.pointer
-                        .latest_pos()
-                        .map(|pos| {
-                            pos.x < popup_pos.x
-                                || pos.x > popup_pos.x + popup_width
-                                || pos.y < popup_pos.y
-                                || pos.y > popup_pos.y + popup_height
-                        })
-                        .unwrap_or(false)
-            });
-            if click_outside {
-                close = true;
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer
+                            .latest_pos()
+                            .map(|pos| {
+                                pos.x < popup_pos.x
+                                    || pos.x > popup_pos.x + popup_width
+                                    || pos.y < popup_pos.y
+                                    || pos.y > popup_pos.y + popup_height
+                            })
+                            .unwrap_or(false)
+                });
+                if click_outside {
+                    close = true;
+                }
             }
         }
 
@@ -3203,12 +3234,16 @@ impl SpotifyApp {
             });
 
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
-                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
-                }).unwrap_or(false)
-            });
-            if click_outside { close = true; }
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                        pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                    }).unwrap_or(false)
+                });
+                if click_outside { close = true; }
+            }
         }
 
         if let Some(uri) = open_playlist_uri {
@@ -3286,12 +3321,16 @@ impl SpotifyApp {
             });
 
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
-                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
-                }).unwrap_or(false)
-            });
-            if click_outside { close = true; }
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                        pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                    }).unwrap_or(false)
+                });
+                if click_outside { close = true; }
+            }
         }
 
         if let Some(artist) = open_artist {
@@ -3371,12 +3410,16 @@ impl SpotifyApp {
             });
 
         if !close {
-            let click_outside = ctx.input(|i| {
-                i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
-                    pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
-                }).unwrap_or(false)
-            });
-            if click_outside { close = true; }
+            if self.popup_just_opened_at.map_or(false, |t| t.elapsed().as_millis() < 50) {
+                self.popup_just_opened_at = None;
+            } else {
+                let click_outside = ctx.input(|i| {
+                    i.pointer.any_pressed() && i.pointer.latest_pos().map(|pos| {
+                        pos.x < popup_pos.x || pos.x > popup_pos.x + popup_width || pos.y < popup_pos.y || pos.y > popup_pos.y + popup_height
+                    }).unwrap_or(false)
+                });
+                if click_outside { close = true; }
+            }
         }
 
         if let Some(uri) = open_album_uri {
@@ -3913,6 +3956,7 @@ impl SpotifyApp {
         
         if start_auth {
             self.show_auth_modal = true;
+            self.popup_just_opened_at = Some(std::time::Instant::now());
         }
     }
 

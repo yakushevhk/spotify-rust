@@ -498,18 +498,21 @@ impl ContextMenu {
         let mut action_to_execute: Option<MenuAction> = None;
         let mut should_close = false;
 
-        // Overlay background
+        // Overlay background — interactable to block clicks through
         egui::Area::new(egui::Id::new("context_menu_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(false)
+            .interactable(true)
             .show(ctx, |ui| {
-                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                let (overlay_rect, overlay_resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
                     theme::with_alpha(theme::bg_black(), 120),
                 );
+                if overlay_resp.clicked() {
+                    should_close = true;
+                }
             });
 
         // Handle keyboard navigation
@@ -721,18 +724,21 @@ impl ContextMenu {
         let mut close = false;
         let mut execute = false;
 
-        // Overlay background
+        // Overlay background — interactable to block clicks through
         egui::Area::new(egui::Id::new("context_confirm_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(false)
+            .interactable(true)
             .show(ctx, |ui| {
-                let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                let (overlay_rect, overlay_resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
                 ui.painter().rect_filled(
                     overlay_rect,
                     0,
                     theme::with_alpha(theme::bg_black(), 120),
                 );
+                if overlay_resp.clicked() {
+                    close = true;
+                }
             });
 
         egui::Area::new(egui::Id::new("context_confirm"))
