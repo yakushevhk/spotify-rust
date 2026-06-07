@@ -152,6 +152,7 @@ impl State {
             saved_tracks: std::collections::HashMap::new(),
         };
         data.caches = data::MemoryCaches::new();
+        data.library_loaded = false;
         data.browse = data::BrowseData::default();
         data.shows_loading = false;
         drop(data);

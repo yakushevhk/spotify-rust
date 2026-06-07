@@ -353,7 +353,7 @@ impl CustomQueue {
                     .play_order
                     .iter()
                     .position(|t| *t == current_track)
-                    .unwrap_or(0);
+                    .unwrap_or_else(|| self.position.min(self.original_tracks.len().saturating_sub(1)));
                 self.batch_start = 0;
             }
             ShuffleMode::Shuffle => {

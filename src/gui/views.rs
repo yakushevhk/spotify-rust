@@ -3689,9 +3689,9 @@ fn render_settings_keybindings(
                     });
                     if let Some(kb) = captured {
                         if edit_idx < keybindings.len() {
-                            keybindings[edit_idx].keybindings = vec![kb];
+                            keybindings[edit_idx].keybindings.push(kb);
                         }
-                        ui.ctx().input_mut(|i| i.events.clear());
+                        ui.ctx().input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Key { pressed: true, .. })));
                         *editing_keybinding = None;
                     }
                 }

@@ -47,14 +47,13 @@ const MAX_BACKTRACE_SIZE: u64 = 10 * 1024 * 1024;
 const MAX_BACKTRACE_FILES: usize = 5;
 
 /// Rotate backtrace files: remove oldest if we have too many, rename existing
-fn rotate_backtrace_files(log_folder: &std::path::Path, log_prefix: &str) -> Result<()> {
-    let backtrace_pattern = format!("{}.backtrace", log_prefix);
+fn rotate_backtrace_files(log_folder: &std::path::Path, _log_prefix: &str) -> Result<()> {
     let mut backtrace_files: Vec<_> = std::fs::read_dir(log_folder)?
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_name()
                 .to_str()
-                .map(|n| n.starts_with(&backtrace_pattern))
+                .map(|n| n.ends_with(".backtrace"))
                 .unwrap_or(false)
         })
         .collect();
