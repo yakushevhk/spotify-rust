@@ -108,12 +108,13 @@ impl CommandPalette {
         let filtered = self.filtered_entries();
 
         // Dark overlay
+        let mut close = false;
         let screen = ctx.screen_rect();
         let overlay_id = egui::Id::new("cmd_palette_overlay");
-        egui::Area::new(overlay_id)
+        let overlay_resp = egui::Area::new(overlay_id)
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .interactable(false)
+            .interactable(true)
             .show(ctx, |ui| {
                 let (overlay_rect, _) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
                 ui.painter().rect_filled(
@@ -121,15 +122,17 @@ impl CommandPalette {
                     0,
                     theme::with_alpha(theme::bg_black(), 120),
                 );
-            });
+            })
+            .response;
+        if overlay_resp.clicked() {
+            close = true;
+        }
 
         // Palette dimensions
         let palette_width = 520.0_f32.min(screen.width() * 0.85);
         let palette_max_height = screen.height() * 0.6;
         let palette_x = screen.center().x - palette_width / 2.0;
         let palette_y = screen.center().y - palette_max_height / 2.0;
-
-        let mut close = false;
 
         egui::Area::new(egui::Id::new("command_palette"))
             .order(egui::Order::Foreground)

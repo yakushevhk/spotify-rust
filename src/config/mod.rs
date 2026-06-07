@@ -540,6 +540,11 @@ impl AppConfig {
             config.volume_scroll_step = 1;
             modified = true;
         }
+        if config.volume_scroll_step > 100 {
+            tracing::warn!("volume_scroll_step {} clamped to 100", config.volume_scroll_step);
+            config.volume_scroll_step = 100;
+            modified = true;
+        }
 
         // C6: app_refresh_duration_in_ms=0 causes CPU busy loop
         if config.app_refresh_duration_in_ms == 0 {
@@ -641,7 +646,7 @@ impl AppConfig {
     pub fn get_user_client_id(&self) -> Result<Option<String>> {
         match self.client_id_command {
             Some(ref cmd) => cmd.execute(None).map(|out| Some(out.trim().to_string())),
-            None => Ok(self.client_id.clone()),
+            None => Ok(self.client_id.clone().map(|s| s.trim().to_string())),
         }
     }
 }

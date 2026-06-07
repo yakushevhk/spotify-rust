@@ -290,7 +290,7 @@ async fn start_app(state: &state::SharedState) -> Result<()> {
             tracing::info!("Received Ctrl+C, cleaning up...");
         }
         
-        signal_state.running.store(false, std::sync::atomic::Ordering::Release);
+        signal_state.push_toast("Shutdown signal received. Close the window to exit gracefully.");
     });
 
     // Launch the GUI

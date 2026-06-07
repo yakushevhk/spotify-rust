@@ -105,6 +105,16 @@ pub struct ContextMenu {
     just_opened: bool,
 }
 
+fn action_key(action: &MenuAction) -> String {
+    match action {
+        MenuAction::RemoveAlbumFromLibrary(id) => format!("remove_album_{}", id.id()),
+        MenuAction::RemoveShowFromLibrary(id) => format!("remove_show_{}", id.id()),
+        MenuAction::UnfollowArtist(id) => format!("unfollow_artist_{}", id.id()),
+        MenuAction::DeleteFromPlaylist(pid, tid) => format!("delete_playlist_{}_{}", pid.id(), tid.id()),
+        _ => format!("{:?}", action),
+    }
+}
+
 impl ContextMenu {
     pub fn new() -> Self {
         Self {
@@ -137,12 +147,12 @@ impl ContextMenu {
     }
 
     fn should_skip_confirmation(&self, action: &MenuAction) -> bool {
-        let key = format!("{:?}", action);
+        let key = action_key(action);
         self.skip_confirmations.contains(&key)
     }
 
     fn skip_confirmation(&mut self, action: &MenuAction) {
-        let key = format!("{:?}", action);
+        let key = action_key(action);
         self.skip_confirmations.insert(key);
     }
 

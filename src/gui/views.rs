@@ -1592,6 +1592,18 @@ pub fn render_search(
 ) -> Action {
     let mut action = Action::None;
 
+    let player = state.player.read();
+    let current_track_uri: Option<String> = player.playback.as_ref().and_then(|p| {
+        p.item.as_ref().map(|item| match item {
+            rspotify::model::PlayableItem::Track(t) => {
+                t.id.as_ref().map(|id| id.uri()).unwrap_or_default()
+            }
+            rspotify::model::PlayableItem::Episode(e) => e.id.uri(),
+            _ => String::new(),
+        })
+    });
+    drop(player);
+
     theme::page_title(ui, "Search");
 
     ui.horizontal(|ui| {
@@ -1853,7 +1865,11 @@ pub fn render_search(
                             }
                         }
 
-                        if response.hovered() {
+                        let is_playing = current_track_uri
+                            .as_ref()
+                            .is_some_and(|uri| *uri == track.id.uri());
+
+                        if response.hovered() && !is_playing {
                             let play_btn_rect = egui::Rect::from_center_size(
                                 row_rect.left_center() + egui::vec2(28.0, 0.0),
                                 egui::vec2(24.0, 24.0),
@@ -4240,7 +4256,7 @@ pub fn render_artist(
                 } else if response.hovered() {
                     theme::bg_hover()
                 } else {
-                    theme::bg_black()
+                    egui::Color32::TRANSPARENT
                 };
                 ui.painter().rect_filled(row_rect, 4.0, bg);
 

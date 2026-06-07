@@ -323,7 +323,15 @@ pub async fn start_cli_headless(
         }
     });
     
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if state.data.read().user_data.user.is_some() { break; }
+        if std::time::Instant::now() > deadline {
+            eprintln!("Warning: timed out waiting for user data");
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
     
     if let Err(err) = run_cli_command(command, &client, &client_pub, &state).await {
         eprintln!("Command failed: {err:#}");
