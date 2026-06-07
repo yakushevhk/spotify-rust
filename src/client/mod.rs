@@ -1319,6 +1319,10 @@ impl AppClient {
             let resp: BrowseCategoryPlaylistsResponse = self.http_get(&url, &Query::new()).await?;
             all_playlists.extend(resp.playlists.items);
             url = resp.playlists.next.unwrap_or_default();
+            if !url.is_empty() && !url.starts_with("http") {
+                tracing::warn!("Invalid next URL: {url}, stopping pagination");
+                url.clear();
+            }
         }
         if page_count >= MAX_PAGES {
             tracing::warn!("browse_category_playlists hit max pages limit ({MAX_PAGES})");

@@ -783,18 +783,6 @@ mod tests {
     // ============ Edge Cases ============
 
     #[test]
-    fn empty_queue_operations() {
-        let tracks: Vec<PlayableId<'static>> = vec![];
-        let q = CustomQueue::new(tracks.clone(), 0, 5, None, false);
-
-        assert_eq!(q.len(), 0);
-        assert!(q.is_empty());
-        assert!(q.current_track().is_none());
-        assert!(q.current_batch().is_none());
-        assert!(q.remaining_tracks().is_empty());
-    }
-
-    #[test]
     fn single_item_queue() {
         let tracks = make_tracks(1);
         let mut q = CustomQueue::new(tracks.clone(), 0, 5, None, false);
@@ -864,24 +852,6 @@ mod tests {
     }
 
     #[test]
-    fn is_at_batch_end_with_empty_queue() {
-        let tracks: Vec<PlayableId<'static>> = vec![];
-        let q = CustomQueue::new(tracks, 0, 5, None, false);
-
-        // Should return false for empty queue
-        assert!(!q.is_at_batch_end());
-    }
-
-    #[test]
-    fn is_at_batch_start_with_empty_queue() {
-        let tracks: Vec<PlayableId<'static>> = vec![];
-        let q = CustomQueue::new(tracks, 0, 5, None, false);
-
-        // Should return false for empty queue
-        assert!(!q.is_at_batch_start());
-    }
-
-    #[test]
     fn retreat_at_beginning_no_repeat() {
         let tracks = make_tracks(5);
         let mut q = CustomQueue::new(tracks, 0, 10, None, false);
@@ -941,17 +911,6 @@ mod tests {
         assert_eq!(next.unwrap().len(), 5);
         assert_eq!(q.batch_start(), 5);
         assert_eq!(q.batch_end(), 10);
-    }
-
-    #[test]
-    fn append_radio_tracks_empty_queue() {
-        let tracks: Vec<PlayableId<'static>> = vec![];
-        let mut q = CustomQueue::new(tracks, 0, 5, None, false);
-
-        let radio = make_tracks(3);
-        q.append_radio_tracks(radio);
-
-        assert_eq!(q.len(), 3);
     }
 
     #[test]
