@@ -1633,7 +1633,8 @@ pub fn render_search(
         let now = Instant::now();
         if response.changed() && !search_query.is_empty() {
             debounce_state.last_input = now;
-            debounce_state.pending_query = Some(search_query.clone());
+            let normalized = search_query.trim().to_lowercase();
+            debounce_state.pending_query = Some(normalized);
             // Keep is_searching true until new results arrive to avoid showing stale results
             debounce_state.last_sent_query = None;
         }
@@ -1653,9 +1654,10 @@ pub fn render_search(
         // Still allow Enter key for immediate search
         let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
         if enter_pressed && !search_query.is_empty() {
-            if debounce_state.last_sent_query.as_ref() != Some(search_query) {
-                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
-                debounce_state.last_sent_query = Some(search_query.clone());
+            let normalized = search_query.trim().to_lowercase();
+            if debounce_state.last_sent_query.as_ref() != Some(&normalized) {
+                let _ = client_pub.send(ClientRequest::Search(normalized.clone()));
+                debounce_state.last_sent_query = Some(normalized);
             }
             debounce_state.pending_query = None;
             debounce_state.is_searching = true;
@@ -1665,9 +1667,10 @@ pub fn render_search(
         if theme::secondary_button(ui, "Search").clicked()
             && !search_query.is_empty()
         {
-            if debounce_state.last_sent_query.as_ref() != Some(search_query) {
-                let _ = client_pub.send(ClientRequest::Search(search_query.clone()));
-                debounce_state.last_sent_query = Some(search_query.clone());
+            let normalized = search_query.trim().to_lowercase();
+            if debounce_state.last_sent_query.as_ref() != Some(&normalized) {
+                let _ = client_pub.send(ClientRequest::Search(normalized.clone()));
+                debounce_state.last_sent_query = Some(normalized);
             }
             debounce_state.pending_query = None;
             debounce_state.is_searching = true;

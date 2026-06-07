@@ -627,7 +627,9 @@ current_view: View::Library,
         if view != self.current_view {
             // Check for unsaved settings changes
             if self.current_view == View::Settings && self.settings_dirty {
-                self.pending_view_navigation = Some(view);
+                if self.pending_view_navigation.is_none() {
+                    self.pending_view_navigation = Some(view);
+                }
                 self.show_settings_confirm_dialog = true;
                 return;
             }
@@ -1395,7 +1397,10 @@ impl eframe::App for SpotifyApp {
         }
 
         if self.current_view == View::Tracks && self.context_tracks.is_empty() {
-            self.update_context_tracks();
+            let has_playback = self.state.player.read().playback.is_some();
+            if has_playback {
+                self.update_context_tracks();
+            }
         }
 
         // Update show detail episodes when viewing show detail page
@@ -3713,7 +3718,9 @@ impl SpotifyApp {
             || self.settings_editing.default_device != self.settings_original.default_device
             || self.settings_editing.device.name != self.settings_original.device.name
             || self.settings_editing.device.bitrate != self.settings_original.device.bitrate
-            || self.settings_editing.theme != self.settings_original.theme;
+            || self.settings_editing.theme != self.settings_original.theme
+            || self.settings_editing.enable_media_control != self.settings_original.enable_media_control
+            || self.settings_editing.tracks_playback_limit != self.settings_original.tracks_playback_limit;
 
         if let Err(err) = self.settings_editing.layout.check_values() {
             self.toast(format!("Invalid layout: {err}"));
