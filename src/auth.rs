@@ -47,7 +47,9 @@ use librespot_core::{authentication::Credentials, cache::Cache, config::SessionC
 use librespot_oauth::OAuthClientBuilder;
 
 /// Default Spotify client ID for standard playback.
+/// Deprecated: Spotify has blocked this client ID. Use NCSPOT_CLIENT_ID instead.
 /// Users can override this in their config file via `client_id` field.
+#[allow(dead_code)]
 pub const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
 /// Alternative client ID used by ncspot.
 /// Users can override this in their config file via `client_id` field.
@@ -76,8 +78,6 @@ pub const OAUTH_SCOPES: &[&str] = &[
     // Library
     "user-library-modify",
     "user-library-read",
-    // Users
-    "user-personalized",
 ];
 
 #[derive(Clone)]
@@ -180,7 +180,7 @@ pub async fn get_creds(auth_config: &AuthConfig, reauth: bool, use_cached: bool)
                     // will stay alive until the HTTP layer times out internally. This is a known
                     // limitation of spawn_blocking with non-cancellable blocking I/O.
                     let client_builder = OAuthClientBuilder::new(
-                        SPOTIFY_CLIENT_ID,
+                        NCSPOT_CLIENT_ID,
                         &login_redirect_uri,
                         OAUTH_SCOPES.to_vec(),
                     )
