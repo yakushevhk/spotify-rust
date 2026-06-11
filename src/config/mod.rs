@@ -397,7 +397,7 @@ impl Default for AppConfig {
 
             client_port: 8080,
 
-            login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+            login_redirect_uri: "http://localhost:8989/login".to_string(),
 
             log_folder: None,
 
@@ -737,7 +737,7 @@ mod tests {
         
         assert_eq!(config.theme, "Spotify");
         assert_eq!(config.client_port, 8080);
-        assert_eq!(config.login_redirect_uri, "http://127.0.0.1:8989/login");
+        assert_eq!(config.login_redirect_uri, "http://localhost:8989/login");
         assert_eq!(config.tracks_playback_limit, 50);
         assert_eq!(config.app_refresh_duration_in_ms, 32);
         assert_eq!(config.playback_refresh_duration_in_ms, 5000);

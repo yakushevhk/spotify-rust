@@ -97,7 +97,7 @@ impl Default for AuthConfig {
                     cache: Cache::new(None::<String>, None, None, None)
                         .expect("Cache::new with None paths must succeed"),
                     session_config: SessionConfig::default(),
-                    login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+                    login_redirect_uri: "http://localhost:8989/login".to_string(),
                 }
             }
         }
@@ -109,7 +109,7 @@ impl AuthConfig {
         Ok(AuthConfig {
             cache: Cache::new(None::<String>, None, None, None)?,
             session_config: SessionConfig::default(),
-            login_redirect_uri: "http://127.0.0.1:8989/login".to_string(),
+            login_redirect_uri: "http://localhost:8989/login".to_string(),
         })
     }
 }
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_auth_config_default() {
         let config = AuthConfig::default();
-        assert_eq!(config.login_redirect_uri, "http://127.0.0.1:8989/login");
+        assert_eq!(config.login_redirect_uri, "http://localhost:8989/login");
         // Cache should be initialized
         assert!(config.cache.credentials().is_none());
     }
