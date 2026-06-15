@@ -838,6 +838,12 @@ impl AppClient {
                     let mut player = state.player.write();
                     if let Some(updated) = new_playback {
                         if let Some(ref mut existing) = player.buffered_playback {
+                            // Capture shuffle/repeat deltas before overwriting to propagate into CustomQueue.
+                            let shuffle_changed = existing.shuffle_state != updated.shuffle_state;
+                            let repeat_changed = existing.repeat_state != updated.repeat_state;
+                            let new_shuffle_state = updated.shuffle_state;
+                            let new_repeat_state = updated.repeat_state;
+
                             existing.is_playing = updated.is_playing;
                             existing.repeat_state = updated.repeat_state;
                             existing.shuffle_state = updated.shuffle_state;
@@ -845,6 +851,19 @@ impl AppClient {
                             existing.mute_state = updated.mute_state;
                             existing.device_id = updated.device_id.clone();
                             existing.device_name = updated.device_name.clone();
+
+                            if let Some(ref mut q) = player.custom_queue {
+                                if shuffle_changed {
+                                    q.set_shuffle_mode(if new_shuffle_state {
+                                        crate::state::ShuffleMode::Shuffle
+                                    } else {
+                                        crate::state::ShuffleMode::Off
+                                    });
+                                }
+                                if repeat_changed {
+                                    q.set_repeat(new_repeat_state);
+                                }
+                            }
                         } else {
                             player.buffered_playback = Some(updated);
                         }
