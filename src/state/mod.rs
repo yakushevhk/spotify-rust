@@ -135,10 +135,11 @@ impl State {
 
     /// Reset user data to avoid stale data from a previous account/session.
     pub fn reset_user_data(&self) {
-        // Reset player state first (per lock hierarchy: player before data)
+        // Reset player state first (per lock hierarchy: player before data).
+        // `PlayerState::reset_user_data` preserves streaming_generation and
+        // custom_queue — see its doc comment for why those invariants matter.
         {
-            let mut player = self.player.write();
-            *player = PlayerState::default();
+            self.player.write().reset_user_data();
         }
 
         let mut data = self.data.write();

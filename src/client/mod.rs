@@ -494,19 +494,10 @@ impl AppClient {
         }
 
         if let Some(state) = state {
-            // Per documented lock hierarchy: player before data
-            // reset player state (playback, devices, queue, custom_queue)
-            // to avoid stale data from a previous account/session
-            // Preserve streaming_generation so player_event_task is not killed
-            {
-                let mut player = state.player.write();
-                let generation = player.streaming_generation;
-                let queue = std::mem::take(&mut player.custom_queue);
-                *player = crate::state::PlayerState::default();
-                player.streaming_generation = generation;
-                player.custom_queue = queue;
-            }
-            // reset user data and caches to avoid stale data from a previous account
+            // Reset player state (playback, devices, queue) and user data /
+            // caches to avoid stale data from a previous account/session.
+            // `reset_user_data` preserves streaming_generation and
+            // custom_queue internally (see `PlayerState::reset_user_data`).
             state.reset_user_data();
             self.initialize_playback(state).await;
             // Clear transient UI state that should not survive account switches
