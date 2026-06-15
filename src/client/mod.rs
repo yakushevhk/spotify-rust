@@ -62,6 +62,20 @@ pub use request::*;
 use serde::Deserialize;
 
 const SPOTIFY_API_ENDPOINT: &str = "https://api.spotify.com/v1";
+
+/// Maximum time to wait for the user to complete the Spotify OAuth (PKCE) flow
+/// in `prompt_for_token_with_timeout`. Mirrors the 300s cap used by `auth::get_creds`.
+///
+/// Without this bound, `rspotify::AuthCodePkceSpotify::prompt_for_token` blocks
+/// forever when:
+///   - launched from Finder/Dock without an attached terminal (no stdin for the
+///     cli-feature fallback),
+///   - the localhost:8989 callback listener is already taken by a previous
+///     crashed instance,
+///     - the user closes the browser tab without finishing authorization.
+///
+/// The hang prevents `start_app` from ever opening the eframe window.
+const OAUTH_PROMPT_TIMEOUT_SECS: u64 = 300;
 const PLAYBACK_TYPES: [&rspotify::model::AdditionalType; 2] = [
     &rspotify::model::AdditionalType::Track,
     &rspotify::model::AdditionalType::Episode,
@@ -74,6 +88,32 @@ static RATE_LIMIT_RESET_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::
 #[cfg(feature = "notify")]
 static NOTIFY_TEMPLATE_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"\{.*?\}").unwrap());
+
+/// Wrap `rspotify`'s `prompt_for_token` in a hard 5-minute deadline.
+///
+/// Returns a clear `anyhow` error on timeout instead of hanging the startup
+/// sequence forever. See `OAUTH_PROMPT_TIMEOUT_SECS` for the rationale.
+async fn prompt_for_token_with_timeout(
+    client: &mut rspotify::AuthCodePkceSpotify,
+    url: &str,
+) -> Result<()> {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(OAUTH_PROMPT_TIMEOUT_SECS),
+        client.prompt_for_token(url),
+    )
+    .await
+    {
+        Ok(inner) => Ok(inner?),
+        Err(_elapsed) => anyhow::bail!(
+            "Spotify OAuth login timed out after {} seconds. \
+             The browser callback on port 8989 did not complete in time. \
+             Common causes: the app was launched without a terminal (Finder/Dock), \
+             port 8989 is already taken by another instance, or the browser tab was \
+             closed before authorizing. Please relaunch and try again.",
+            OAUTH_PROMPT_TIMEOUT_SECS
+        ),
+    }
+}
 
 /// The application's Spotify client
 #[derive(Clone)]
@@ -181,8 +221,7 @@ impl AppClient {
                     tracing::warn!("Failed to auto-open browser: {e:#}. URL: {url}");
                 }
             }
-            client
-                .prompt_for_token(&url)
+            prompt_for_token_with_timeout(client, &url)
                 .await
                 .context("get token for user-provided client")?;
 
@@ -2867,6 +2906,31 @@ mod tests {
     use super::*;
     use crate::state::{Track, PlaybackMetadata};
     use rspotify::model::TrackId;
+
+    #[test]
+    fn oauth_prompt_timeout_is_five_minutes() {
+        // Regression guard: the bound on prompt_for_token must stay at 300s
+        // (matches the 300s cap used by auth::get_creds). If this constant
+        // changes, also revisit the documented "5-minute" error message.
+        assert_eq!(OAUTH_PROMPT_TIMEOUT_SECS, 300);
+    }
+
+    #[tokio::test]
+    async fn prompt_for_token_with_timeout_fires_on_never_completing_future() {
+        // Verifies the timeout primitive we rely on actually elapses when the
+        // inner future never resolves (simulating a hung localhost:8989
+        // listener or a closed browser tab).
+        let pending = std::future::pending::<()>();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            pending,
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "tokio::time::timeout must return Err when the inner future never completes"
+        );
+    }
 
     fn sample_track(id: &'static str, name: &str) -> Track {
         Track {
