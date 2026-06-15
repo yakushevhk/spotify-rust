@@ -1201,48 +1201,10 @@ impl AppClient {
     }
 
     pub async fn update_playback(&self, state: &SharedState) {
-        static LAST_DISPATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-        let mut now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        loop {
-            let last = LAST_DISPATCH.load(std::sync::atomic::Ordering::Acquire);
-            if now_ms.saturating_sub(last) < 1000 {
-                tokio::time::sleep(std::time::Duration::from_millis(
-                    1000 - now_ms.saturating_sub(last)
-                )).await;
-                now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                match LAST_DISPATCH.compare_exchange(
-                    last,
-                    now_ms,
-                    std::sync::atomic::Ordering::AcqRel,
-                    std::sync::atomic::Ordering::Acquire,
-                ) {
-                    Ok(_) => break,
-                    Err(_) => continue,
-                }
-            } else {
-                match LAST_DISPATCH.compare_exchange(
-                    last,
-                    now_ms,
-                    std::sync::atomic::Ordering::AcqRel,
-                    std::sync::atomic::Ordering::Acquire,
-                ) {
-                    Ok(_) => break,
-                    Err(_) => continue,
-                }
-            }
-        }
-
         let client = self.clone();
         let state = state.clone();
-        // Note: JoinHandle is dropped intentionally — fire-and-forget refresh task
+        // Note: JoinHandle is dropped intentionally — fire-and-forget refresh task.
+        // Rate-limiting is handled by http_get's Retry-After handling on HTTP 429.
         tokio::task::spawn(async move {
             if let Err(err) = client.retrieve_current_playback(&state, false).await {
                 tracing::error!(
