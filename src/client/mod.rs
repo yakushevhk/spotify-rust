@@ -514,15 +514,24 @@ impl AppClient {
         // This is critical for CLI commands that use user_client() directly
         if let Some(user_client) = &self.user_client {
             let token_arc = user_client.get_token();
-            let token_guard = token_arc.lock().await
-                .map_err(|e| anyhow::anyhow!("Token mutex poisoned: {e:?}"))?;
-
-            let needs_refresh = match token_guard.as_ref() {
-                None => true,
-                Some(token) => {
-                    token.expires_at.is_none_or(|expires_at| {
-                        chrono::Utc::now() >= expires_at - chrono::Duration::seconds(60)
-                    })
+            // Scoped block: only hold the token mutex long enough to read
+            // `expires_at`. It MUST be released before `auto_reauth` /
+            // `refresh_token` because rspotify internally re-acquires the
+            // same `Arc<Mutex<Token>>`. tokio's Mutex is non-reentrant, so
+            // holding the guard across those calls deadlocks forever.
+            // TOCTOU safety: `reauth_lock` (acquired above) serializes every
+            // concurrent caller of `check_valid_session`, so no other task
+            // can race the refresh decision once we drop the guard.
+            let needs_refresh = {
+                let token_guard = token_arc.lock().await
+                    .map_err(|e| anyhow::anyhow!("Token mutex poisoned: {e:?}"))?;
+                match token_guard.as_ref() {
+                    None => true,
+                    Some(token) => {
+                        token.expires_at.is_none_or(|expires_at| {
+                            chrono::Utc::now() >= expires_at - chrono::Duration::seconds(60)
+                        })
+                    }
                 }
             };
 
