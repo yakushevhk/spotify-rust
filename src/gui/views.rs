@@ -192,9 +192,7 @@ pub fn render_library(
                             ui.add_space(24.0);
                             let cover_path = image_cache::playlist_cover_path(playlist);
                             if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
-                                if !path.exists() {
-                                    image_cache.request_download(url, path);
-                                }
+                                image_cache.request_download(url, path);
                             }
                             let response = grid_card(
                                 ui,
@@ -249,9 +247,7 @@ pub fn render_library(
                                 let sub = format!("{} · {}", album.artists_display_ref(), album.year());
                                 let cover_path = image_cache::album_cover_path(album);
                                 if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
-                                    if !path.exists() {
-                                        image_cache.request_download(url, path);
-                                    }
+                                    image_cache.request_download(url, path);
                                 }
                                 let response = grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, grid_card_width, || {
                                     action = Action::OpenSearchResultAlbum(album.clone());
@@ -432,9 +428,7 @@ pub fn render_shows(
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::show_cover_path(show);
                                 if let (Some(path), Some(url)) = (&cover_path, &show.cover_url) {
-                                    if !path.exists() {
-                                        image_cache.request_download(url, path);
-                                    }
+                                    image_cache.request_download(url, path);
                                 }
                                 let response = grid_card(
                                     ui,
@@ -534,12 +528,10 @@ pub fn render_show_detail(
     // Generate alt text for screen readers
     let alt_text = format!("Show cover: {} by {}", show.name, show.publisher);
     
-    if let Some(path) = image_cache::show_cover_path(show) {
-        if let (Some(path_ref), Some(url)) = (Some(&path), &show.cover_url) {
-            if !path_ref.exists() {
+        if let Some(path) = image_cache::show_cover_path(show) {
+            if let (Some(path_ref), Some(url)) = (Some(&path), &show.cover_url) {
                 image_cache.request_download(url, path_ref);
             }
-        }
         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
             ui.painter().rect_filled(art_rect, theme::ART_CORNER_RADIUS, theme::bg_active());
             let img = egui::Image::new(texture)
@@ -1379,9 +1371,7 @@ pub fn render_tracks(
                 if let Some(ref album) = track.album {
                     if let Some(path) = image_cache::album_cover_path(album) {
                         if let Some(url) = &album.cover_url {
-                            if !path.exists() {
-                                image_cache.request_download(url, &path);
-                            }
+                            image_cache.request_download(url, &path);
                         }
                         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                             ui.painter().rect_filled(
@@ -1766,9 +1756,7 @@ pub fn render_search(
                         if let Some(ref album) = track.album {
                             if let Some(path) = image_cache::album_cover_path(album) {
                                 if let Some(ref url) = album.cover_url {
-                                    if !path.exists() {
-                                        image_cache.request_download(url, &path);
-                                    }
+                                    image_cache.request_download(url, &path);
                                 }
                                 if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                                     ui.painter().rect_filled(
@@ -2016,9 +2004,7 @@ pub fn render_search(
                             );
                             let cover_path = image_cache::album_cover_path(album);
                             if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
-                                if !path.exists() {
-                                    image_cache.request_download(url, path);
-                                }
+                                image_cache.request_download(url, path);
                             }
                             let response = search_grid_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache);
                             if response.clicked() {
@@ -2059,9 +2045,7 @@ pub fn render_search(
                         for playlist in results.playlists.iter() {
                             let cover_path = image_cache::playlist_cover_path(playlist);
                             if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
-                                if !path.exists() {
-                                    image_cache.request_download(url, path);
-                                }
+                                image_cache.request_download(url, path);
                             }
                             let response = search_grid_card(ui, &playlist.name, &playlist.owner.0, cover_path.as_deref(), image_cache);
                             if response.clicked() {
@@ -2103,9 +2087,7 @@ pub fn render_search(
                         for show in results.shows.iter() {
                             let cover_path = image_cache::show_cover_path(show);
                             if let (Some(path), Some(url)) = (&cover_path, &show.cover_url) {
-                                if !path.exists() {
-                                    image_cache.request_download(url, path);
-                                }
+                                image_cache.request_download(url, path);
                             }
                             let response = search_grid_card(ui, &show.name, &show.publisher, cover_path.as_deref(), image_cache);
                             if response.secondary_clicked() {
@@ -2309,9 +2291,7 @@ pub fn render_browse(
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::category_icon_path(category);
                                 if let (Some(path), Some(url)) = (&cover_path, &category.icon_url) {
-                                    if !path.exists() {
-                                        image_cache.request_download(url, path);
-                                    }
+                                    image_cache.request_download(url, path);
                                 }
                                 category_card(
                                     ui,
@@ -2489,9 +2469,7 @@ pub fn render_browse_category_playlists(
                                 ui.add_space(24.0);
                                 let cover_path = image_cache::playlist_cover_path(playlist);
                                 if let (Some(path), Some(url)) = (&cover_path, &playlist.cover_url) {
-                                    if !path.exists() {
-                                        image_cache.request_download(url, path);
-                                    }
+                                    image_cache.request_download(url, path);
                                 }
                                 let response = grid_card(
                                     ui,
@@ -4134,9 +4112,7 @@ pub fn render_artist(
         let mut img_drawn = false;
         let cover_path = image_cache::artist_cover_path(artist);
         if let (Some(path), Some(url)) = (&cover_path, &artist.image_url) {
-            if !path.exists() {
-                image_cache.request_download(url, path);
-            }
+            image_cache.request_download(url, path);
             if let Some(texture) = image_cache.get_texture(ui.ctx(), path) {
                 ui.painter().rect_filled(img_rect, img_size / 2.0, theme::bg_active());
                 egui::Image::new(texture)
@@ -4280,9 +4256,7 @@ pub fn render_artist(
                 if let Some(ref album) = track.album {
                     if let Some(path) = image_cache::album_cover_path(album) {
                         if let Some(url) = &album.cover_url {
-                            if !path.exists() {
-                                image_cache.request_download(url, &path);
-                            }
+                            image_cache.request_download(url, &path);
                         }
                         if let Some(texture) = image_cache.get_texture(ui.ctx(), &path) {
                             ui.painter().rect_filled(
@@ -4459,9 +4433,7 @@ pub fn render_artist(
                         );
                         let cover_path = image_cache::album_cover_path(album);
                         if let (Some(path), Some(url)) = (&cover_path, &album.cover_url) {
-                            if !path.exists() {
-                                image_cache.request_download(url, path);
-                            }
+                            image_cache.request_download(url, path);
                         }
                         let album_clone = album.clone();
                         let response = artist_album_card(ui, &album.name, &sub, cover_path.as_deref(), image_cache, || {
@@ -4514,9 +4486,7 @@ pub fn render_artist(
                         let related_clone = related.clone();
                         let cover_path = image_cache::artist_cover_path(related);
                         if let (Some(path), Some(url)) = (&cover_path, &related.image_url) {
-                            if !path.exists() {
-                                image_cache.request_download(url, path);
-                            }
+                            image_cache.request_download(url, path);
                         }
                         let response = artist_card(ui, &related.name, cover_path.as_deref(), image_cache, || {
                             action = Action::OpenArtist(related_clone);

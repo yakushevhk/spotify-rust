@@ -9,12 +9,22 @@ use crate::state;
 
 const MAX_TEXTURES: usize = 256;
 
+/// Decoded image shipped from the background thread to the UI thread.
+/// `image` is `None` when either the download or the decode failed.
+struct DecodedImage {
+    path: PathBuf,
+    image: Option<egui::ColorImage>,
+}
+
 pub struct ImageCache {
     textures: LruCache<String, egui::TextureHandle>,
     download_tx: Option<mpsc::Sender<(String, PathBuf)>>,
     download_thread: Option<std::thread::JoinHandle<()>>,
     in_flight: HashSet<PathBuf>,
-    done_rx: mpsc::Receiver<(PathBuf, bool)>,
+    decoded_rx: mpsc::Receiver<DecodedImage>,
+    /// Paths we have ever handed to the background thread (download+decode
+    /// succeeded or is in progress). Used to avoid re-queuing work every
+    /// frame for files that are already on disk.
     known_paths: HashSet<PathBuf>,
     failed: HashSet<PathBuf>,
 }
@@ -33,7 +43,7 @@ impl ImageCache {
     /// Issue #10: Creates a new ImageCache with graceful handling of thread spawn failure
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(String, PathBuf)>();
-        let (done_tx, done_rx) = mpsc::channel::<(PathBuf, bool)>();
+        let (decoded_tx, decoded_rx) = mpsc::channel::<DecodedImage>();
 
         // Issue #10: Handle thread spawn failure gracefully instead of panicking
         let handle_result = std::thread::Builder::new()
@@ -50,36 +60,43 @@ impl ImageCache {
                     .timeout(std::time::Duration::from_secs(15))
                     .build()
                     .unwrap_or_default();
-                while let Ok((_url, path)) = rx.recv() {
-                    if path.exists() {
-                        let _ = done_tx.send((path.clone(), true));
-                        continue;
-                    }
-                    let result = rt.block_on(async {
-                        let resp = http
-                            .get(&_url)
-                            .send()
-                            .await
-                            .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        let bytes = resp
-                            .bytes()
-                            .await
-                            .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        if let Some(parent) = path.parent() {
-                            let _ = std::fs::create_dir_all(parent);
+                while let Ok((url, path)) = rx.recv() {
+                    // Step 1: ensure the file is on disk. The thread is the
+                    // single source of truth for "does this file exist" —
+                    // callers are not allowed to short-circuit on path.exists()
+                    // because that would force a stat() syscall every frame.
+                    if !path.exists() {
+                        let result = rt.block_on(async {
+                            let resp = http
+                                .get(&url)
+                                .send()
+                                .await
+                                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                            let bytes = resp
+                                .bytes()
+                                .await
+                                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                            if let Some(parent) = path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            // M25: write to temp file then rename to avoid TOCTOU
+                            // Issue #5: Also use tempfile for automatic cleanup
+                            let tmp = path.with_extension("tmp");
+                            std::fs::write(&tmp, &bytes)?;
+                            std::fs::rename(&tmp, &path)?;
+                            Ok::<(), anyhow::Error>(())
+                        });
+                        if let Err(e) = &result {
+                            tracing::warn!("Image download failed for path {:?}: {e:#}", path);
+                            let _ = decoded_tx.send(DecodedImage { path, image: None });
+                            continue;
                         }
-                        // M25: write to temp file then rename to avoid TOCTOU
-                        // Issue #5: Also use tempfile for automatic cleanup
-                        let tmp = path.with_extension("tmp");
-                        std::fs::write(&tmp, &bytes)?;
-                        std::fs::rename(&tmp, &path)?;
-                        Ok::<(), anyhow::Error>(())
-                    });
-                    let success = result.is_ok();
-                    if let Err(e) = &result {
-                        tracing::warn!("Image download failed for path {:?}: {e:#}", path);
                     }
-                    let _ = done_tx.send((path, success));
+                    // Step 2: decode JPG/PNG to egui::ColorImage on this
+                    // background thread. Keeping the decode off the UI thread
+                    // is what stops 30-200ms stalls when scrolling Library.
+                    let image = decode_path_to_color_image(&path);
+                    let _ = decoded_tx.send(DecodedImage { path, image });
                 }
             });
 
@@ -104,49 +121,63 @@ impl ImageCache {
             in_flight: HashSet::new(),
             known_paths: HashSet::new(),
             failed: HashSet::new(),
-            done_rx,
+            decoded_rx,
         }
     }
 
-    /// Issue #10: Request image download with graceful handling when thread is unavailable
+    /// Issue #10: Request image download with graceful handling when thread is unavailable.
+    ///
+    /// The thread is responsible for the full pipeline: download (if missing)
+    /// followed by decode into `egui::ColorImage`. Callers must NOT pre-check
+    /// `path.exists()` — that would force a `stat()` syscall every frame for
+    /// every visible item, and `request_download` already deduplicates via
+    /// `known_paths` / `in_flight` / `failed` HashSets.
     pub fn request_download(&mut self, url: &str, path: &Path) {
         // Issue #10: If download thread failed to spawn, silently skip background download
-        // The image will be fetched on-demand in get_texture
         if self.download_thread.is_none() {
             return;
         }
 
-        // Drain completion channel
-        while let Ok((done_path, success)) = self.done_rx.try_recv() {
-            self.in_flight.remove(&done_path);
-            if !success {
-                self.failed.insert(done_path);
-            }
-        }
-        // Use cached path existence to avoid filesystem calls every frame
         let path_buf = path.to_path_buf();
-        if self.known_paths.contains(&path_buf) {
-            self.in_flight.remove(&path_buf);
+        if self.failed.contains(&path_buf)
+            || self.in_flight.contains(&path_buf)
+            || self.known_paths.contains(&path_buf)
+        {
             return;
         }
-        if path.exists() {
-            self.known_paths.insert(path_buf.clone());
-            self.in_flight.remove(&path_buf);
-            return;
-        }
-        if self.in_flight.contains(&path_buf) {
-            return;
-        }
-        self.failed.remove(&path_buf);
-        self.in_flight.insert(path_buf);
+        self.in_flight.insert(path_buf.clone());
+        self.known_paths.insert(path_buf.clone());
         if let Some(ref tx) = self.download_tx {
-            let _ = tx.send((url.to_string(), path.to_path_buf()));
+            let _ = tx.send((url.to_string(), path_buf));
         }
     }
 
     /// Check if an image download has permanently failed
     pub fn is_failed(&self, path: &Path) -> bool {
         self.failed.contains(path)
+    }
+
+    /// Drain the decoded-image channel and upload any new results to GPU
+    /// textures. Returns `true` if at least one new texture was uploaded,
+    /// in which case the caller should `ctx.request_repaint()` so the new
+    /// art actually appears on screen.
+    fn pump_decoded(&mut self, ctx: &egui::Context) -> bool {
+        let mut any = false;
+        while let Ok(decoded) = self.decoded_rx.try_recv() {
+            self.in_flight.remove(&decoded.path);
+            match decoded.image {
+                Some(image) => {
+                    let key = decoded.path.to_string_lossy().to_string();
+                    let texture = ctx.load_texture(&key, image, egui::TextureOptions::LINEAR);
+                    self.textures.put(key, texture);
+                    any = true;
+                }
+                None => {
+                    self.failed.insert(decoded.path);
+                }
+            }
+        }
+        any
     }
 
     pub fn get_texture(
@@ -161,24 +192,49 @@ impl ImageCache {
             return self.textures.get(&key);
         }
 
-        // Use cached path existence to avoid filesystem calls
-        let path_buf = path.to_path_buf();
-        if !self.known_paths.contains(&path_buf) && !path.exists() {
-            return None;
+        // Upload any background-decoded images that arrived since the last
+        // frame. If anything new showed up, schedule one extra repaint so
+        // the freshly-decoded cover is actually painted.
+        let any_decoded = self.pump_decoded(ctx);
+        if any_decoded {
+            ctx.request_repaint();
         }
-        self.known_paths.insert(path_buf);
 
-        let img = image::open(path).ok()?;
-        let rgba = img.to_rgba8();
-        let size = [rgba.width() as usize, rgba.height() as usize];
-        let pixels = rgba.as_raw();
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels);
-        let texture = ctx.load_texture(&key, color_image, egui::TextureOptions::LINEAR);
+        if self.textures.contains(&key) {
+            return self.textures.get(&key);
+        }
 
-        // O(1) LRU insertion with automatic eviction
-        self.textures.put(key.clone(), texture);
-        self.textures.get(&key)
+        // File is not yet decoded (and not yet downloaded). Kick off the
+        // background pipeline. The thread checks path.exists() itself, so
+        // we never touch the filesystem on the UI thread.
+        let path_buf = path.to_path_buf();
+        if self.download_thread.is_some()
+            && !self.failed.contains(&path_buf)
+            && !self.in_flight.contains(&path_buf)
+            && !self.known_paths.contains(&path_buf)
+        {
+            self.in_flight.insert(path_buf.clone());
+            self.known_paths.insert(path_buf.clone());
+            // url is only used when the file is missing on disk; passing an
+            // empty string is fine because the thread verifies existence
+            // before issuing the HTTP request.
+            if let Some(ref tx) = self.download_tx {
+                let _ = tx.send((String::new(), path_buf));
+            }
+        }
+
+        None
     }
+}
+
+/// Decode a JPG/PNG file into `egui::ColorImage`. Runs on the background
+/// thread; the result is moved to the UI thread via the `decoded_rx` channel
+/// and uploaded to a GPU texture there.
+fn decode_path_to_color_image(path: &Path) -> Option<egui::ColorImage> {
+    let img = image::open(path).ok()?;
+    let rgba = img.to_rgba8();
+    let size = [rgba.width() as usize, rgba.height() as usize];
+    Some(egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()))
 }
 
 pub fn album_cover_path(album: &state::Album) -> Option<PathBuf> {
@@ -281,4 +337,56 @@ fn hash_name(name: &str) -> String {
     let mut hasher = DefaultHasher::new();
     name.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the synchronous-decode jank fix:
+    /// `decode_path_to_color_image` must not touch the UI thread — it produces
+    /// a plain `egui::ColorImage` (just data) that can be shipped over a
+    /// channel. We verify it decodes a tiny PNG without blocking on a context.
+    #[test]
+    fn decode_path_produces_color_image_off_thread() {
+        // Synthesize a 2x2 RGBA PNG entirely in memory.
+        let pixels: [u8; 16] = [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+        ];
+        let img = image::RgbaImage::from_raw(2, 2, pixels.to_vec()).unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "spotify-rust-decode-test-{}.png",
+            std::process::id()
+        ));
+        image::save_buffer(&tmp, &img, 2, 2, image::ColorType::Rgba8).unwrap();
+
+        // Decode on a worker thread (mimicking the image-downloader pipeline)
+        // and ship the result back over a channel, exactly like ImageCache::new.
+        let (tx, rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let decoded = decode_path_to_color_image(&tmp);
+            let _ = tx.send(decoded);
+            tmp
+        });
+        let decoded = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("decode must not block the UI thread indefinitely");
+        let cleanup_path = handle.join().expect("worker thread must finish");
+        let _ = std::fs::remove_file(cleanup_path);
+
+        let color_image = decoded.expect("2x2 PNG must decode successfully");
+        assert_eq!(color_image.size, [2, 2]);
+        assert_eq!(color_image.pixels.len(), 4);
+        assert_eq!(color_image.pixels[0], egui::Color32::from_rgba_unmultiplied(255, 0, 0, 255));
+        assert_eq!(color_image.pixels[3], egui::Color32::from_rgba_unmultiplied(255, 255, 0, 255));
+    }
+
+    /// `decode_path_to_color_image` must return `None` (not panic) for a
+    /// missing file — the worker thread relies on this to send a failure
+    /// result down the channel.
+    #[test]
+    fn decode_path_missing_file_returns_none() {
+        let bogus = PathBuf::from("/this/path/definitely/does/not/exist.png");
+        assert!(decode_path_to_color_image(&bogus).is_none());
+    }
 }

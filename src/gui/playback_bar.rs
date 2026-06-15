@@ -99,9 +99,7 @@ pub fn render(
                 // Request download if cover not cached
                 if let (Some(ref path), rspotify::model::PlayableItem::Track(ref track)) = (&cover_path, item) {
                     if let Some(img) = track.album.images.first() {
-                        if !path.exists() {
-                            image_cache.request_download(&img.url, path);
-                        }
+                        image_cache.request_download(&img.url, path);
                     }
                 }
 
